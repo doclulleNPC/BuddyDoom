@@ -135,6 +135,46 @@ Params: `-Model -Port -Episode -Map -Skill -Ollama -NoFriendlyFire -Infight -Rul
 The **AI co-op companion** (player 2) is launched **by default**; pass `--no-coop`
 (`-NoCoop` on Windows) to play solo.
 
+## How to Play — inventory & squad kit
+
+**A dead-simple inventory means nothing goes to waste.** Instead of walking over a
+medikit or ammo box you can't use, BuddyDoom pockets the surplus for later (buddy
+mode only — solo play stays vanilla).
+
+- **Auto-stashing:** health items are tucked into your inventory once you're above
+  **75% HP**, and armor/ammo are stashed whenever you're already at the cap — no
+  more wasted stimpacks or spilled ammo.
+- **Your inventory belt:** `←`/`→` select an item, `↓` uses it, `↑` drops it (all
+  rebindable — `key_inv_left`/`right`/`use`/`drop`). The selected item shows at the
+  bottom of the screen (`show_inventory_hud`).
+
+**Spend what you've stashed:**
+
+| Do this | How | Cost |
+|---------|-----|------|
+| 🩹 **Get back up** — revive yourself when downed | Press **Use** while dead | Medikit (→25 HP) or Stimpack (→10 HP) |
+| 🤝 **Revive your buddy** when he's down | Stand over the downed buddy and press **Use** | Medikit (→25 HP) or Stimpack (→10 HP) |
+| 🎁 **Give it to your buddy** | **Drop** the item (`↑`) — the buddy grabs it (and seeks dropped health when hurt) | the dropped item |
+| 🎖️ **Recruit a Marine** — turn a fallen marine into a friendly ally | Walk up and press **Use** | 1 Stimpack (or 10 health bonuses) |
+| 🔫 **Deploy a turret** — a thrown auto-firing sentry | `key_turret` | 50 bullets (or 25 shells) |
+
+*(Your AI buddy taps the same idea automatically — when it's cornered or its ammo
+pool overflows, it burns the surplus to launch a Security Drone.)*
+
+## Connect a LLM
+
+**Here's the wild part: you can plug a large language model straight into DOOM.**
+Point BuddyDoom at a local **Ollama** server and the LLM becomes the brain behind the
+game — directing the monsters' tactics (flank, fall back, focus-fire), commanding your
+AI buddy (engage / defend / regroup), and pacing the L4D-style spawns, all from one
+live observe → think → order loop. It can even drive your marine (`-aiplayer`) for a
+fully hands-off run. It's completely local (no cloud, no API key), swap in any model
+you like, and watch it read the fight and adapt in real time. Yes — DOOM, run by an
+LLM. Pretty awesome.
+
+Pick an AI mode in the **launcher** and it wires everything up for you (starting the
+native `director` sidecar automatically); the plumbing is below.
+
 ## Ollama server location
 
 The server URL is configurable and defaults differ by platform:
