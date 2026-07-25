@@ -22,7 +22,9 @@ buddy {
   height      64
   mass        1000
   painchance  100
+  reactiontime 8           # tics before he reacts to a fresh target (lower = sharper)
   attack      baron        # baron|imp|poss|spos|cpos|sarg|head|skel|fatt|bspi|melee|none
+  special     "Gamma plasma + Hell Knight claw. Tanky, revivable, shrugs off knockback."
   seesound    bgsit1       # stock sounds; swap for your own ds-lumps
   painsound   dmpain
   deathsound  kntdth

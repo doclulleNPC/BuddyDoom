@@ -1218,6 +1218,11 @@ extern const char*	P_Buddy_Desc (int);
 extern int		P_Buddy_Sprite (int);
 extern void		V_DrawPatchFlipped (int x, int y, int scrn, patch_t* patch);
 
+// Buddy stats for the select screen (mirror of buddystats_t in p_buddydef.h).
+typedef struct { int health, speed, radius, height, mass, painchance, reactiontime;
+		 const char* attack; const char* special; } buddystats_t;
+extern void		P_Buddy_GetStats (int slot, buddystats_t* out);
+
 static int	mbuddy_active, mbuddy_sel;
 
 void	M_Buddy_Open (void)
@@ -1370,11 +1375,31 @@ void M_DrawBuddy (void)
 	M_WriteText (84 - M_StringWidth("preview")/2, 136, "preview");
     }
 
-    // description (small font, wrapped) in the right column (kept clear of both edges)
-    M_DrawWrapped (150, 90, 130, P_Buddy_Desc(sel));
+    // stats panel in the right column (every value comes from the BUDDYDEF)
+    {
+	buddystats_t	st;
+	int		lx = 146, rx = 240, y0 = 82, dy = 11;
+	const char*	abil;
+
+	P_Buddy_GetStats (sel, &st);
+
+	snprintf (buf, sizeof buf, "HP %d",    st.health);       M_WriteText (lx, y0,        buf);
+	snprintf (buf, sizeof buf, "SPEED %d", st.speed);        M_WriteText (rx, y0,        buf);
+	snprintf (buf, sizeof buf, "PAIN %d",  st.painchance);   M_WriteText (lx, y0+dy,     buf);
+	snprintf (buf, sizeof buf, "REACT %d", st.reactiontime); M_WriteText (rx, y0+dy,     buf);
+	snprintf (buf, sizeof buf, "SIZE %dx%d", st.radius, st.height); M_WriteText (lx, y0+2*dy, buf);
+	snprintf (buf, sizeof buf, "MASS %d",  st.mass);         M_WriteText (rx, y0+2*dy,   buf);
+	snprintf (buf, sizeof buf, "ATTACK %s", (st.attack && *st.attack) ? st.attack : "-");
+	M_WriteText (lx, y0+3*dy, buf);
+
+	// special abilities (falls back to the description if none defined)
+	M_WriteText (lx, y0+5*dy, "SPECIAL");
+	abil = (st.special && *st.special) ? st.special : P_Buddy_Desc(sel);
+	M_DrawWrapped (lx, y0+6*dy, 164, abil);
+    }
 
     // controls hint, centered near the bottom
-    M_WriteText (160 - M_StringWidth(hint)/2, 184, hint);
+    M_WriteText (160 - M_StringWidth(hint)/2, 186, hint);
 }
 
 void M_LightDither(int choice)

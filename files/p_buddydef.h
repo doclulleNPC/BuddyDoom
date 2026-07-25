@@ -33,6 +33,14 @@ const char*	P_Buddy_Desc (int slot);	// one/two-line description
 int		P_Buddy_Sprite (int slot);	// spritenum for the preview (SPR_PLAY for Marine)
 int		P_Buddy_TypeByName (const char* s);	// mobjtype of a buddy by name prefix, or -1
 
+// Stats shown on the Buddy select screen (all definable in BUDDYDEF).
+typedef struct {
+    int		health, speed, radius, height, mass, painchance, reactiontime;
+    const char*	attack;		// attack-style name
+    const char*	special;	// free-text special abilities
+} buddystats_t;
+void	P_Buddy_GetStats (int slot, buddystats_t* out);
+
 // Level hook: spawn the currently-selected mobj buddy (config `buddy_select`)
 // next to player 1, suppressing the marine.  No-op for slot 0 (Marine) or when
 // buddy mode is off.  Called from P_SetupLevel after players spawn.

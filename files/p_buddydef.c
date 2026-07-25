@@ -90,8 +90,11 @@ typedef struct
 {
     char	name[40];
     char	desc[160];
+    char	attack[24];	// attack-style name (for the stats panel)
+    char	special[96];	// modder-supplied "special abilities" text
     int		spritenum;	// preview sprite
     int		mobjtype;	// -1 for the built-in Marine
+    int		health, speed, radius, height, mass, painchance, reactiontime;
 } buddyrec_t;
 
 static buddyrec_t	roster[MAXBUDDIES];
@@ -102,6 +105,22 @@ const char* P_Buddy_Name   (int s)         { return (s >= 0 && s < nroster) ? ro
 const char* P_Buddy_Desc   (int s)         { return (s >= 0 && s < nroster) ? roster[s].desc : ""; }
 int         P_Buddy_Sprite (int s)         { return (s >= 0 && s < nroster) ? roster[s].spritenum : SPR_PLAY; }
 static int  Buddy_MobjType (int s)         { return (s >= 0 && s < nroster) ? roster[s].mobjtype : -1; }
+
+// Fill `out` with the buddy's stats (for the Buddy select screen).
+void P_Buddy_GetStats (int s, buddystats_t* out)
+{
+    if (!out) return;
+    if (s < 0 || s >= nroster) { memset (out, 0, sizeof *out); out->attack = out->special = ""; return; }
+    out->health       = roster[s].health;
+    out->speed        = roster[s].speed;
+    out->radius       = roster[s].radius;
+    out->height       = roster[s].height;
+    out->mass         = roster[s].mass;
+    out->painchance   = roster[s].painchance;
+    out->reactiontime = roster[s].reactiontime;
+    out->attack       = roster[s].attack;
+    out->special      = roster[s].special;
+}
 
 // Mobjtype of a modder buddy whose name starts with `s` (case-insensitive), or -1.
 // Lets the console `summon <buddyname>` (e.g. "summon frank") find BUDDYDEF buddies.
@@ -217,7 +236,8 @@ typedef struct
     char	sprite[8];
     char	attack[24];
     char	seesnd[16], painsnd[16], deathsnd[16], activesnd[16];
-    int		health, speed, radius, height, mass, painchance, ednum;
+    char	special[96];
+    int		health, speed, radius, height, mass, painchance, reactiontime, ednum;
     boolean	have_any;
 } buddyparse_t;
 
@@ -228,7 +248,7 @@ static void Buddy_Defaults (buddyparse_t* b)
     strcpy (b->sprite, "PLAY");
     strcpy (b->attack, "melee");
     b->health = 200; b->speed = 8; b->radius = 20; b->height = 56;
-    b->mass = 100;   b->painchance = 120; b->ednum = -1;
+    b->mass = 100;   b->painchance = 120; b->reactiontime = 8; b->ednum = -1;
 }
 
 static void ST (int s, int frame, int tics, void* act, int next)
@@ -306,7 +326,7 @@ static void Buddy_Register (buddyparse_t* b)
     m->doomednum   = b->ednum;
     m->spawnstate  = B+0;   m->spawnhealth = b->health;
     m->seestate    = B+2;   m->seesound    = Buddy_RegSound (b->seesnd);
-    m->reactiontime = 8;    m->attacksound = 0;
+    m->reactiontime = b->reactiontime;   m->attacksound = 0;
     m->painstate   = B+13;  m->painchance  = b->painchance;
     m->painsound   = Buddy_RegSound (b->painsnd);
     m->meleestate  = 0;
@@ -324,15 +344,26 @@ static void Buddy_Register (buddyparse_t* b)
     m->flags       = MF_SOLID | MF_SHOOTABLE | MF_FRIEND;
     m->raisestate  = B+22;
 
-    // roster entry
+    // roster entry (+ the stats shown on the Buddy select screen)
     {
 	buddyrec_t* r = &roster[nroster++];
 	strncpy (r->name, b->name, sizeof r->name - 1);
 	strncpy (r->desc, b->desc, sizeof r->desc - 1);
+	strncpy (r->attack, b->attack, sizeof r->attack - 1);
+	strncpy (r->special, b->special, sizeof r->special - 1);
 	r->name[sizeof r->name - 1] = 0;
 	r->desc[sizeof r->desc - 1] = 0;
-	r->spritenum = spr;
-	r->mobjtype  = mt;
+	r->attack[sizeof r->attack - 1] = 0;
+	r->special[sizeof r->special - 1] = 0;
+	r->spritenum    = spr;
+	r->mobjtype     = mt;
+	r->health       = b->health;
+	r->speed        = b->speed;
+	r->radius       = b->radius;
+	r->height       = b->height;
+	r->mass         = b->mass;
+	r->painchance   = b->painchance;
+	r->reactiontime = b->reactiontime;
     }
     printf ("Buddy: registered '%s' (thing %d, sprite %.4s, attack %s).\n",
 	    b->name, mt, b->sprite, b->attack);
@@ -410,6 +441,9 @@ static void Buddy_ParseText (const char* text, int len)
 	    else if (!strcmp(key,"painsound"))	Buddy_Value (p, cur.painsnd, sizeof cur.painsnd);
 	    else if (!strcmp(key,"deathsound"))	Buddy_Value (p, cur.deathsnd, sizeof cur.deathsnd);
 	    else if (!strcmp(key,"activesound"))Buddy_Value (p, cur.activesnd, sizeof cur.activesnd);
+	    else if (!strcmp(key,"special")
+		  || !strcmp(key,"abilities")
+		  || !strcmp(key,"ability"))	Buddy_Value (p, cur.special, sizeof cur.special);
 	    else
 	    {
 		char v[32]; Buddy_Value (p, v, sizeof v);
@@ -420,6 +454,8 @@ static void Buddy_ParseText (const char* text, int len)
 		else if (!strcmp(key,"height"))				cur.height = iv;
 		else if (!strcmp(key,"mass"))				cur.mass = iv;
 		else if (!strcmp(key,"painchance"))			cur.painchance = iv;
+		else if (!strcmp(key,"reactiontime")
+		      || !strcmp(key,"reaction"))			cur.reactiontime = iv;
 		else if (!strcmp(key,"ednum") || !strcmp(key,"doomednum"))cur.ednum = iv;
 	    }
 	}
@@ -437,11 +473,22 @@ void P_Buddy_LoadDefs (void)
 
     nroster = 0;
     // slot 0 -- the built-in player-2 marine buddy (files/p_ai_coop.c)
+    memset (&roster[0], 0, sizeof roster[0]);
     strcpy (roster[0].name, "Marine");
     strcpy (roster[0].desc, "Standard-issue AI marine. Hunts monsters, guards "
 			    "you and revives the fallen. The default buddy.");
-    roster[0].spritenum = SPR_PLAY;
-    roster[0].mobjtype  = -1;
+    strcpy (roster[0].attack, "hitscan");
+    strcpy (roster[0].special, "Revives downed marines, seeks health when hurt, "
+			       "orderable (come/wait/attack), has its own HUD.");
+    roster[0].spritenum    = SPR_PLAY;
+    roster[0].mobjtype     = -1;
+    roster[0].health       = 100;	// a real player marine
+    roster[0].speed        = 25;
+    roster[0].radius       = 16;
+    roster[0].height       = 56;
+    roster[0].mass         = 100;
+    roster[0].painchance   = 255;
+    roster[0].reactiontime = 0;
     nroster = 1;
 
     for (i = 0; i < numlumps; i++)

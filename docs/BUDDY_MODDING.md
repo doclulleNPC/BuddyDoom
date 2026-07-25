@@ -72,12 +72,18 @@ buddy {
 | `height` | Collision height, map units | `56` |
 | `mass` | Knockback resistance | `100` |
 | `painchance` | Flinch chance, 0–255 | `120` |
+| `reactiontime` / `reaction` | Tics before reacting to a target | `8` |
 | `attack` | Attack style (table below) | `melee` |
+| `special` / `abilities` | Free-text special abilities (shown on the Buddy screen) | *(empty)* |
 | `seesound` | Wake-up sound (DS-suffix) | *(none)* |
 | `painsound` | Hurt sound | *(none)* |
 | `deathsound` | Death sound | *(none)* |
 | `activesound` | Idle grunt | *(none)* |
 | `ednum` / `doomednum` | Map editor number | `-1` (not map-placed) |
+
+The **Buddy select screen** (Main Menu → Buddy) shows a stats panel with all of these
+— HP, Speed, Size (`radius`×`height`), Mass, Pain, Reaction, Attack, and the `special`
+abilities text — so every value you set in the `BUDDYDEF` is displayed there.
 
 ### Attack styles
 
