@@ -69,6 +69,7 @@ extern int		firstspritelump;
 extern int		lastspritelump;
 extern int		numspritelumps;
 extern int*		spritelumps;	// sprite index -> lump number (merged namespaces)
+extern void**		spritepatch;	// sprite index -> converted PNG patch_t, or NULL
 
 
 

@@ -661,7 +661,9 @@ void F_CastDrawer (void)
     lump = sprframe->lump[0];
     flip = (boolean)sprframe->flip[0];
 			
-    patch = W_CacheLumpNum (spritelumps[lump], PU_CACHE);
+    patch = spritepatch[lump]
+	  ? (patch_t*) spritepatch[lump]			// converted GZDoom PNG sprite
+	  : (patch_t*) W_CacheLumpNum (spritelumps[lump], PU_CACHE);
     if (flip)
 	V_DrawPatchFlipped (160,170,0,patch);
     else

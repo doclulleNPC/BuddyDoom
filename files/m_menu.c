@@ -1352,7 +1352,9 @@ void M_DrawBuddy (void)
     if (spr >= 0 && spr < numsprites && sprites[spr].numframes > 0)
     {
 	spriteframe_t*	sf = &sprites[spr].spriteframes[0];
-	patch_t*	p  = W_CacheLumpNum (spritelumps[sf->lump[0]], PU_CACHE);
+	patch_t*	p  = spritepatch[sf->lump[0]]
+			   ? (patch_t*) spritepatch[sf->lump[0]]		// converted GZDoom PNG sprite
+			   : (patch_t*) W_CacheLumpNum (spritelumps[sf->lump[0]], PU_CACHE);
 	if (sf->flip[0]) V_DrawPatchFlipped (84, 166, 0, p);
 	else             V_DrawPatch        (84, 166, 0, p);
     }

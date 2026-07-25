@@ -51,20 +51,23 @@ So a full sheet is `SPRTA1..SPRTO1` (+ rotations). BuddyDoom injects `A_BuddyLoo
 (spawn) and `A_BuddyChase` (see) — a friendly actor that fights the nearest enemy and
 otherwise follows you.
 
-## Sprite format: Doom patches, not PNG  ⚠️
+## Sprites: Doom patch **or** PNG
 
-BuddyDoom's renderer is the **1993 software renderer** — sprites must be **Doom patch**
-lumps (in an `S_START/S_END` **or** `SS_START/SS_END` namespace). It **cannot** draw
-**PNG** sprites the way GZDoom does.
+BuddyDoom's renderer is the **1993 software renderer**, but it accepts both sprite
+formats (in an `S_START/S_END` **or** `SS_START/SS_END` namespace):
 
-The bundled **`FRANK.wad`** (the GZDoom *Frank N. Stein* mod) stores its `FRAN` sprites
-as PNG, so Frank shows up in the roster but with a **"no preview"** placeholder and is
-invisible in-game. BuddyDoom detects the PNG lumps and **skips them instead of crashing**.
-To use Frank's real art you must convert those PNGs to Doom-patch format (quantised to
-the game palette, with the right sprite offsets) — ask and a converter can be provided.
+- **Doom patch** sprites render directly.
+- **PNG** sprites (as authored for GZDoom) are **auto-converted** to the DOOM palette
+  at load — no manual step. This is how the bundled **`FRANK.wad`** (whose `FRAN`
+  sprites are PNG) renders in BuddyDoom. Conversion is **lossy** (256-colour quantise,
+  on/off transparency, no translucency; sprites >254 px are clamped), and sprite
+  offsets are taken from the PNG `grAb` chunk automatically.
 
 To try the buddy system immediately with **stock IWAD art**, point `sprite` at a sprite
 already in your IWAD, e.g. `sprite BOSS` (Baron of Hell) or `sprite TROO` (Imp).
+
+See **[`../docs/BUDDY_MODDING.md`](../docs/BUDDY_MODDING.md)** for the full field
+reference, attack-style table, and packaging guide.
 
 ## How selection works
 

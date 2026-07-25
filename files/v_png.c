@@ -104,7 +104,8 @@ const byte* V_HealthTrans (int hp)
 #define VP_MAXH		254		// 1-byte topdelta cap (UI images are small)
 
 // Build a column-format patch_t (Z_Malloc'd, PU_STATIC) from RGBA pixels.
-static patch_t* VP_BuildPatch (const unsigned char* rgba, int w, int h)
+// loff/toff are the sprite offsets (from a PNG grAb chunk, else 0).
+static patch_t* VP_BuildPatch (const unsigned char* rgba, int w, int h, int loff, int toff)
 {
     int		x, y, total, off;
     int*	colsize;
@@ -138,7 +139,7 @@ static patch_t* VP_BuildPatch (const unsigned char* rgba, int w, int h)
     base  = (byte*) patch;
     // header (host-endian == LE; the engine reads via SHORT/LONG which are no-ops on LE)
     patch->width = (short)w; patch->height = (short)h;
-    patch->leftoffset = 0; patch->topoffset = 0;
+    patch->leftoffset = (short)loff; patch->topoffset = (short)toff;
 
     off = 8 + w*4;
     for (x = 0; x < w; x++)
@@ -200,12 +201,62 @@ patch_t* V_CachePNG (const char* name)
     rgba = stbi_load_from_memory (raw, len, &w, &h, &comp, 4);
     if (!rgba) return NULL;
     if (!vp_pal_ready) VP_LoadPalette ();
-    patch = VP_BuildPatch (rgba, w, h);
+    patch = VP_BuildPatch (rgba, w, h, 0, 0);		// UI patches are drawn at explicit x,y
     stbi_image_free (rgba);
     if (!patch) return NULL;
 
     if (vp_cache_n < VP_CACHE_MAX)
 	{ strncpy (vp_cache[vp_cache_n].name, nm, 8); vp_cache[vp_cache_n].name[8] = 0;
 	  vp_cache[vp_cache_n].patch = patch; vp_cache_n++; }
+    return patch;
+}
+
+// ---- public: convert a PNG *sprite* lump (by number) into a patch ----------
+// Unlike V_CachePNG, this keeps the sprite's offsets: GZDoom PNG sprites store
+// them in a `grAb` chunk (2 signed big-endian int32 = left/top).  Used by the
+// sprite system (r_data.c R_InitSpriteLumps) so GZDoom PNG sprite WADs render
+// instead of being skipped.  Returns a PU_STATIC patch, or NULL on failure.
+
+// Find the grAb chunk offsets (walk PNG chunks; grAb precedes IDAT).
+static void VP_ParseGrab (const byte* raw, int len, int* loff, int* toff)
+{
+    int p = 8;						// skip the 8-byte PNG signature
+    *loff = *toff = 0;
+    while (p + 12 <= len)
+    {
+	unsigned clen = ((unsigned)raw[p]<<24)|(raw[p+1]<<16)|(raw[p+2]<<8)|raw[p+3];
+	const byte* ty = raw + p + 4;
+	if (ty[0]=='g' && ty[1]=='r' && ty[2]=='A' && ty[3]=='b' && clen >= 8 && p+8+8 <= len)
+	{
+	    const byte* d = raw + p + 8;
+	    *loff = (int)(((unsigned)d[0]<<24)|(d[1]<<16)|(d[2]<<8)|d[3]);
+	    *toff = (int)(((unsigned)d[4]<<24)|(d[5]<<16)|(d[6]<<8)|d[7]);
+	    return;
+	}
+	if (ty[0]=='I' && ty[1]=='D' && ty[2]=='A' && ty[3]=='T')
+	    return;					// grAb always precedes IDAT
+	p += 12 + (int)clen;				// 4 len + 4 type + data + 4 crc
+    }
+}
+
+patch_t* V_PNGLumpToPatch (int lump)
+{
+    int			len, w, h, comp, loff, toff;
+    const byte*		raw;
+    unsigned char*	rgba;
+    patch_t*		patch;
+
+    if (lump < 0) return NULL;
+    len = W_LumpLength (lump);
+    raw = (const byte*) W_CacheLumpNum (lump, PU_CACHE);
+    if (len < 8 || raw[0]!=0x89 || raw[1]!='P' || raw[2]!='N' || raw[3]!='G')
+	return NULL;
+
+    VP_ParseGrab (raw, len, &loff, &toff);
+    rgba = stbi_load_from_memory (raw, len, &w, &h, &comp, 4);
+    if (!rgba) return NULL;
+    if (!vp_pal_ready) VP_LoadPalette ();
+    patch = VP_BuildPatch (rgba, w, h, loff, toff);
+    stbi_image_free (rgba);
     return patch;
 }

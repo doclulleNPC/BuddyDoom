@@ -413,9 +413,15 @@ two software-renderer assumptions:
   PNG — a lump that isn't in the sprite namespace — so every real sprite deferred to its
   PNG twin and ended up with **zero frames**. Fix: build a `insprite[]` membership map of
   the sprite namespace and only defer to a shadowing lump that is *itself* a sprite.
-- **PNG sprite → segfault.** GZDoom stores sprites as PNG; reading one as a `patch_t`
-  gives garbage width/`columnofs` and crashes the column loop. `R_InitSpriteLumps`
-  (`r_data.c`) now **skips any PNG-signature lump** in the sprite namespace, so such WADs
-  degrade to "no sprite" (a menu placeholder / invisible actor) instead of crashing. To
-  actually render GZDoom PNG sprites you'd need PNG→patch conversion (see
-  `docs/HD_TEXTURES.md`); not implemented.
+- **PNG sprite → segfault, then → rendered.** GZDoom stores sprites as PNG; reading one
+  as a `patch_t` gives garbage width/`columnofs` and crashes the column loop. The first
+  fix skipped PNG lumps in the sprite namespace (degrade to "no sprite"). Now
+  `R_InitSpriteLumps` (`r_data.c`) instead **converts** each PNG sprite lump to a paletted
+  `patch_t` at load via `V_PNGLumpToPatch` (`v_png.c`: stb_image decode → nearest-palette
+  quantise → column format, with the sprite offset read from the PNG `grAb` chunk). The
+  converted patch is kept in a parallel `spritepatch[]` side-table; the three sprite-draw
+  sites (`r_things.c` `R_DrawVisSprite`, `m_menu.c` buddy preview, `f_finale.c` cast) use
+  it when present. So GZDoom PNG sprite WADs (e.g. `FRANK.wad`) now render — quantised to
+  the palette (lossy; >254 px clamped). The `SS_`/`HI_` shadowing fix above is what lets
+  the SS_ copy win over its HI_ PNG twin. Full-fidelity truecolour would still need the
+  truecolour renderer (`docs/HD_TEXTURES.md`).

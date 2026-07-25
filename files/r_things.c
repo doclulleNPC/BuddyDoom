@@ -458,7 +458,11 @@ R_DrawVisSprite
     patch_t*		patch;
 	
 	
-    patch = W_CacheLumpNum (spritelumps[vis->patch], PU_CACHE);
+    // A GZDoom PNG sprite was converted to a paletted patch at load (r_data.c) --
+    // use that; otherwise the raw lump IS a Doom patch.
+    patch = spritepatch[vis->patch]
+	  ? (patch_t*) spritepatch[vis->patch]
+	  : (patch_t*) W_CacheLumpNum (spritelumps[vis->patch], PU_CACHE);
 
     if (r_shadows && !fixedcolormap)
     {

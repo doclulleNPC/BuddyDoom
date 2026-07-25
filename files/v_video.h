@@ -117,6 +117,11 @@ V_GetBlock
 // Returns NULL if the lump is missing or isn't a PNG.  See v_png.c.
 patch_t* V_CachePNG (const char* name);
 
+// Convert a PNG *sprite* lump (by number) into a paletted patch_t, preserving the
+// sprite offsets from its grAb chunk.  Lets GZDoom PNG sprite WADs render in the
+// software renderer.  Returns a PU_STATIC patch, or NULL.  See v_png.c.
+patch_t* V_PNGLumpToPatch (int lump);
+
 // Draw a patch with a 256-entry palette translation applied per pixel (NULL = none).
 void V_DrawPatchTranslated (int x, int y, int scrn, patch_t* patch, const byte* trans);
 
