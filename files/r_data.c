@@ -744,12 +744,22 @@ void R_InitSpriteLumps (void)
     #define IS_S_START(n) (!strncasecmp((n),"S_START",8) || !strncasecmp((n),"SS_START",8))
     #define IS_S_END(n)   (!strncasecmp((n),"S_END",8)   || !strncasecmp((n),"SS_END",8))
 
+    // A GZDoom mod WAD stores its sprites as PNG (e.g. FRANK.wad's FRANA1..), which this
+    // software renderer can't parse -- reading a PNG as a patch_t gives garbage width/
+    // columnofs and segfaults in the column loop.  Skip any non-Doom-patch lump in the
+    // sprite namespace so such WADs degrade to "no sprite" instead of crashing.
+    #define IS_PNG_LUMP(l)  (W_LumpLength(l) >= 4 && \
+        ((byte*)W_CacheLumpNum((l),PU_CACHE))[0]==0x89 && \
+        ((byte*)W_CacheLumpNum((l),PU_CACHE))[1]=='P' && \
+        ((byte*)W_CacheLumpNum((l),PU_CACHE))[2]=='N' && \
+        ((byte*)W_CacheLumpNum((l),PU_CACHE))[3]=='G')
+
     numspritelumps = 0; in_ns = 0;
     for (l = 0; l < numlumps; l++)
     {
 	if (IS_S_START(lumpinfo[l].name)) { in_ns = 1; continue; }
 	if (IS_S_END  (lumpinfo[l].name)) { in_ns = 0; continue; }
-	if (in_ns) numspritelumps++;
+	if (in_ns && !IS_PNG_LUMP(l)) numspritelumps++;
     }
 
     spritelumps     = Z_Malloc (numspritelumps*sizeof(int), PU_STATIC, 0);
@@ -763,6 +773,7 @@ void R_InitSpriteLumps (void)
 	if (IS_S_START(lumpinfo[l].name)) { in_ns = 1; continue; }
 	if (IS_S_END  (lumpinfo[l].name)) { in_ns = 0; continue; }
 	if (!in_ns) continue;
+	if (IS_PNG_LUMP(l)) continue;		// GZDoom PNG sprite -- unrenderable here
 	if (!(i&63)) printf (".");
 	spritelumps[i] = l;
 	patch = W_CacheLumpNum (l, PU_CACHE);
@@ -775,6 +786,7 @@ void R_InitSpriteLumps (void)
     lastspritelump  = numspritelumps ? spritelumps[numspritelumps-1] : 0;
     #undef IS_S_START
     #undef IS_S_END
+    #undef IS_PNG_LUMP
 }
 
 

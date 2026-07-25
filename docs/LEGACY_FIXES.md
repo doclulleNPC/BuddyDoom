@@ -400,3 +400,22 @@ change — no playsim effect.
 - **Tall walls shimmer/wiggle vertically as you move** → that's the scale-precision
   wiggle; it should already be fixed by WiggleHack II (§16.2). If it regresses, check
   `R_FixWiggle`/`max_rwscale` in `r_segs.c`/`r_main.c`.
+
+## 17. GZDoom sprite-WAD compatibility (buddy mod WADs)
+
+Loading a GZDoom-authored sprite WAD (e.g. a modder buddy's art, `FRANK.wad`) exposed
+two software-renderer assumptions:
+
+- **Sprite shadowed by a non-sprite twin → sprite vanishes.** GZDoom mods ship the same
+  sprite twice: paletted in `SS_START..SS_END` *and* a hi-res PNG in `HI_START..HI_END`
+  with the identical lump name. `R_InitSpriteDefs` (`r_things.c`) resolved the "which
+  copy wins" override with the global `W_GetNumForName`, which returned the *later* HI_
+  PNG — a lump that isn't in the sprite namespace — so every real sprite deferred to its
+  PNG twin and ended up with **zero frames**. Fix: build a `insprite[]` membership map of
+  the sprite namespace and only defer to a shadowing lump that is *itself* a sprite.
+- **PNG sprite → segfault.** GZDoom stores sprites as PNG; reading one as a `patch_t`
+  gives garbage width/`columnofs` and crashes the column loop. `R_InitSpriteLumps`
+  (`r_data.c`) now **skips any PNG-signature lump** in the sprite namespace, so such WADs
+  degrade to "no sprite" (a menu placeholder / invisible actor) instead of crashing. To
+  actually render GZDoom PNG sprites you'd need PNG→patch conversion (see
+  `docs/HD_TEXTURES.md`); not implemented.

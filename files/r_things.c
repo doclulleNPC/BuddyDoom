@@ -207,6 +207,19 @@ void R_InitSpriteDefs (char** namelist)
 
   (void)start; (void)end; (void)patched;
 
+  // Membership map: which lumps are actually in the sprite namespace (spritelumps[]).
+  // The override check below must defer to a later same-named SPRITE, but NOT to a
+  // later same-named lump living outside the sprite namespace -- e.g. a GZDoom hi-res
+  // PNG replacement stored under HI_START/HI_END with the exact same name (FRANK.wad
+  // ships FRANA1.. both as SS_ paletted sprites and as HI_ PNGs).  Using the global
+  // W_GetNumForName there made every real sprite defer to its PNG twin (not a sprite
+  // lump), so the sprite ended up with zero frames.
+  {
+    char* insprite = calloc (numlumps, 1);
+    int   z;
+    for (z = 0; z < numspritelumps; z++)
+      if ((unsigned)spritelumps[z] < (unsigned)numlumps) insprite[spritelumps[z]] = 1;
+
   // scan the MERGED sprite list (spritelumps[idx] -> lump) for each sprite name,
   // noting the highest frame letter.  R_InstallSpriteLump now takes the sprite INDEX
   // (idx), not a lump number, since sprite lumps are no longer one contiguous range.
@@ -228,10 +241,14 @@ void R_InitSpriteDefs (char** namelist)
       if (*(int *)lumpinfo[l].name == intname)
       {
         // Override support: a later WAD's sprite of the same name wins -- skip any
-        // lump that a later one (in another merged region) replaces, so we don't get
-        // "two lumps mapped to it".
-        if (W_GetNumForName (lumpinfo[l].name) != l)
-          continue;
+        // lump that a later one (in another merged sprite region) replaces, so we don't
+        // get "two lumps mapped to it".  Only defer to a shadowing lump that is ITSELF a
+        // sprite (in the namespace) -- a non-sprite twin (hi-res PNG) must not shadow it.
+        {
+          int w = W_GetNumForName (lumpinfo[l].name);
+          if (w != l && (unsigned)w < (unsigned)numlumps && insprite[w])
+            continue;
+        }
 
         // A renamed-asset PWAD (extract_hexen.py et al.) can leave junk lumps in
         // the sprite namespace that share a real sprite's 4-char prefix but aren't
@@ -292,6 +309,8 @@ void R_InitSpriteDefs (char** namelist)
   	sprites[i].spriteframes = 
 	    Z_Malloc (maxframe * sizeof(spriteframe_t), PU_STATIC, NULL);
 	  memcpy (sprites[i].spriteframes, sprtemp, maxframe*sizeof(spriteframe_t));
+  }
+    free (insprite);
   }
 }
 

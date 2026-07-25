@@ -214,6 +214,8 @@ void D_ProcessEvents (void)
 	    continue;               // the Controls (key-bindings) screen ate the event
 	if (M_Video_Responder (ev))
 	    continue;               // the Video settings screen ate the event
+	if (M_Buddy_Responder (ev))
+	    continue;               // the Buddy select screen ate the event
 	if (M_Responder (ev))
 	    continue;               // menu ate the event
 	G_Responder (ev);
@@ -1483,6 +1485,12 @@ void D_DoomMain (void)
         extern void D_ProcessDehInWads (void);
         printf ("DEH: Applying DeHackEd/BEX/MBF21 patches.\n");
         D_ProcessDehInWads ();
+    }
+    {   // BUDDYDEF: native modder co-op buddies -- read straight from the WADs (no decohack).
+        // After DEH (can reference DSDHacked things) but BEFORE R_Init (so R_InitSprites
+        // picks up each buddy's sprite name).  See files/p_buddydef.c.
+        extern void P_Buddy_LoadDefs (void);
+        P_Buddy_LoadDefs ();
     }
     {   // UMAPINFO: per-map level name / progression / music / sky / bossaction
         extern void U_LoadMapInfo (void);

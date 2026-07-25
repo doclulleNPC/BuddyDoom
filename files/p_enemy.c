@@ -965,6 +965,73 @@ void A_Chase (mobj_t*	actor)
 
 
 //
+// Buddy codepointers (BuddyDoom): turn any MF_FRIEND actor into a co-op companion.
+// A modder builds a normal DEHACKED/DECOHack actor but uses A_BuddyLook in Spawn and
+// A_BuddyChase in See -- then it hunts enemy monsters like a friend AND follows the
+// human when there is nothing to fight.  (The hardcoded player-2 marine buddy is
+// unaffected; this is the data-driven, modder-definable buddy path -- e.g. "Frank".)
+//
+#define BUDDY_FOLLOW_DIST	(160*FRACUNIT)	// stay within this of the human when idle
+
+// No enemy in reach: pad along after the human (players[consoleplayer]) without ever
+// treating them as a target to attack.
+static void A_BuddyFollow (mobj_t* self)
+{
+    mobj_t* h = playeringame[consoleplayer] ? players[consoleplayer].mo : NULL;
+
+    if (!h || h->health <= 0)			// no human -> just wander
+    {
+	if (--self->movecount < 0 || !P_Move (self))
+	    P_NewChaseDir (self);
+	return;
+    }
+
+    if (P_AproxDistance (h->x - self->x, h->y - self->y) <= BUDDY_FOLLOW_DIST)
+	return;					// close enough -> idle at the player's side
+
+    // Walk toward the human using the chase-dir machinery, but with the human as a
+    // *temporary* target so P_NewChaseDir steers there and P_Move steps -- no attack.
+    {
+	mobj_t*	saved = self->target;
+	self->target = h;
+	if (--self->movecount < 0 || !P_Move (self))
+	    P_NewChaseDir (self);
+	self->target = saved;
+    }
+}
+
+// See-state action for a buddy: fight the nearest enemy with the stock chase/attack
+// logic; if there is none, follow the human.
+void A_BuddyChase (mobj_t* self)
+{
+    if (!self->target
+	|| self->target->health <= 0
+	|| !(self->target->flags & MF_SHOOTABLE)
+	|| (self->target->flags & MF_CORPSE))
+	self->target = P_FriendNearestEnemy (self);
+
+    if (self->target)				// enemy present -> full chase + melee/missile
+    {
+	A_Chase (self);
+	return;
+    }
+
+    A_BuddyFollow (self);			// nothing to fight -> stay with the human
+}
+
+// Spawn-state action for a buddy: acquire an enemy if one is near, then always go
+// active (See) so the buddy follows the human even with no enemies around.
+void A_BuddyLook (mobj_t* self)
+{
+    self->target = P_FriendNearestEnemy (self);
+    if (self->target && self->info->seesound)
+	S_StartSound (self, self->info->seesound);
+    if (self->info->seestate)
+	P_SetMobjState (self, self->info->seestate);
+}
+
+
+//
 // A_FaceTarget
 //
 void A_FaceTarget (mobj_t* actor)

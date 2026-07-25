@@ -64,6 +64,12 @@ const char* M_Video_Label (int i);
 void	M_Video_Value (int i, char* out, int n);
 int	M_Video_Sel (void);
 
+// Main menu -> Buddy: Hexen-style co-op companion select (full paletted screen).
+void	M_Buddy_Open (void);
+boolean	M_Buddy_Active (void);
+boolean	M_Buddy_Responder (event_t* ev);
+void	M_DrawBuddy (void);
+
 
 
 

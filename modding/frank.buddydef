@@ -1,0 +1,31 @@
+# frank.buddydef -- "Frank N. Stein", a native BuddyDoom co-op buddy.
+#
+# BuddyDoom reads this text lump straight out of the WAD (lump name: BUDDYDEF) --
+# no decohack, no DEHACKED, no compile step.  It builds a friendly MF_FRIEND actor
+# from these properties, wires A_BuddyLook/A_BuddyChase + the chosen attack, and
+# adds an entry to the Buddy select menu (Main Menu -> Buddy).
+#
+# Pack this (as a lump named BUDDYDEF) together with the FRAN sprites and load it:
+#     buddydoom -iwad DOOM2.WAD -file FRANK.wad
+# (FRANK.wad supplies FRANA1.. ; this def can live in the same WAD or its own.)
+#
+# Sounds here point at stock IWAD lumps so Frank is audible with just the sprites.
+# Ship your own dsXXXX lumps and rename these to use them.
+
+buddy {
+  name        "Frank N. Stein"
+  desc        "Gamma-powered bruiser reanimated to fight at your side. Tons of HP, a bit slow, hits like a Hell Knight. Sticks close and tears into anything hostile."
+  sprite      FRAN
+  health      999
+  speed       10
+  radius      24
+  height      64
+  mass        1000
+  painchance  100
+  attack      baron        # baron|imp|poss|spos|cpos|sarg|head|skel|fatt|bspi|melee|none
+  seesound    bgsit1       # stock sounds; swap for your own ds-lumps
+  painsound   dmpain
+  deathsound  kntdth
+  activesound dmact
+  ednum       30001        # optional: also placeable in a map editor
+}

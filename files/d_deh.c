@@ -517,6 +517,11 @@ void A_SpawnObject(), A_MonsterProjectile(), A_MonsterMeleeAttack(), A_RadiusDam
      A_WeaponSound(), A_ConsumeAmmo(), A_GunFlashTo(), A_RefireTo(), A_WeaponProjectile(),
      A_WeaponBulletAttack(), A_WeaponMeleeAttack(), A_CheckAmmo(), A_WeaponJump(), A_WeaponAlert();
 
+// BuddyDoom: companion codepointers -- a friendly (MF_FRIEND) actor that uses these
+// follows the human and fights enemies (see p_enemy.c).  Lets modders define co-op
+// buddies purely in DEHACKED/DECOHack (e.g. frank.dh).
+void A_BuddyLook(), A_BuddyChase();
+
 deh_bexptr deh_bexptrs[] =
 {
   {A_Light0,         "A_Light0"},
@@ -609,6 +614,8 @@ deh_bexptr deh_bexptrs[] =
    {A_MonsterProjectile,   "A_MonsterProjectile"},
    {A_MonsterBulletAttack, "A_MonsterBulletAttack"},
    {A_Stop,                "A_Stop"},
+   {A_BuddyLook,           "A_BuddyLook"},    // BuddyDoom co-op buddy: acquire + go active
+   {A_BuddyChase,          "A_BuddyChase"},   // BuddyDoom co-op buddy: fight enemies / follow the human
    {A_BetaSkullAttack,     "A_BetaSkullAttack"},
    {A_MonsterMeleeAttack,  "A_MonsterMeleeAttack"},
    {A_RadiusDamage,        "A_RadiusDamage"},

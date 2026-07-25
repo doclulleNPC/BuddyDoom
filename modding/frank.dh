@@ -1,0 +1,95 @@
+/*
+ * frank.dh -- "Frank N. Stein", a modder-defined co-op buddy for BuddyDoom.
+ *             (DECOHack source -> DEHACKED/DSDHacked)
+ *
+ * This is the BuddyDoom port of the GZDoom FRANK actor (zscript/FRANK.zs): a friendly,
+ * gamma-powered bruiser that fights on YOUR side.  GZDoom's Frank has a big custom attack
+ * kit (seeker balls, gamma clouds, a healing aura) that the vanilla state machine can't
+ * express, so this port uses Frank's OWN fallback melee/ranged path -- the "Missile.BARON"
+ * branch in FRANK.zs, i.e. A_FaceTarget + A_BruisAttack (claw up close, green ball at range).
+ *
+ * What makes him a BUDDY (not just a friendly monster) are two BuddyDoom codepointers:
+ *     A_BuddyLook   (Spawn)  -- acquire the nearest enemy monster, then go active
+ *     A_BuddyChase  (See)    -- fight that enemy; when there is none, follow the human
+ * Any +FRIEND actor that uses these becomes a co-op buddy.  (The built-in player-2 marine
+ * buddy is a separate hard-coded system and is unaffected by this WAD.)
+ *
+ * ASSETS this expects in the WAD (from the FrankNStein mod), all between S_START/S_END and
+ * with the DS-sound prefix:
+ *     sprite   FRAN   frames A..O   (idle A-B, walk A-D, attack E-G, pain H, death I-O)
+ *     sound    DSFRANKN             (Frank's growl -- see/pain/active/death here)
+ * Swap the sprite base / sound names below if your lumps differ.
+ *
+ * BUILD:
+ *     decohack frank.dh -o frank.deh.lmp        # DoomTools; or emit straight into the WAD
+ * then pack DEHACKED + the FRAN sprites + DSFRANKN into one WAD and run:
+ *     buddydoom -iwad DOOM2.WAD -file frank.wad
+ * BuddyDoom auto-applies any DEHACKED lump in a loaded WAD (it is DSDHacked-aware).
+ *
+ * If your DECOHack build rejects A_BuddyLook/A_BuddyChase as "unknown pointer", let it emit
+ * those frames with A_NULL and assign the pointers in a hand-written BEX [CODEPTR] block --
+ * BuddyDoom parses [CODEPTR] and knows the mnemonics "BuddyLook" and "BuddyChase".
+ */
+
+#include <doom19>
+#include <dsdhacked>
+
+auto thing MT_FRANK "Frank N. Stein"
+{
+    // --- stats (from FRANK.zs) --------------------------------------------
+    health      999
+    speed       12
+    radius      24
+    height      64
+    mass        1000
+    painchance  100
+    seesound    "FRANKN"
+    attacksound ""            // A_BruisAttack plays its own bite/hit sounds
+    painsound   "FRANKN"
+    deathsound  "FRANKN"      // GZDoom used "frank/jaul"; point this at your death lump
+    activesound "FRANKN"
+    ednum       30001         // map thing id; also how BuddyDoom can spawn/select him
+
+    // +FRIEND = player ally (hunts enemy monsters, no friendly fire with the human).
+    // No COUNTKILL: Frank must not count toward the level's kill total (matches -COUNTKILL).
+    +SOLID +SHOOTABLE +FRIEND
+
+    states
+    {
+        Spawn:                       // FRANK.zs "Idle"
+            FRAN A 10 A_BuddyLook
+            FRAN B 10 A_BuddyLook
+            loop
+        See:                         // FRANK.zs "See"
+            FRAN AABBCCDD 3 A_BuddyChase
+            loop
+        Melee:
+        Missile:                     // FRANK.zs "Missile.BARON"
+            FRAN E 8 A_FaceTarget
+            FRAN F 8 A_FaceTarget
+            FRAN G 8 A_BruisAttack
+            goto See
+        Pain:
+            FRAN H 3
+            FRAN H 3 A_Pain
+            goto See
+        Death:
+            FRAN I 8
+            FRAN J 8 A_Scream
+            FRAN K 8
+            FRAN L 8 A_Fall
+            FRAN M 8
+            FRAN N 8
+            FRAN O -1
+            stop
+        Raise:
+            FRAN O 8
+            FRAN N 8
+            FRAN M 8
+            FRAN L 8
+            FRAN K 8
+            FRAN J 8
+            FRAN I 8
+            goto See
+    }
+}

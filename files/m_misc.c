@@ -222,6 +222,7 @@ extern int	mouseSensitivity;
 extern int	showMessages;
 extern int	show_buddy_hud;	// hu_buddy.c -- companion top-of-screen HUD
 extern int	show_inventory_hud;	// hu_buddy.c -- (J) artifact inventory readout
+extern int	buddy_select;		// m_menu.c -- selected co-op buddy (Buddy menu)
 
 extern int	detailLevel;
 extern int	automap_textured;	// textured automap (am_map.c)
@@ -260,6 +261,7 @@ default_t	defaults[] =
     {"show_messages",&showMessages, 1},
     {"show_buddy_hud",&show_buddy_hud, 1},
     {"show_inventory_hud",&show_inventory_hud, 1},	// (J) artifact inventory readout
+    {"buddy_select",&buddy_select, 0},			// Buddy menu: 0=Marine, 1..N=BUDDYDEF roster index
     
 
     {"key_right",&key_right, KEY_RIGHTARROW},

@@ -252,10 +252,15 @@ enum
     options,
     loadgame,
     savegame,
+    buddy,		// BuddyDoom: pick your co-op companion (Hexen-style select screen)
     readthis,
     quitdoom,
     main_end
 } main_e;
+
+// "M_BUDDY" has no graphic lump, so its item name is empty (the generic drawer
+// skips it) and M_DrawMainMenu paints the word "BUDDY" as big-font text instead.
+void M_Buddy (int choice);
 
 menuitem_t MainMenu[]=
 {
@@ -263,6 +268,7 @@ menuitem_t MainMenu[]=
     {1,"M_OPTION",M_Options,'o'},
     {1,"M_LOADG",M_LoadGame,'l'},
     {1,"M_SAVEG",M_SaveGame,'s'},
+    {1,"",M_Buddy,'b'},			// drawn as text by M_DrawMainMenu
     // Another hickup with Special edition.
     {1,"M_RDTHIS",M_ReadThis,'r'},
     {1,"M_QUITG",M_QuitDOOM,'q'}
@@ -908,6 +914,9 @@ void M_MusicVol(int choice)
 void M_DrawMainMenu(void)
 {
     V_DrawPatchDirect (94,2,0,W_CacheLumpName("M_DOOM",PU_CACHE));
+    // "Buddy" has no graphic lump -- paint it as big-font text over its (empty) slot,
+    // so it lines up with the graphic items and the skull cursor.
+    M_WriteTextBig (MainDef.x, MainDef.y + buddy*LINEHEIGHT, "BUDDY", 2);
 }
 
 
@@ -1185,6 +1194,181 @@ boolean M_Video_Responder (event_t* ev)
       default: break;
     }
     return true;
+}
+
+// ===========================================================================
+// BUDDY SELECT SCREEN (Hexen player-class-select style)
+//
+// A full-screen paletted screen (NOT an SDL/TTF overlay -- it draws a real
+// sprite through V_DrawPatch, which the post-present overlay can't): tiled
+// backdrop, the buddy's front-facing sprite big in the middle, its name in the
+// big font and a wrapped description.  Left/Right cycles the roster
+// (P_Buddy_* in p_buddydef.c, slot 0 = the built-in Marine), Enter picks it
+// (persisted as `buddy_select`) and takes effect from the next level.
+// ===========================================================================
+int	buddy_select = 0;			// config (m_misc.c): 0 = Marine, 1..N = roster
+
+extern int		P_Buddy_Count (void);
+extern const char*	P_Buddy_Name (int);
+extern const char*	P_Buddy_Desc (int);
+extern int		P_Buddy_Sprite (int);
+extern void		V_DrawPatchFlipped (int x, int y, int scrn, patch_t* patch);
+
+static int	mbuddy_active, mbuddy_sel;
+
+void	M_Buddy_Open (void)
+{
+    mbuddy_active = 1;
+    mbuddy_sel = buddy_select;
+    if (mbuddy_sel < 0 || mbuddy_sel >= P_Buddy_Count()) mbuddy_sel = 0;
+}
+boolean	M_Buddy_Active (void) { return mbuddy_active; }
+
+// Main-menu entry hook.
+void M_Buddy (int choice)
+{
+    choice = 0;
+    M_Buddy_Open ();
+}
+
+boolean M_Buddy_Responder (event_t* ev)
+{
+    int n;
+    if (!mbuddy_active)
+	return false;
+    if (ev->type != ev_keydown)
+	return true;
+    n = P_Buddy_Count ();
+    switch (ev->data1)
+    {
+      case KEY_LEFTARROW:
+      case KEY_UPARROW:
+	mbuddy_sel = (mbuddy_sel - 1 + n) % n;
+	S_StartSound (NULL, sfx_pstop);
+	break;
+      case KEY_RIGHTARROW:
+      case KEY_DOWNARROW:
+	mbuddy_sel = (mbuddy_sel + 1) % n;
+	S_StartSound (NULL, sfx_pstop);
+	break;
+      case KEY_ENTER:
+	buddy_select = mbuddy_sel;
+	M_SaveDefaults ();
+	S_StartSound (NULL, sfx_swtchx);
+	mbuddy_active = 0;
+	break;
+      case KEY_ESCAPE:
+	mbuddy_active = 0;
+	break;
+      default:
+	break;
+    }
+    return true;
+}
+
+// Tile a 64x64 flat across the whole (native-res) frame -- the screen backdrop.
+static void M_TileFlat (char* name)
+{
+    byte* src  = W_CacheLumpName (name, PU_CACHE);
+    byte* dest = screens[0];
+    int x, y;
+    for (y = 0 ; y < SCREENHEIGHT ; y++)
+    {
+	for (x = 0 ; x < SCREENWIDTH/64 ; x++)
+	{
+	    memcpy (dest, src + ((y&63)<<6), 64);
+	    dest += 64;
+	}
+	if (SCREENWIDTH & 63)
+	{
+	    memcpy (dest, src + ((y&63)<<6), SCREENWIDTH & 63);
+	    dest += (SCREENWIDTH & 63);
+	}
+    }
+}
+
+// Word-wrap a description with the small font at BASE-coord x/y, width `wrap`.
+static void M_DrawWrapped (int x, int y, int wrap, const char* text)
+{
+    char	word[64], line[128];
+    int		li = 0, wi = 0, i = 0;
+    line[0] = 0;
+    for (;;)
+    {
+	char c = text[i++];
+	boolean brk = (c == ' ' || c == 0 || c == '\n');
+	if (!brk && wi < (int)sizeof(word)-1) { word[wi++] = c; continue; }
+	word[wi] = 0;
+	if (wi)
+	{
+	    char trial[192];
+	    snprintf (trial, sizeof trial, "%s%s%s", line, li ? " " : "", word);
+	    if (M_StringWidth (trial) > wrap && li)
+	    {
+		M_WriteText (x, y, line);
+		y += 11;
+		strcpy (line, word);
+	    }
+	    else strcpy (line, trial);
+	    li = strlen (line);
+	    wi = 0;
+	}
+	if (c == '\n') { M_WriteText (x, y, line); y += 11; line[0] = 0; li = 0; }
+	if (c == 0) break;
+    }
+    if (li) M_WriteText (x, y, line);
+}
+
+void M_DrawBuddy (void)
+{
+    int		n   = P_Buddy_Count ();
+    int		sel = mbuddy_sel;
+    int		spr;
+    char	buf[64];
+    char*	title = "CHOOSE YOUR BUDDY";
+    char*	hint  = "LEFT/RIGHT  select     ENTER  choose     ESC  back";
+    const char*	name;
+
+    (void)title;
+    if (sel < 0 || sel >= n) sel = 0;
+
+    M_TileFlat ("FLOOR4_8");
+
+    // buddy NAME big, centered across the full width (long names still fit centred).
+    // Kept at y>=44: the very top of the frame is cropped in some windowed aspects.
+    name = P_Buddy_Name (sel);
+    {
+	int nx = 160 - M_StringWidth((char*)name);	// sc=2 -> half-width == M_StringWidth
+	if (nx < 4) nx = 4;
+	M_WriteTextBig (nx, 44, (char*)name, 2);
+    }
+
+    // "2 / 3 (current)" position indicator, centered
+    snprintf (buf, sizeof buf, "%d / %d%s", sel+1, n, (sel == buddy_select) ? "   (current)" : "");
+    M_WriteText (160 - M_StringWidth(buf)/2, 68, buf);
+
+    // Hexen-style split below: sprite on the LEFT, description on the RIGHT.
+    spr = P_Buddy_Sprite (sel);
+    if (spr >= 0 && spr < numsprites && sprites[spr].numframes > 0)
+    {
+	spriteframe_t*	sf = &sprites[spr].spriteframes[0];
+	patch_t*	p  = W_CacheLumpNum (spritelumps[sf->lump[0]], PU_CACHE);
+	if (sf->flip[0]) V_DrawPatchFlipped (84, 166, 0, p);
+	else             V_DrawPatch        (84, 166, 0, p);
+    }
+    else
+    {
+	// The buddy's sprite isn't renderable here (missing, or GZDoom PNG art the
+	// software renderer can't draw) -- show a placeholder instead of a blank.
+	M_WriteText (84 - M_StringWidth("no")/2,      124, "no");
+	M_WriteText (84 - M_StringWidth("preview")/2, 136, "preview");
+    }
+
+    // description (small font, wrapped) in the right column (kept clear of both edges)
+    M_DrawWrapped (150, 90, 130, P_Buddy_Desc(sel));
+
+    // controls hint, centered near the bottom
+    M_WriteText (160 - M_StringWidth(hint)/2, 184, hint);
 }
 
 void M_LightDither(int choice)
@@ -2052,6 +2236,13 @@ void M_Drawer (void)
     short		max;
     char		string[40];
     int			start;
+
+    // The Buddy select screen is a full paletted screen of its own.
+    if (M_Buddy_Active ())
+    {
+	M_DrawBuddy ();
+	return;
+    }
 
     // The Controls / Video screens replace the classic menu with their own crisp
     // SDL/TTF overlay (drawn in i_video.c) -- don't draw the paletted menu under them.
