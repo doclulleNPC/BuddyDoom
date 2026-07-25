@@ -279,6 +279,9 @@ void R_DrawTLColumn (void)
 
     {
 	int heightmask = dc_texheight - 1;
+	// Truecolor: the tranmap gives an 8-bit blended index; mirror its true colour
+	// into screen32 (colormap32[idx] with idx<256 is row 0 == the plain palette).
+	unsigned int*	dst32 = truecolor ? screen32 + (dest - screens[0]) : NULL;
 	if (dc_texheight & heightmask)		// non-power-of-two: modulo wrap
 	{
 	    heightmask = dc_texheight << FRACBITS;
@@ -286,6 +289,7 @@ void R_DrawTLColumn (void)
 	    else          while (frac >= heightmask) frac -= heightmask;
 	    do {
 		*dest = dc_tranmap[(*dest<<8) + dc_colormap[dc_source[frac>>FRACBITS]]];
+		if (dst32) { *dst32 = colormap32[*dest]; dst32 += SCREENWIDTH; }
 		dest += SCREENWIDTH;
 		if ((frac += fracstep) >= heightmask) frac -= heightmask;
 	    } while (count--);
@@ -295,6 +299,7 @@ void R_DrawTLColumn (void)
 	    do {
 		// foreground texel (already colormapped) over the current screen pixel via the tranmap
 		*dest = dc_tranmap[(*dest<<8) + dc_colormap[dc_source[(frac>>FRACBITS) & heightmask]]];
+		if (dst32) { *dst32 = colormap32[*dest]; dst32 += SCREENWIDTH; }
 		dest += SCREENWIDTH;
 		frac += fracstep;
 	    } while (count--);
@@ -328,6 +333,20 @@ void R_DrawSkyColumn (void)
     fracstep = dc_iscale;
     frac = dc_texturemid + (dc_yl-centery)*fracstep;
 
+    if (TC_INRANGE(dc_colormap))			// dual-write the smooth 32-bit view
+    {
+	unsigned int*	cm32  = colormap32 + (dc_colormap - colormaps);
+	unsigned int*	dst32 = screen32   + (dest - screens[0]);
+	do {
+	    row = frac>>FRACBITS;
+	    if (row < 0)                  row = 0;
+	    else if (row >= dc_skyheight) row = dc_skyheight - 1;
+	    { byte px = dc_source[row]; *dest = dc_colormap[px]; *dst32 = cm32[px]; }
+	    dest += SCREENWIDTH;  dst32 += SCREENWIDTH;
+	    frac += fracstep;
+	} while (count--);
+	return;
+    }
     do
     {
 	row = frac>>FRACBITS;
@@ -354,6 +373,21 @@ void R_DrawSkyColumnMasked (void)
     dest = ylookup[dc_yl] + columnofs[dc_x];
     fracstep = dc_iscale;
     frac = dc_texturemid + (dc_yl-centery)*fracstep;
+    if (TC_INRANGE(dc_colormap))			// dual-write the smooth 32-bit view
+    {
+	unsigned int*	cm32  = colormap32 + (dc_colormap - colormaps);
+	unsigned int*	dst32 = screen32   + (dest - screens[0]);
+	do {
+	    row = frac>>FRACBITS;
+	    if (row < 0)                  row = 0;
+	    else if (row >= dc_skyheight) row = dc_skyheight - 1;
+	    s = dc_source[row];
+	    if (s) { *dest = dc_colormap[s]; *dst32 = cm32[s]; }	// index 0 = transparent
+	    dest += SCREENWIDTH;  dst32 += SCREENWIDTH;
+	    frac += fracstep;
+	} while (count--);
+	return;
+    }
     do
     {
 	row = frac>>FRACBITS;
@@ -462,13 +496,18 @@ void R_DrawColumnLow (void)
     
     {
 	int heightmask = dc_texheight - 1;
+	unsigned int*	cm32   = TC_INRANGE(dc_colormap) ? colormap32 + (dc_colormap - colormaps) : NULL;
+	unsigned int*	dst32  = cm32 ? screen32 + (dest  - screens[0]) : NULL;
+	unsigned int*	dst32b = cm32 ? screen32 + (dest2 - screens[0]) : NULL;
 	if (dc_texheight & heightmask)		// non-power-of-two: modulo wrap
 	{
 	    heightmask = dc_texheight << FRACBITS;
 	    if (frac < 0) while ((frac += heightmask) < 0) ;
 	    else          while (frac >= heightmask) frac -= heightmask;
 	    do {
-		*dest2 = *dest = dc_colormap[dc_source[frac>>FRACBITS]];
+		byte px = dc_source[frac>>FRACBITS];
+		*dest2 = *dest = dc_colormap[px];
+		if (cm32) { *dst32b = *dst32 = cm32[px]; dst32 += SCREENWIDTH; dst32b += SCREENWIDTH; }
 		dest += SCREENWIDTH; dest2 += SCREENWIDTH;
 		if ((frac += fracstep) >= heightmask) frac -= heightmask;
 	    } while (count--);
@@ -476,8 +515,9 @@ void R_DrawColumnLow (void)
 	else
 	{
 	    do {
-		// Hack. Does not work corretly.
-		*dest2 = *dest = dc_colormap[dc_source[(frac>>FRACBITS) & heightmask]];
+		byte px = dc_source[(frac>>FRACBITS) & heightmask];
+		*dest2 = *dest = dc_colormap[px];
+		if (cm32) { *dst32b = *dst32 = cm32[px]; dst32 += SCREENWIDTH; dst32b += SCREENWIDTH; }
 		dest += SCREENWIDTH;
 		dest2 += SCREENWIDTH;
 		frac += fracstep;
@@ -521,8 +561,19 @@ void R_DrawShadowColumn (void)
 	return;
 
     dest = ylookup[dc_yl] + columnofs[dc_x];
-    colormap = colormaps + 16 * 256; 
+    colormap = colormaps + 16 * 256;
 
+    if (truecolor)				// dual-write: smooth-darken via colormap32 row 16
+    {
+	unsigned int*	dst32 = screen32 + (dest - screens[0]);
+	do {
+	    byte bg = *dest;
+	    *dest  = colormap[bg];
+	    *dst32 = colormap32[16*256 + bg];
+	    dest += SCREENWIDTH;  dst32 += SCREENWIDTH;
+	} while (--count);
+	return;
+    }
     do
     {
 	*dest = colormap[*dest];
@@ -606,23 +657,26 @@ void R_DrawFuzzColumn (void)
     // Looks like an attempt at dithering,
     //  using the colormap #6 (of 0-31, a bit
     //  brighter than average).
-    do 
     {
-	// Lookup framebuffer, and retrieve
-	//  a pixel that is either one column
-	//  left or right of the current one.
-	// Add index from colormap to index.
-	*dest = colormaps[6*256+dest[fuzzoffset[fuzzpos]*SCREENWIDTH]]; 
+	unsigned int* dst32 = truecolor ? screen32 + (dest - screens[0]) : NULL;
+	do
+	{
+	    // Lookup framebuffer, and retrieve a pixel one column left/right of the
+	    // current one; darken it through colormap #6.  Truecolor mirrors that with
+	    // the smooth colormap32 row 6 of the same neighbour pixel.
+	    byte nb = dest[fuzzoffset[fuzzpos]*SCREENWIDTH];
+	    *dest = colormaps[6*256+nb];
+	    if (dst32) { *dst32 = colormap32[6*256+nb]; dst32 += SCREENWIDTH; }
 
-	// Clamp table lookup index.
-	if (++fuzzpos == FUZZTABLE) 
-	    fuzzpos = 0;
-	
-	dest += SCREENWIDTH;
+	    // Clamp table lookup index.
+	    if (++fuzzpos == FUZZTABLE)
+		fuzzpos = 0;
 
-	frac += fracstep; 
-    } while (count--); 
-} 
+	    dest += SCREENWIDTH;
+	    frac += fracstep;
+	} while (count--);
+    }
+}
  
   
  
@@ -689,19 +743,31 @@ void R_DrawTranslatedColumn (void)
     frac = dc_texturemid + (dc_yl-centery)*fracstep; 
 
     // Here we do an additional index re-mapping.
-    do 
+    if (TC_INRANGE(dc_colormap))		// dual-write the smooth 32-bit view
+    {
+	unsigned int*	cm32  = colormap32 + (dc_colormap - colormaps);
+	unsigned int*	dst32 = screen32   + (dest - screens[0]);
+	do {
+	    byte tp = dc_translation[dc_source[frac>>FRACBITS]];
+	    *dest = dc_colormap[tp];  *dst32 = cm32[tp];
+	    dest += SCREENWIDTH;      dst32 += SCREENWIDTH;
+	    frac += fracstep;
+	} while (count--);
+	return;
+    }
+    do
     {
 	// Translation tables are used
 	//  to map certain colorramps to other ones,
 	//  used with PLAY sprites.
 	// Thus the "green" ramp of the player 0 sprite
-	//  is mapped to gray, red, black/indigo. 
+	//  is mapped to gray, red, black/indigo.
 	*dest = dc_colormap[dc_translation[dc_source[frac>>FRACBITS]]];
 	dest += SCREENWIDTH;
-	
-	frac += fracstep; 
-    } while (count--); 
-} 
+
+	frac += fracstep;
+    } while (count--);
+}
 
 
 
@@ -793,6 +859,7 @@ void R_DrawColumnDither (void)
     y = dc_yl;
     {
 	int heightmask = dc_texheight - 1;
+	unsigned int* dst32 = truecolor ? screen32 + (dest - screens[0]) : NULL;
 	if (dc_texheight & heightmask)		// non-power-of-two: modulo wrap
 	{
 	    heightmask = dc_texheight << FRACBITS;
@@ -801,6 +868,7 @@ void R_DrawColumnDither (void)
 	    do {
 		lighttable_t* cm = (dc_litfrac > drow[y & 3]) ? dc_colormap2 : dc_colormap;
 		*dest = cm[dc_source[frac>>FRACBITS]];
+		if (dst32) { *dst32 = colormap32[*dest]; dst32 += SCREENWIDTH; }
 		dest += SCREENWIDTH; y++;
 		if ((frac += fracstep) >= heightmask) frac -= heightmask;
 	    } while (count--);
@@ -810,6 +878,7 @@ void R_DrawColumnDither (void)
 	    do {
 		lighttable_t* cm = (dc_litfrac > drow[y & 3]) ? dc_colormap2 : dc_colormap;
 		*dest = cm[dc_source[(frac>>FRACBITS) & heightmask]];
+		if (dst32) { *dst32 = colormap32[*dest]; dst32 += SCREENWIDTH; }
 		dest += SCREENWIDTH;
 		frac += fracstep;
 		y++;
@@ -826,14 +895,18 @@ void R_DrawSpanDither (void)
     dest = ylookup[ds_y] + columnofs[ds_x1];
     count = ds_x2 - ds_x1;
     x = ds_x1;
-    do {
-	lighttable_t* cm = (ds_litfrac > r_dith[x & 3][sy]) ? ds_colormap2 : ds_colormap;
-	spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
-	*dest++ = cm[ds_source[spot]];
-	xfrac += ds_xstep;
-	yfrac += ds_ystep;
-	x++;
-    } while (count--);
+    {
+	unsigned int* dst32 = truecolor ? screen32 + (dest - screens[0]) : NULL;
+	do {
+	    lighttable_t* cm = (ds_litfrac > r_dith[x & 3][sy]) ? ds_colormap2 : ds_colormap;
+	    spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
+	    *dest++ = cm[ds_source[spot]];
+	    if (dst32) *dst32++ = colormap32[dest[-1]];
+	    xfrac += ds_xstep;
+	    yfrac += ds_ystep;
+	    x++;
+	} while (count--);
+    }
 }
 
 
@@ -1019,21 +1092,24 @@ void R_DrawSpanLow (void)
     ds_x2 <<= 1;
     
     dest = ylookup[ds_y] + columnofs[ds_x1];
-  
-    
-    count = ds_x2 - ds_x1; 
-    do 
-    { 
-	spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
-	// Lowres/blocky mode does it twice,
-	//  while scale is adjusted appropriately.
-	*dest++ = ds_colormap[ds_source[spot]]; 
-	*dest++ = ds_colormap[ds_source[spot]];
-	
-	xfrac += ds_xstep; 
-	yfrac += ds_ystep; 
 
-    } while (count--); 
+    count = ds_x2 - ds_x1;
+    {
+	unsigned int*	cm32  = TC_INRANGE(ds_colormap) ? colormap32 + (ds_colormap - colormaps) : NULL;
+	unsigned int*	dst32 = cm32 ? screen32 + (dest - screens[0]) : NULL;
+	do
+	{
+	    byte px;
+	    spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
+	    // Lowres/blocky mode does it twice, while scale is adjusted appropriately.
+	    px = ds_source[spot];
+	    *dest++ = ds_colormap[px];
+	    *dest++ = ds_colormap[px];
+	    if (cm32) { *dst32++ = cm32[px]; *dst32++ = cm32[px]; }
+	    xfrac += ds_xstep;
+	    yfrac += ds_ystep;
+	} while (count--);
+    }
 }
 
 //
