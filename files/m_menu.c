@@ -407,6 +407,7 @@ enum
     vid_dither,     // Light dithering
     vid_shadow,     // Sprite shadows
     vid_automap,    // Textured automap
+    vid_fullcolor,  // Truecolor 3D view
     vid_end
 } video_e;
 
@@ -1128,6 +1129,8 @@ void M_DrawVideo(void)
 // ---------------------------------------------------------------------------
 void M_SpriteShadow (int choice);		// (defined below; used in the cycle table)
 void M_AutomapTextured (int choice);
+void M_VideoFullcolor (int choice);
+extern int truecolor;				// i_video.c -- truecolor 3D view
 extern void M_SaveDefaults (void);
 extern int  I_RenderBackendCount (void);	// i_video.c: available SDL render drivers (+ Auto)
 extern const char* I_RenderBackendName (int i);
@@ -1138,13 +1141,13 @@ static const char* const M_VideoLabels[vid_end] =
 {
     "Resolution", "Fullscreen", "Aspect", "Filter", "VSync",
     "Scaling", "Backend (restart)", "Status Bar", "Light Dither",
-    "Sprite Shadows", "Textured Map"
+    "Sprite Shadows", "Textured Map", "Fullcolor"
 };
 static void (* const M_VideoCycle[vid_end])(int) =
 {
     M_VideoRes, M_VideoFullscreen, M_VideoAspect, M_VideoFilter, M_VideoVSync,
     M_VideoScale, M_VideoBackend, M_StatusBarStyle, M_LightDither,
-    M_SpriteShadow, M_AutomapTextured
+    M_SpriteShadow, M_AutomapTextured, M_VideoFullcolor
 };
 
 void	M_Video_Open (void)    { mvid_active = 1; mvid_sel = 0; }
@@ -1173,6 +1176,7 @@ void M_Video_Value (int i, char* b, int n)
       case vid_dither:     snprintf (b, n, "%s", dither_lighting ? "On" : "Off"); break;
       case vid_shadow:     snprintf (b, n, "%s", r_shadows ? "On" : "Off"); break;
       case vid_automap:    snprintf (b, n, "%s", automap_textured ? "On" : "Off"); break;
+      case vid_fullcolor:  snprintf (b, n, "%s", truecolor ? "On" : "Off"); break;
       default:             b[0] = 0;
     }
 }
@@ -1389,6 +1393,12 @@ void M_SpriteShadow(int choice)
 void M_AutomapTextured(int choice)
 {
     automap_textured = !automap_textured;	// am_map.c (config default: on)
+    M_SaveDefaults ();
+}
+
+void M_VideoFullcolor(int choice)
+{
+    truecolor = !truecolor;			// i_video.c -- smooth truecolor 3D view
     M_SaveDefaults ();
 }
 

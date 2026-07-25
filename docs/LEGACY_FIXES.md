@@ -425,3 +425,31 @@ two software-renderer assumptions:
   the palette (lossy; >254 px clamped). The `SS_`/`HI_` shadowing fix above is what lets
   the SS_ copy win over its HI_ PNG twin. Full-fidelity truecolour would still need the
   truecolour renderer (`docs/HD_TEXTURES.md`).
+
+## 18. True-color software renderer (minimum-viable)
+
+The 8-bit paletted view had visible light banding (the COLORMAP snaps each light level
+to the nearest palette entry).  BuddyDoom now renders the 3D view in **true-color**,
+ported minimum-viable from the sibling `../sdldoom-sdl3`:
+
+- `i_video.c`: a parallel 32-bit view framebuffer `screen32`, precomputed `colormap32`
+  (`0xff000000 | palette[i]*fc_lightdim[row]` for light rows 0–31; the invuln/light-amp
+  special rows keep the 8-bit-mapped colour).  `I_BuildTrueColormaps` runs from
+  `I_SetPalette`, so damage/pickup/radsuit palette flashes tint the true-color view too.
+- The drawers dual-write: `R_DrawColumn`/`R_DrawSpan` write the 8-bit index to
+  `screens[0]` **and** the smooth colour to `screen32` via `cm32 = colormap32 +
+  (dc_colormap - colormaps)`.  A bounds guard (`TC_INRANGE`) falls back to 8-bit for any
+  colormap outside the 34-row table (e.g. a Boom sector/fog colormap), so nothing reads
+  out of `colormap32`.
+- Compositing (in `I_FinishUpdate`): the view rect is cleared to alpha 0 before
+  `R_RenderPlayerView` (`I_TrueColorClearView`) and the 8-bit view is snapshotted right
+  after, before the crosshair/HUD (`I_CaptureTrueColorView`).  A view pixel uses
+  `screen32` only where a drawer wrote it (alpha ≠ 0) **and** no 2D layer overdrew it
+  (`src == snap`).  So HUD/status/menu/crosshair, and drawers not yet dual-written (sky,
+  sprite shadows, fuzz, translucency), fall back to the palette expansion — identical to
+  the classic look, never stale.
+
+Toggle: **Options → Video → Fullcolor** (config `fullcolor`, default on); `-8bit` or
+`-vanilla` force the classic paletted path.  A malloc failure for the buffers also
+disables it.  Not yet done: true-color HD *assets* (`docs/HD_TEXTURES.md`) and
+dual-writing the remaining effect drawers.

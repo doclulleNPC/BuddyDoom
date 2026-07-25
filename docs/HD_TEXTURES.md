@@ -1,6 +1,8 @@
 # HD / true-color texture support — porting reference
 
-> **Not implemented in BuddyDoom.** This document describes how the sibling `../sdldoom-sdl3` port approaches true-color textures, sprites and voxels. BuddyDoom currently uses its palette/software renderer and has no `screen32`, `hd_*` loader or `R_HDSetupWall` implementation.
+> **Status.** The true-color *pipeline* is now implemented in BuddyDoom (minimum-viable): a parallel 32-bit view framebuffer (`screen32`), precomputed `colormap32` light tables, `I_BuildTrueColormaps`/`I_CaptureTrueColorView` (`i_video.c`), and dual-writes in `R_DrawColumn`/`R_DrawSpan`. It gives smooth per-light-level shading (less banding) from the *existing* palette art, toggled at **Options → Video → Fullcolor** (config `fullcolor`, default on; `-8bit`/`-vanilla` force off). See `docs/LEGACY_FIXES.md` §18.
+>
+> **Not yet implemented:** true-color *assets* (HD PNG walls/flats/sprites). The `hd_texture.c`/`hd_sprite.c` loaders and the `R_HDSetupWall` path described below remain a porting reference from `../sdldoom-sdl3`. (GZDoom PNG *sprites* are supported today via a load-time quantise-to-palette converter, not true-color — see `LEGACY_FIXES.md` §17.)
 
 ## TL;DR
 

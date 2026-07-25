@@ -49,6 +49,113 @@ static SDL_Texture*	texture = NULL;
 // Expanded 32-bit (ARGB8888) palette, rebuilt by I_SetPalette.
 static Uint32		palette[256];
 
+// --- Truecolor ("Fullcolor") mode ---------------------------------------------
+// The 3D-view drawers in r_draw.c dual-write a parallel 32-bit framebuffer
+// (screen32) using colormap32 -- a smooth per-light-level RGB shade of the true
+// palette colour, with none of the palette-snapping the 8-bit COLORMAP does.  At
+// present, I_FinishUpdate composites that truecolor view into the final image
+// wherever the 2D layer (HUD / status bar / menu / crosshair) did not overdraw it
+// (detected via view8snap) AND where a drawer actually wrote it (alpha != 0).
+// Pixels a drawer left in 8-bit (sky, sprite shadows, fuzz, ...) simply fall back
+// to the palette expansion -- identical to the classic look, never stale.
+#define NUMCMAPS	34		// COLORMAP lump = 32 light + invuln + extra
+unsigned int		colormap32[NUMCMAPS*256];	// (row,index) -> ARGB, alpha=0xff
+unsigned int*		screen32;	// truecolor 3D-view fb; alpha 0 = "not drawn this frame"
+int			truecolor = 1;	// drawers dual-write while set (config: fullcolor)
+double			fc_lightdim[32];	// per-light-level brightness ratio
+static byte*		view8snap;	// 8-bit view-rect snapshot (2D-overdraw detection)
+static int		view_truecolor;	// a truecolor view was captured this frame
+static int		cm_built, cm_dim_ready;
+
+extern byte*		colormaps;	// 8-bit COLORMAP (lighttable_t == byte)
+extern int		scaledviewwidth, viewheight, viewwindowx, viewwindowy;
+
+// Rebuild colormap32 from the current (possibly flash-tinted) palette.  Called
+// from I_SetPalette so damage/pickup/radsuit palette flashes tint the view too.
+static void I_BuildTrueColormaps (void)
+{
+    int row, i;
+    if (!colormaps)
+	return;
+
+    // Derive each light level's brightness once, from the 8-bit colormap: the
+    // average luminance ratio between a colormap-shaded colour and the base colour.
+    if (!cm_dim_ready)
+    {
+	int valid = 0;
+	for (row = 0; row < 32; row++)
+	{
+	    double num = 0, den = 0;
+	    for (i = 0; i < 256; i++)
+	    {
+		unsigned int b = palette[i], l = palette[colormaps[row*256+i]];
+		den += ((b>>16)&0xff) + ((b>>8)&0xff) + (b&0xff);
+		num += ((l>>16)&0xff) + ((l>>8)&0xff) + (l&0xff);
+	    }
+	    fc_lightdim[row] = den > 0 ? num/den : 1.0;
+	    if (den > 0) valid = 1;
+	}
+	// Don't lock the table in until the palette is actually populated: this can
+	// fire (via I_CaptureTrueColorView) before the first real I_SetPalette, when
+	// palette[] is still zero -> every level reads as fullbright.
+	if (valid) cm_dim_ready = 1;
+    }
+
+    // Light rows 0..31: smooth-dim the TRUE palette colour (no snapping).
+    for (row = 0; row < 32; row++)
+    {
+	double d = fc_lightdim[row];
+	for (i = 0; i < 256; i++)
+	{
+	    unsigned int c = palette[i];
+	    unsigned int r = (unsigned int)(((c>>16)&0xff)*d);
+	    unsigned int g = (unsigned int)(((c>>8)&0xff)*d);
+	    unsigned int b = (unsigned int)((c&0xff)*d);
+	    colormap32[row*256+i] = 0xff000000u | (r<<16) | (g<<8) | b;
+	}
+    }
+    // Special rows (invuln inverse, light-amp): keep the stylised 8-bit-mapped colour.
+    for (row = 32; row < NUMCMAPS; row++)
+	for (i = 0; i < 256; i++)
+	    colormap32[row*256+i] = palette[colormaps[row*256+i]];
+
+    cm_built = 1;
+}
+
+// Clear the truecolor view rect to alpha 0 (= "not drawn") before the frame's
+// R_RenderPlayerView, so a pixel a truecolor drawer skips this frame falls back to
+// the 8-bit palette expansion instead of showing a stale colour.
+void I_TrueColorClearView (void)
+{
+    int y;
+    if (!truecolor || !screen32)
+	return;
+    for (y = 0; y < viewheight; y++)
+	memset (screen32 + (viewwindowy+y)*SCREENWIDTH + viewwindowx, 0,
+		scaledviewwidth * sizeof(unsigned int));
+}
+
+// Snapshot the 8-bit view rect right after R_RenderPlayerView, BEFORE the crosshair
+// / HUD / status / menu draw over it, so the composite can tell view pixels from
+// 2D overlays.
+void I_CaptureTrueColorView (void)
+{
+    int y;
+    if (!truecolor || !screen32 || !view8snap)
+    {
+	view_truecolor = 0;
+	return;
+    }
+    if (!cm_built)			// colormaps may load after the first I_SetPalette
+	I_BuildTrueColormaps ();
+    for (y = 0; y < viewheight; y++)
+    {
+	int off = (viewwindowy+y)*SCREENWIDTH + viewwindowx;
+	memcpy (view8snap+off, screens[0]+off, scaledviewwidth);
+    }
+    view_truecolor = 1;
+}
+
 // Video options (Options -> Video; persisted in config).
 int			scale_mode = 0;       // 0 = Nearest, 1 = Linear
 int			vsync = 1;            // 0 = Off, 1 = On (default On)
@@ -724,13 +831,34 @@ void I_FinishUpdate (void)
     if ( !SDL_LockTexture(texture, NULL, &pixels, &pitch) )
 	return;
 
-    for (y=0 ; y<SCREENHEIGHT ; y++)		// fast path: expand straight to texture
+    for (y=0 ; y<SCREENHEIGHT ; y++)
     {
 	Uint32*		dst = (Uint32 *)((Uint8 *)pixels + y*pitch);
 	unsigned char*	src = screens[0] + y*SCREENWIDTH;
-	for (x=0 ; x<SCREENWIDTH ; x++)
-	    dst[x] = palette[src[x]];
+
+	// Truecolor view rows: use the smooth 32-bit pixel where a drawer wrote it
+	// (alpha != 0) AND no 2D layer overdrew it (src still matches the snapshot);
+	// everything else falls back to the palette expansion.
+	if (view_truecolor && y >= viewwindowy && y < viewwindowy+viewheight)
+	{
+	    int			vx0 = viewwindowx, vx1 = viewwindowx + scaledviewwidth;
+	    unsigned int*	s32  = screen32  + y*SCREENWIDTH;
+	    byte*		snap = view8snap + y*SCREENWIDTH;
+	    for (x=0 ; x<SCREENWIDTH ; x++)
+	    {
+		if (x >= vx0 && x < vx1 && src[x] == snap[x] && (s32[x] & 0xff000000u))
+		    dst[x] = s32[x];
+		else
+		    dst[x] = palette[src[x]];
+	    }
+	}
+	else
+	{
+	    for (x=0 ; x<SCREENWIDTH ; x++)
+		dst[x] = palette[src[x]];
+	}
     }
+    view_truecolor = 0;				// consumed; next frame must re-capture
 
     SDL_UnlockTexture(texture);
 
@@ -765,6 +893,7 @@ void I_SetPalette (byte* pal)
 	Uint8 b = gammatable[usegamma][*pal++];
 	palette[i] = ((Uint32)0xff << 24) | (r << 16) | (g << 8) | b;
     }
+    I_BuildTrueColormaps ();	// keep colormap32 in sync so palette flashes tint the view
 }
 
 
@@ -955,6 +1084,20 @@ void I_InitGraphics(void)
 
     SDL_HideCursor();
     I_ApplyMouseGrab();
+
+    // Truecolor: parallel 32-bit view framebuffer + 8-bit snapshot, both sized like
+    // screens[0] (MAXWIDTH x MAXHEIGHT) so they survive resolution changes.
+    if (!screen32)  screen32  = malloc (MAXWIDTH*MAXHEIGHT*sizeof(unsigned int));
+    if (!view8snap) view8snap = malloc (MAXWIDTH*MAXHEIGHT);
+    if (!screen32 || !view8snap)
+	truecolor = 0;			// no buffers -> stay 8-bit (drawers must not deref NULL)
+    else
+	memset (screen32, 0, MAXWIDTH*MAXHEIGHT*sizeof(unsigned int));
+    {   // purist 8-bit: -vanilla or -8bit force the classic paletted look
+	extern int vanilla_mode;
+	if (vanilla_mode || M_CheckParm ("-8bit"))
+	    truecolor = 0;
+    }
 
     // screens[0..3] are allocated by V_Init at MAXWIDTH x MAXHEIGHT; the view,
     // HUD etc. render into screens[0] at the current SCREENWIDTH.  V_SetRes

@@ -45,6 +45,11 @@ void I_SetPalette (byte* palette);
 void I_UpdateNoBlit (void);
 void I_FinishUpdate (void);
 
+// Truecolor ("Fullcolor") view: clear the 32-bit view fb before R_RenderPlayerView,
+// snapshot the 8-bit view right after (before the crosshair/HUD).  See i_video.c.
+void I_TrueColorClearView (void);
+void I_CaptureTrueColorView (void);
+
 // Wait for vertical retrace or pause a bit.
 void I_WaitVBL(int count);
 

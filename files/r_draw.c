@@ -62,7 +62,7 @@ rcsid[] = "$Id: r_draw.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 //
 
 
-byte*		viewimage; 
+byte*		viewimage;
 int		viewwidth;
 int		scaledviewwidth;
 int		viewheight;
@@ -70,6 +70,20 @@ int		viewwindowx;
 int		viewwindowy;
 byte*		ylookup[MAXHEIGHT];
 int		columnofs[MAXWIDTH];
+
+// Truecolor ("Fullcolor"): the column/span drawers dual-write a parallel 32-bit
+// framebuffer (screen32) via colormap32, a per-light-level RGB shade of the true
+// palette (i_video.c).  cm32 = colormap32 + (dc_colormap - colormaps) picks the
+// row matching the 8-bit light level; dst32 = screen32 + (dest - screens[0]) is the
+// same pixel in the parallel buffer.  i_video.c composites it at present time.
+extern unsigned int	colormap32[];
+extern unsigned int*	screen32;
+extern int		truecolor;
+#define TC_CMAPS	34		// colormap32[] row count (must match NUMCMAPS in i_video.c)
+// True iff `cm` is a row inside the main COLORMAP that colormap32 mirrors.  A Boom
+// sector/fog colormap (a different array, or a row past 34) fails this -> that pixel
+// falls back to the 8-bit palette expansion instead of reading out of colormap32.
+#define TC_INRANGE(cm)	(truecolor && (unsigned long)((cm) - colormaps) < (unsigned long)(TC_CMAPS*256))
 
 // Gameplay crosshair: 0 off, 1 cross, 2 dot, 3 big cross.  Drawn into the 8-bit
 // frame at the 3D-view centre (see R_DrawCrosshair, called from D_Display).
@@ -185,6 +199,35 @@ void R_DrawColumn (void)
     // This is as fast as it gets.
     {
 	int heightmask = dc_texheight - 1;
+
+	if (TC_INRANGE(dc_colormap))		// dual-write the smooth 32-bit view
+	{
+	    unsigned int*	cm32  = colormap32 + (dc_colormap - colormaps);
+	    unsigned int*	dst32 = screen32   + (dest - screens[0]);
+	    if (dc_texheight & heightmask)	// non-power-of-two: modulo wrap
+	    {
+		heightmask = dc_texheight << FRACBITS;
+		if (frac < 0) while ((frac += heightmask) < 0) ;
+		else          while (frac >= heightmask) frac -= heightmask;
+		do {
+		    byte px = dc_source[frac>>FRACBITS];
+		    *dest = dc_colormap[px];  *dst32 = cm32[px];
+		    dest += SCREENWIDTH;      dst32 += SCREENWIDTH;
+		    if ((frac += fracstep) >= heightmask) frac -= heightmask;
+		} while (count--);
+	    }
+	    else				// power-of-two
+	    {
+		do {
+		    byte px = dc_source[(frac>>FRACBITS) & heightmask];
+		    *dest = dc_colormap[px];  *dst32 = cm32[px];
+		    dest += SCREENWIDTH;      dst32 += SCREENWIDTH;
+		    frac += fracstep;
+		} while (count--);
+	    }
+	    return;
+	}
+
 	if (dc_texheight & heightmask)		// non-power-of-two: modulo wrap
 	{
 	    heightmask = dc_texheight << FRACBITS;
@@ -835,9 +878,26 @@ void R_DrawSpan (void)
     dest = ylookup[ds_y] + columnofs[ds_x1];
 
     // We do not check for zero spans here?
-    count = ds_x2 - ds_x1; 
+    count = ds_x2 - ds_x1;
 
-    do 
+    if (TC_INRANGE(ds_colormap))		// dual-write the smooth 32-bit view
+    {
+	unsigned int*	cm32  = colormap32 + (ds_colormap - colormaps);
+	unsigned int*	dst32 = screen32   + (dest - screens[0]);
+	do
+	{
+	    byte px;
+	    spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
+	    px = ds_source[spot];
+	    *dest++  = ds_colormap[px];
+	    *dst32++ = cm32[px];
+	    xfrac += ds_xstep;
+	    yfrac += ds_ystep;
+	} while (count--);
+	return;
+    }
+
+    do
     {
 	// Current texture index in u,v.
 	spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
@@ -847,11 +907,11 @@ void R_DrawSpan (void)
 	*dest++ = ds_colormap[ds_source[spot]];
 
 	// Next step in u,v.
-	xfrac += ds_xstep; 
+	xfrac += ds_xstep;
 	yfrac += ds_ystep;
-	
-    } while (count--); 
-} 
+
+    } while (count--);
+}
 
 
 

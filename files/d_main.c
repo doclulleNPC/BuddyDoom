@@ -320,7 +320,9 @@ void D_Display (void)
 	// own view rather than deref a NULL mo in R_SetupFrame.
 	if (!playeringame[displayplayer] || !players[displayplayer].mo)
 	    displayplayer = consoleplayer;
+	I_TrueColorClearView ();	// reset the 32-bit view fb before the drawers fill it
 	R_RenderPlayerView (&players[displayplayer]);
+	I_CaptureTrueColorView ();	// snapshot the 8-bit view before 2D overlays draw
 	R_DrawCrosshair ();		// over the 3D view, under the HUD/menu/console
     }
 
