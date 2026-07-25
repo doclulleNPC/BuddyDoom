@@ -103,6 +103,19 @@ const char* P_Buddy_Desc   (int s)         { return (s >= 0 && s < nroster) ? ro
 int         P_Buddy_Sprite (int s)         { return (s >= 0 && s < nroster) ? roster[s].spritenum : SPR_PLAY; }
 static int  Buddy_MobjType (int s)         { return (s >= 0 && s < nroster) ? roster[s].mobjtype : -1; }
 
+// Mobjtype of a modder buddy whose name starts with `s` (case-insensitive), or -1.
+// Lets the console `summon <buddyname>` (e.g. "summon frank") find BUDDYDEF buddies.
+int P_Buddy_TypeByName (const char* s)
+{
+    int i, n;
+    if (!s || !*s) return -1;
+    n = (int) strlen (s);
+    for (i = 1; i < nroster; i++)		// slot 0 is the built-in Marine (no mobjtype)
+	if (roster[i].mobjtype >= 0 && !strncasecmp (roster[i].name, s, n))
+	    return roster[i].mobjtype;
+    return -1;
+}
+
 // ---------------------------------------------------------------------------
 // Attack style -> codepointer.  All referenced projectiles (bruiser/troop/etc.)
 // are built-in mobjtypes, so nothing extra needs registering.

@@ -286,6 +286,24 @@ static int C_MobjByName (const char* s)
 	    if (d >= 0) return d;
 	}
     }
+    // Modder buddies by name (BUDDYDEF), e.g. "summon frank".
+    if (s[0])
+    {
+	extern int P_Buddy_TypeByName (const char* s);
+	int b = P_Buddy_TypeByName (s);
+	if (b >= 0) return b;
+    }
+    // Numeric arg -> editor number: summon ANY DEHACKED/BUDDYDEF thing by its ednum
+    // (e.g. "summon 30001" for Frank).
+    if (s[0] >= '0' && s[0] <= '9')
+    {
+	extern mobjinfo_t* mobjinfo;
+	extern int num_mobjtypes;
+	int ed = atoi (s), i;
+	for (i = 0; i < num_mobjtypes; i++)
+	    if (mobjinfo[i].doomednum == ed && ed > 0)
+		return i;
+    }
     return -1;
 }
 
@@ -511,7 +529,7 @@ static void C_Execute (char* line)
     {
 	int t = C_MobjByName (args);
 	if (t < 0)
-	    C_Printf ("usage: summon <imp|demon|spectre|baron|zombie|shotgunner|lostsoul|barrel|mummy|clink|gargoyle|ettin|centaur|slaughtaur|serpent>");
+	    C_Printf ("usage: summon <imp|demon|spectre|baron|zombie|shotgunner|lostsoul|barrel|...>  -- or a buddy name (summon frank) or editor number (summon 30001)");
 	else if (pl->mo)
 	{
 	    unsigned	an = pl->mo->angle >> ANGLETOFINESHIFT;

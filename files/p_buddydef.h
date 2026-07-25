@@ -31,6 +31,7 @@ int		P_Buddy_Count (void);		// >= 1 (Marine is always present)
 const char*	P_Buddy_Name (int slot);	// display name
 const char*	P_Buddy_Desc (int slot);	// one/two-line description
 int		P_Buddy_Sprite (int slot);	// spritenum for the preview (SPR_PLAY for Marine)
+int		P_Buddy_TypeByName (const char* s);	// mobjtype of a buddy by name prefix, or -1
 
 // Level hook: spawn the currently-selected mobj buddy (config `buddy_select`)
 // next to player 1, suppressing the marine.  No-op for slot 0 (Marine) or when
