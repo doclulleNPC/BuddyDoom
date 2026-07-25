@@ -2,7 +2,9 @@
 
 > **Status.** The true-color *pipeline* is now implemented in BuddyDoom (minimum-viable): a parallel 32-bit view framebuffer (`screen32`), precomputed `colormap32` light tables, `I_BuildTrueColormaps`/`I_CaptureTrueColorView` (`i_video.c`), and dual-writes in `R_DrawColumn`/`R_DrawSpan`. It gives smooth per-light-level shading (less banding) from the *existing* palette art, toggled at **Options → Video → Fullcolor** (config `fullcolor`, default on; `-8bit`/`-vanilla` force off). See `docs/LEGACY_FIXES.md` §18.
 >
-> **Not yet implemented:** true-color *assets* (HD PNG walls/flats/sprites). The `hd_texture.c`/`hd_sprite.c` loaders and the `R_HDSetupWall` path described below remain a porting reference from `../sdldoom-sdl3`. (GZDoom PNG *sprites* are supported today via a load-time quantise-to-palette converter, not true-color — see `LEGACY_FIXES.md` §17.)
+> **True-color HD *sprites* are now implemented.** A GZDoom PNG sprite's full-colour RGBA is kept at load (`V_PNGLumpDecode` → `hdsprite[]`, r_data.c) and blitted straight into `screen32` with alpha blending + sector-light dimming by `R_BlitHDSprite` (r_things.c), over the palette-quantised patch (which stays in `screens[0]` so the composite's overdraw test passes). So FRANK.wad's Frank renders at **full colour** in-world, not quantised. Toggle **`hd_sprites`** (config, default on; needs Fullcolor/truecolor). See `LEGACY_FIXES.md` §19.
+>
+> **Still a porting reference (not implemented):** HD *wall/flat* textures — the `hd_texture.c` loader and `R_HDSetupWall`/`R_HDSetupFlat` path described below.
 
 ## TL;DR
 

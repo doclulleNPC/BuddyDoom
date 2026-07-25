@@ -239,13 +239,17 @@ static void VP_ParseGrab (const byte* raw, int len, int* loff, int* toff)
     }
 }
 
-patch_t* V_PNGLumpToPatch (int lump)
+// Decode a PNG sprite lump to a patch.  If rgba_out != NULL, also keep an
+// ARGB8888 copy of the full-colour image (Z_Malloc'd PU_STATIC, caller owns it)
+// and report its w/h -- used for the truecolor HD sprite path.
+patch_t* V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_out)
 {
     int			len, w, h, comp, loff, toff;
     const byte*		raw;
     unsigned char*	rgba;
     patch_t*		patch;
 
+    if (rgba_out) *rgba_out = NULL;
     if (lump < 0) return NULL;
     len = W_LumpLength (lump);
     raw = (const byte*) W_CacheLumpNum (lump, PU_CACHE);
@@ -257,6 +261,26 @@ patch_t* V_PNGLumpToPatch (int lump)
     if (!rgba) return NULL;
     if (!vp_pal_ready) VP_LoadPalette ();
     patch = VP_BuildPatch (rgba, w, h, loff, toff);
+
+    if (rgba_out && patch)
+    {
+	// stb gives R,G,B,A bytes; pack to ARGB8888 (0xAARRGGBB) to match screen32/palette.
+	unsigned int* keep = (unsigned int*) Z_Malloc (w*h*sizeof(unsigned int), PU_STATIC, 0);
+	int i;
+	for (i = 0; i < w*h; i++)
+	{
+	    const unsigned char* p = rgba + i*4;
+	    keep[i] = ((unsigned)p[3]<<24) | (p[0]<<16) | (p[1]<<8) | p[2];
+	}
+	*rgba_out = keep;
+	if (w_out) *w_out = w;
+	if (h_out) *h_out = h;
+    }
     stbi_image_free (rgba);
     return patch;
+}
+
+patch_t* V_PNGLumpToPatch (int lump)
+{
+    return V_PNGLumpDecode (lump, NULL, NULL, NULL);
 }

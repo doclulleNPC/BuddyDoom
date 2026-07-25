@@ -150,8 +150,10 @@ int		lastspritelump;
 int		numspritelumps;
 int*		spritelumps;	// sprite index -> lump number (merged across all S_*..S_END)
 void**		spritepatch;	// sprite index -> converted PNG patch_t (NULL = use the raw lump)
+hdimage_t*	hdsprite;	// sprite index -> full-colour ARGB image (truecolor), or {0}
 
 extern patch_t*	V_PNGLumpToPatch (int lump);	// v_png.c -- GZDoom PNG sprite -> paletted patch
+extern patch_t*	V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_out);
 
 int		numtextures;
 texture_t**	textures;
@@ -772,6 +774,8 @@ void R_InitSpriteLumps (void)
     spritetopoffset = Z_Malloc (numspritelumps*4, PU_STATIC, 0);
     spritepatch     = Z_Malloc (numspritelumps*sizeof(void*), PU_STATIC, 0);
     memset (spritepatch, 0, numspritelumps*sizeof(void*));
+    hdsprite        = Z_Malloc (numspritelumps*sizeof(hdimage_t), PU_STATIC, 0);
+    memset (hdsprite, 0, numspritelumps*sizeof(hdimage_t));
 
     i = 0; in_ns = 0;
     for (l = 0; l < numlumps; l++)
@@ -783,13 +787,23 @@ void R_InitSpriteLumps (void)
 	spritelumps[i] = l;
 	if (IS_PNG_LUMP(l))
 	{
-	    patch_t* cp = V_PNGLumpToPatch (l);		// convert GZDoom PNG -> paletted patch
+	    unsigned int* rgba = NULL;
+	    int hw = 0, hh = 0;
+	    patch_t* cp = V_PNGLumpDecode (l, &rgba, &hw, &hh);	// GZDoom PNG -> patch (+ HD RGBA)
 	    spritepatch[i] = cp;
 	    if (cp)
 	    {
 		spritewidth[i]     = SHORT(cp->width)<<FRACBITS;
 		spriteoffset[i]    = SHORT(cp->leftoffset)<<FRACBITS;
 		spritetopoffset[i] = SHORT(cp->topoffset)<<FRACBITS;
+		// keep the full-colour image for the truecolor path; clamp its height to the
+		// patch's (VP_BuildPatch caps very tall sprites) so the two stay aligned.
+		if (rgba)
+		{
+		    hdsprite[i].w    = hw;
+		    hdsprite[i].h    = SHORT(cp->height);
+		    hdsprite[i].rgba = rgba;
+		}
 	    }
 	    else spritewidth[i] = spriteoffset[i] = spritetopoffset[i] = 0;
 	    i++;

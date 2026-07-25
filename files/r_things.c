@@ -443,6 +443,79 @@ void R_DrawMaskedColumn (column_t* column, int texheight)
 
 
 //
+// Truecolor HD sprite: blit a full-colour PNG sprite (kept RGBA, r_data.c) straight
+// into screen32 with alpha blending, scaled to the vissprite and dimmed by the sector
+// light -- instead of the palette-quantised patch.  Reuses the paletted path's
+// per-column clip (mfloorclip/mceilingclip) so wall/floor occlusion still works.
+extern unsigned int*	screen32;
+extern double		fc_lightdim[];
+extern int		truecolor;
+int			hd_sprites = 1;		// config: full-colour HD sprites in truecolor
+
+static void R_BlitHDSprite (vissprite_t* vis, hdimage_t* hd)
+{
+    int		pw = hd->w, ph = hd->h;
+    fixed_t	scale = vis->scale;
+    int64_t	sprtop = (int64_t)centeryfrac - (int64_t)FixedMul(vis->texturemid, scale);
+    int		ytop = (int)((sprtop + FRACUNIT-1) >> FRACBITS);
+    int		ybot = (int)((sprtop + (int64_t)ph*scale - 1) >> FRACBITS);
+    int		span = ybot - ytop;
+    fixed_t	frac = vis->startfrac;
+    double	dim = 1.0;
+    int		x;
+
+    if (pw < 1 || !hd->rgba) return;
+    if (span < 1) span = 1;
+
+    // Distance/sector light: dim the true-colour source like the 8-bit colormap would.
+    if (vis->colormap)
+    {
+	int row = (int)((vis->colormap - colormaps) >> 8);
+	if (row >= 0 && row < 32) dim = fc_lightdim[row];
+    }
+
+    for (x = vis->x1; x <= vis->x2; x++, frac += vis->xiscale)
+    {
+	int	texcol = frac >> FRACBITS;
+	int	yl = ytop, yh = ybot, y, sx = viewwindowx + x;
+
+	if ((unsigned)sx >= (unsigned)SCREENWIDTH) continue;
+	if (texcol < 0) texcol = 0; else if (texcol >= pw) texcol = pw-1;
+
+	if (yh >= mfloorclip[x])   yh = mfloorclip[x]-1;
+	if (yl <= mceilingclip[x]) yl = mceilingclip[x]+1;
+
+	for (y = yl; y <= yh; y++)
+	{
+	    int		hv = (int)((int64_t)(y - ytop) * hd->h / span);
+	    int		sy = y + viewwindowy;
+	    unsigned	px, a, r, g, b, *sp;
+
+	    if (hv < 0) hv = 0; else if (hv >= hd->h) hv = hd->h-1;
+	    if ((unsigned)sy >= (unsigned)SCREENHEIGHT) continue;
+	    px = hd->rgba[hv*hd->w + texcol];
+	    a  = px >> 24;
+	    if (!a) continue;					// transparent texel
+
+	    r = (px>>16)&0xff; g = (px>>8)&0xff; b = px&0xff;
+	    if (dim < 0.999) { r=(unsigned)(r*dim); g=(unsigned)(g*dim); b=(unsigned)(b*dim); }
+
+	    sp = &screen32[sy*SCREENWIDTH + sx];
+	    if (a >= 255)
+		*sp = 0xff000000u | (r<<16) | (g<<8) | b;
+	    else
+	    {
+		unsigned d = *sp, na = 255-a;
+		unsigned dr=(d>>16)&0xff, dg=(d>>8)&0xff, db=d&0xff;
+		*sp = 0xff000000u
+		    | (((r*a + dr*na)/255)<<16)
+		    | (((g*a + dg*na)/255)<<8)
+		    |  ((b*a + db*na)/255);
+	    }
+	}
+    }
+}
+
 // R_DrawVisSprite
 //  mfloorclip and mceilingclip should also be set.
 //
@@ -499,8 +572,16 @@ R_DrawVisSprite
 	}
     }
 
+    // Full-colour HD sprite (truecolor): draw the palette-quantised patch normally
+    // (so screens[0] holds the sprite and the composite's src==snapshot test passes),
+    // then overlay the full-colour RGBA on screen32 AFTER the columns (below).  Skip
+    // for spectres (no colormap) and invulnerability (fixedcolormap) -- those want the
+    // paletted fuzz / inverse look.
+    boolean hd = (truecolor && hd_sprites && vis->colormap && !fixedcolormap
+		  && hdsprite[vis->patch].rgba);
+
     dc_colormap = vis->colormap;
-    
+
     if (!dc_colormap)
     {
 	// NULL colormap = shadow draw
@@ -532,6 +613,12 @@ R_DrawVisSprite
     }
 
     colfunc = basecolfunc;
+
+    // Overlay the full-colour HD image on screen32, over the quantised sprite that
+    // was just drawn to screens[0]/screen32.  The composite then shows this instead
+    // of the quantised version wherever the sprite is visible.
+    if (hd)
+	R_BlitHDSprite (vis, &hdsprite[vis->patch]);
 }
 
 

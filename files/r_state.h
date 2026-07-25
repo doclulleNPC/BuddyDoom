@@ -71,6 +71,12 @@ extern int		numspritelumps;
 extern int*		spritelumps;	// sprite index -> lump number (merged namespaces)
 extern void**		spritepatch;	// sprite index -> converted PNG patch_t, or NULL
 
+// Full-colour HD sprite (truecolor): the ARGB8888 image kept from a PNG sprite lump,
+// blitted straight into screen32 instead of the palette-quantised patch.  rgba==NULL
+// (or w==0) means "no HD image".  Parallel to spritepatch[]/spritelumps[].
+typedef struct { int w, h; unsigned int* rgba; } hdimage_t;
+extern hdimage_t*	hdsprite;
+
 
 
 //

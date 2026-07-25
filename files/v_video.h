@@ -122,6 +122,10 @@ patch_t* V_CachePNG (const char* name);
 // software renderer.  Returns a PU_STATIC patch, or NULL.  See v_png.c.
 patch_t* V_PNGLumpToPatch (int lump);
 
+// Like V_PNGLumpToPatch, but also keeps an ARGB8888 full-colour copy (PU_STATIC) in
+// *rgba_out with its w/h -- for the truecolor HD sprite renderer.  See v_png.c.
+patch_t* V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_out);
+
 // Draw a patch with a 256-entry palette translation applied per pixel (NULL = none).
 void V_DrawPatchTranslated (int x, int y, int scrn, patch_t* patch, const byte* trans);
 

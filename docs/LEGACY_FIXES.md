@@ -453,3 +453,28 @@ Toggle: **Options → Video → Fullcolor** (config `fullcolor`, default on); `-
 `-vanilla` force the classic paletted path.  A malloc failure for the buffers also
 disables it.  Not yet done: true-color HD *assets* (`docs/HD_TEXTURES.md`) and
 dual-writing the remaining effect drawers.
+
+## 19. True-color HD sprites (full-colour GZDoom PNG sprites)
+
+Builds on the true-color pipeline (§18) and the PNG sprite converter (§17): a GZDoom
+PNG sprite now renders at **full colour** in-world, not palette-quantised.
+
+- `v_png.c` `V_PNGLumpDecode` keeps an ARGB8888 copy of the decoded PNG (repacked from
+  stb's RGBA) alongside the quantised patch; `r_data.c` stores it in `hdsprite[]`
+  (parallel to `spritepatch[]`/`spritelumps[]`), height-clamped to the patch.
+- `r_things.c` `R_BlitHDSprite` scales that RGBA to the vissprite, alpha-blends it into
+  `screen32`, and dims it by the sector light (`fc_lightdim[row]`), reusing the paletted
+  path's per-column clip (`mfloorclip`/`mceilingclip`) so wall/floor occlusion holds.
+
+**The composite gotcha (why it's drawn twice):** the true-color composite (§18) only
+uses `screen32` where `screens[0]` still matches the pre-overlay snapshot. If the HD blit
+wrote *only* `screen32`, `screens[0]` had no sprite there, and on the frames it mattered
+the composite fell back to the 8-bit background — the sprite vanished. Fix: draw the
+quantised patch normally first (so `screens[0]` **and** the snapshot hold the sprite →
+`src==snap`), then overlay the full-colour RGBA on `screen32` *after* the columns. The
+composite then shows the HD version wherever the sprite is visible. (This also means an
+8-bit screenshot / `-8bit` still shows the quantised sprite.)
+
+Gated on `truecolor && hd_sprites` (config `hd_sprites`, default on) and skipped for
+spectres (no colormap) and invulnerability (fixedcolormap), which keep the paletted
+fuzz/inverse look. Not yet done: HD wall/flat textures (`docs/HD_TEXTURES.md`).

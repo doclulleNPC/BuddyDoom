@@ -195,6 +195,7 @@ extern int	statusbar_style;
 extern int	dither_lighting;
 extern int	r_shadows;
 extern int	truecolor;		// i_video.c -- truecolor 3D view (config: fullcolor)
+extern int	hd_sprites;		// r_things.c -- full-colour HD sprites in truecolor
 extern int	key_spy;
 extern int	crosshair;
 extern int	scale_mode;
@@ -322,6 +323,7 @@ default_t	defaults[] =
     {"light_dither",&dither_lighting, 0},	// soften light banding
     {"sprite_shadows",&r_shadows, 1},		// soft sprite shadows
     {"fullcolor",&truecolor, 1},		// truecolor 3D view (i_video.c)
+    {"hd_sprites",&hd_sprites, 1},		// full-colour HD sprites in truecolor (r_things.c)
     {"fullscreen",&fullscreen_mode, 0},
     {"scale_mode",&scale_mode, 0},
     {"vsync",&vsync, 1},
