@@ -3,7 +3,7 @@
 #   launcher.exe       (IWAD / mode picker GUI)
 #   extractor.exe      (Heretic/Hexen/FreeDoom2 asset extractor GUI)
 #
-# Usage (x86 Native Tools Command Prompt for VS 2019), in tools\:
+# Usage (x64 Native Tools Command Prompt for VS 2019), in tools\:
 #     nmake /f Makefile.msvc
 #     nmake /f Makefile.msvc SDL=C:\path\to\SDL3
 #
@@ -12,9 +12,9 @@
 # Binaries are copied into ..\run\ next to buddydoom.exe.
 
 SDL = C:\Source\SDL3
-# Target arch: x86 (default) or x64 -- must match the Native Tools prompt.  Pass
-# PLATFORM=x64 (from an x64 prompt) for a 64-bit build.  build_all_win.bat sets this.
-PLATFORM = x86
+# Target arch: x64 (default) or x86 -- must match the Native Tools prompt.  Pass
+# PLATFORM=x86 (from an x86 prompt) for a 32-bit build.  build_all_win.bat sets this.
+PLATFORM = x64
 
 CC = cl
 CFLAGS = /nologo /O2 /MD /W3 /I. /I"$(SDL)\include" /DSDL_MAIN_HANDLED \

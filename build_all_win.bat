@@ -6,7 +6,7 @@ REM   +   tools\director.exe
 REM   +   tools\launcher.exe
 REM   +   tools\extractor.exe
 REM All outputs are copied into run\.  Self-contained: finds VS 2019 via vswhere
-REM and sets up the x86 build environment automatically.
+REM and sets up the build environment automatically (x64 by default; pass x86 to override).
 REM
 REM Usage:  build_all_win.bat            (or pass nmake args, e.g. SDL=C:\path\SDL3)
 REM ===========================================================================
@@ -27,7 +27,7 @@ REM and brings back the SDK in INCLUDE/LIB.
 set "PATH=%SystemRoot%\System32;%PATH%"
 set "ROOT=%~dp0"
 
-REM --- locate Visual Studio and the x86 build environment ---
+REM --- locate Visual Studio and the build environment (x64 by default) ---
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%VSWHERE%" ( echo [build] vswhere not found -- is Visual Studio installed? & exit /b 1 )
 for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"

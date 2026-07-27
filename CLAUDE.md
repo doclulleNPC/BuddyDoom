@@ -22,9 +22,10 @@ SDL 1.x and won't link SDL3. Use one of:
   (pkg-config) and **copies the `buddydoom` binary into `run/`** (so the launcher
   finds it there). Requires the SDL3 dev package.
 - **Windows:** `nmake /f files\Makefile.msvc` (VS 2019 + SDL3 SDK) → `buddydoom.exe`
-  + `SDL3.dll`, with the exe icon from `files/buddydoom.rc`. Add `PLATFORM=x64`
-  (from an **x64** Native Tools prompt) or `PLATFORM=x86` to pick the arch — the
-  makefile links `SDL\lib\$(PLATFORM)`. Or **`build_all_win.bat`** (repo root) which
+  + `SDL3.dll`, with the exe icon from `files/buddydoom.rc`. Defaults to **x64** now
+  (run it from an **x64** Native Tools prompt); pass `PLATFORM=x86` (from an x86 prompt)
+  for the old 32-bit build — the makefile links `SDL\lib\$(PLATFORM)`. Or
+  **`build_all_win.bat`** (repo root) which
   finds VS via `vswhere`, sets up the env, and builds the game **plus** the `tools/`
   apps (`buddydoom_config`, `gpumon`, `launcher`), copying every exe + `SDL3.dll`
   into `run/`. It defaults to **x64** now (`vcvars64` + `PLATFORM=x64`); run

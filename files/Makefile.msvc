@@ -1,19 +1,19 @@
 # Makefile.msvc -- native Windows build of BuddyDoom with Visual Studio 2019 (NMake).
 #
-# Usage (from a "x86 Native Tools Command Prompt for VS 2019", in files\):
+# Usage (from a "x64 Native Tools Command Prompt for VS 2019", in files\):
 #     nmake /f Makefile.msvc
 # or override the SDL location:
 #     nmake /f Makefile.msvc SDL=C:\path\to\SDL-1.2.15
 #
-# Produces buddydoom.exe (Win32/x86, SDL3) and copies SDL3.dll next to it.
+# Produces buddydoom.exe (x64, SDL3) and copies SDL3.dll next to it.
 
 SDL = C:\Source\SDL3
 
-# Target architecture: x86 (default, matches the "x86 Native Tools" prompt) or x64.
-# For a 64-bit build launch the "x64 Native Tools Command Prompt" and pass PLATFORM=x64:
-#     nmake /f Makefile.msvc PLATFORM=x64
+# Target architecture: x64 (default) or x86.  Must match the Native Tools prompt.
+# For a 32-bit build launch the "x86 Native Tools Command Prompt" and pass PLATFORM=x86:
+#     nmake /f Makefile.msvc PLATFORM=x86
 # (must match the toolchain the prompt set up -- the SDL3 SDK ships lib\x86 and lib\x64.)
-PLATFORM = x86
+PLATFORM = x64
 
 CC = cl
 # /Zi + /DEBUG (below): emit buddydoom.pdb.  Codegen is unchanged from plain /O2, but a
