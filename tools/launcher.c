@@ -341,8 +341,19 @@ static const known_iwad_t KNOWN_IWADS[] = {
     { "freedoom2.wad", "FreeDOOM2"                         },
     { "freedm.wad",    "FreeDM"                            },
     { "chex3.wad",     "Chex Quest 3"                      },
+    { "chex.wad",      "Chex Quest"                        },
+    { "hacx.wad",      "HacX"                              },
     { "heretic.wad",   "Heretic"                           },
+    { "heretic1.wad",  "Heretic: Shareware"                },
     { "blasphemer.wad","Blasphemer (free Heretic)"         },
+    // Games BuddyDoom does not fully run yet -- still listed so they show up and can
+    // be launched to see how far they get ("even when they don't work yet").
+    { "hexen.wad",     "Hexen (experimental)"              },
+    { "hexdd.wad",     "Hexen: Deathkings (experimental)"  },
+    { "strife1.wad",   "Strife (experimental)"             },
+    { "strife0.wad",   "Strife: Teaser (experimental)"     },
+    { "sve.wad",       "Strife: Veteran Edition (experimental)" },
+    { "doom64.wad",    "DOOM 64 (experimental)"            },
     { NULL, NULL }
 };
 
@@ -444,7 +455,17 @@ static void try_add_iwad_content(const char* dir, const char* fname)
     }
 
     char label[80];
-    if (IWID_Identify(full, label, sizeof label, NULL) == IWID_NONE) return;   // not an IWAD
+    if (IWID_Identify(full, label, sizeof label, NULL) == IWID_NONE) {
+        // IWID_Identify doesn't recognise it -- but if the raw 4-byte header is still
+        // "IWAD" it's an IWAD for a game/version we don't know.  List it anyway (so ALL
+        // IWADs show up, even unsupported ones); a real PWAD is skipped.
+        FILE* mf = fopen(full, "rb");
+        char  magic[4] = {0};
+        int   is_iwad = mf && fread(magic, 1, 4, mf) == 4 && memcmp(magic, "IWAD", 4) == 0;
+        if (mf) fclose(mf);
+        if (!is_iwad) return;
+        snprintf(label, sizeof label, "Unknown IWAD");
+    }
 
     iwad_t* e = &iwads[iwad_count];
     snprintf(e->name, sizeof e->name, "%s  [%s]", label, fname);
