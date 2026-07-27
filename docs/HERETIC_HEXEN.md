@@ -1,6 +1,6 @@
 # Heretic / Hexen content in BuddyDoom — current status
 
-**Source audit:** 2026-07-22, updated 2026-07-27 (wave-2 Heretic content + Blasphemer IWAD detection). This document describes the additive content pack in the current DOOM engine. It is not a claim that BuddyDoom is a complete Heretic or Hexen game-mode port.
+**Source audit:** 2026-07-22, updated 2026-07-27 (wave-2 Heretic content + Blasphemer IWAD detection; boot/playability pass — see `docs/HERETIC_SUPPORT_PLAN.md` "Boot/playability pass": `gametype` enum, lump aliases, menu/intermission text fallback, Heretic line specials/teleport/switches/keys, status bar v1). This document describes the additive content pack in the current DOOM engine. It is not a claim that BuddyDoom is a complete Heretic or Hexen game-mode port.
 
 ## 1. Architecture
 

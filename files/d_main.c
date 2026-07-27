@@ -137,6 +137,7 @@ int		vanilla_mode = 0;
 // Set when the resolved IWAD is heretic.wad (Heretic game mode -- phase 1):
 // resolves map things through the Heretic doomednum table and skips unported ones.
 int		heretic_mode = 0;
+gametype_t	gametype = GT_DOOM;	// game family; set from the IWAD in D_DoomMain
 
 
 boolean		devparm;	// started game with -devparm
@@ -1139,6 +1140,7 @@ void IdentifyVersion (void)
 	    if (strstr(low, "heretic") || strstr(low, "blasphemer"))
 	    {
 		heretic_mode = 1;
+		gametype = GT_HERETIC;		// heretic_mode kept in sync (bridge)
 		mode = retail;
 		printf ("%s IWAD detected -- heretic mode\n",
 			strstr(low, "blasphemer") ? "Blasphemer" : "Heretic");

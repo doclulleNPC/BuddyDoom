@@ -73,6 +73,26 @@ extern int		doom2_overlay;
 // 1 when the resolved IWAD is heretic.wad (Heretic game mode -- phase 1).
 extern int		heretic_mode;
 
+// -----------------------------------------------------
+// Game family (set ONCE from the IWAD at startup, in D_DoomMain).
+//
+// This is ORTHOGONAL to gamemode: `gamemode` encodes the map/episode FORMAT
+// (shareware/registered/retail/commercial = Doom1 ExMy vs Doom2 MAPxx), while
+// `gametype` encodes which GAME's content + rules apply (Doom family, Heretic,
+// ...).  `heretic_mode` above is kept in sync as a compatibility bridge
+// (heretic_mode == (gametype == GT_HERETIC)) so existing branches are unchanged;
+// NEW per-game code should branch on `gametype`, and self-contained per-game
+// logic (menus, status bar, actor/special tables) belongs in its own *.c file.
+// GT_HEXEN / GT_STRIFE are reserved for future ports.
+typedef enum
+{
+    GT_DOOM,		// Doom or Doom II -- which one: see gamemode
+    GT_HERETIC,
+    GT_HEXEN,		// reserved
+    GT_STRIFE,		// reserved
+} gametype_t;
+extern gametype_t	gametype;
+
 // -vanilla: purist 1993 mode -- disables the always-on modern deviations
 // (free-look, jump, over/under 3D clipping, no-autoaim, textured automap).
 extern int		vanilla_mode;

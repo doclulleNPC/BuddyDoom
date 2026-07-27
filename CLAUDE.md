@@ -341,6 +341,18 @@ portable game code that calls into them through the `I_*` interface.
   inside that tic flow (via ticcmds), never off rendering or wall-clock time.
 - **No `malloc`/`free` for game data** — use the zone allocator (`Z_Malloc`/`Z_Free`
   with `PU_` purge tags) and load data as WAD lumps via `W_*`.
+- **Game family vs game mode — two orthogonal axes** (`doomstat.h`). `gamemode`
+  (`GameMode_t`: shareware/registered/retail/commercial) is the **map/episode format**
+  (Doom1 ExMy vs Doom2 MAPxx) and is read in hundreds of places — don't repurpose it.
+  `gametype` (`gametype_t`: `GT_DOOM`/`GT_HERETIC`/`GT_HEXEN`/`GT_STRIFE`) is the
+  **game family**, set once from the IWAD in `D_DoomMain`. The legacy `heretic_mode`
+  int is kept in sync as a bridge (`heretic_mode == (gametype==GT_HERETIC)`) so old
+  branches are unchanged; **new per-game code should branch on `gametype`**. Keep
+  self-contained per-game logic (actor/special tables, menus, status bar, HUD) in its
+  own `*.c` (e.g. `heretic*.c`, `hexen*.c`); the small in-engine divergences (a few
+  line specials, lump-name aliases) stay as `gametype`/`heretic_mode`-gated branches
+  in the shared `p_*`/`r_*`/`st_*` files — BuddyDoom is one shared engine, **not**
+  a per-game engine split.
 - Files carry the id Software DOOM Source License header (`DOOMLIC.TXT`); the SDL
   port additions are by Sam Lantinga. Keep new code in the existing C style.
 - `files/FILES`/`files/FILES2` are historical manifests from the original id

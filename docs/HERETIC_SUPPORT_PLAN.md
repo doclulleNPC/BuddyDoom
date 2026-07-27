@@ -16,9 +16,19 @@ This is the forward-looking plan for turning the current additive Heretic actor/
 - Native Heretic sprite names are remapped before `R_Init` builds sprite frames.
 - Missing DOOM-only sound lumps fall back to silence; missing weapon/status/switch art is guarded to avoid startup crashes.
 - The artifact module appends ten pickup actors/effects (`files/p_inv_heretic.c`); the always-on native artifact inventory UI (and map placement of the *artifacts*, which still use `doomednum=-1`) remains planned.
+
+- **Boot/playability pass (2026-07-27)** — a Heretic IWAD now boots and plays a full level crash-free:
+  - `gametype` game-family enum added (`doomstat.h`: `GT_DOOM`/`GT_HERETIC`/…), set from the IWAD in `D_DoomMain`, `heretic_mode` kept in sync as a bridge. Foundation for Hexen/Strife.
+  - Central lump alias in `W_CheckNumForName` (`w_wad.c`): `TITLEPIC→TITLE`, `M_DOOM→M_HTIC`, `M_SKULL1/2→M_SLCTR1/2` — the shared title/menu/cursor code finds the real Heretic art.
+  - Title/menu made art-less-safe: Heretic `TITLE`/`CREDIT` loop (`d_main.c`); full menu **text fallback** for absent DOOM menu graphics (`m_menu.c`, `M_DrawMenuGraphic`) — matches how Heretic/Hexen/Strife draw menus (text) natively.
+  - Automap mark-number lumps guarded (`am_map.c`).
+  - **Line specials** (`p_spec.c`/`p_switch.c`): Heretic-divergent numbers handled — 106/107 build-stairs-16, 100 turbo door, 105 secret exit; **teleport** landing spawns (ednum 14 → `MT_TELEPORTMAN`, `heretic.c`); **switch textures** toggle (Heretic `SW1*/SW2*` list).
+  - **Keys**: Heretic key pickups grant the mapped DOOM card so locked doors open (`heretic_items.c`).
+  - **Text intermission** (`wi_stuff.c`) instead of the DOOM stat screen; **status bar v1** (`st_stuff.c`, ported from crispy `sb_bar.c`: BARBACK + health-chain + IN-numbers + keys).
+
 ### Explicit boundary
 
-`heretic_mode` is not yet a complete mission/game-mode switch. The current engine still uses the DOOM player, weapons, status bar, menu, specials and progression paths in places where Heretic-specific behavior is required. Some Heretic map content is therefore skipped or falls back safely.
+`heretic_mode`/`gametype==GT_HERETIC` is not yet a complete mission/game-mode switch. The engine still uses the **DOOM player and weapon set** (Phase 3), and the status bar omits the animated face + artifact/inventory box (needs the Heretic inventory subsystem). Ammo shows the current DOOM weapon's ammo until the Heretic weapons are ported.
 
 ## Target
 
