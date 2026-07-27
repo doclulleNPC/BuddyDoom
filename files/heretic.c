@@ -877,6 +877,10 @@ int P_HereticThingType (int doomednum)
 	case 46: return MT_HMUMMYLEADERGHOST;	// Golem leader ghost
 	case 69: return MT_HMUMMYGHOST;	// Golem ghost
 
+	case 14: return MT_TELEPORTMAN;	// teleport destination (same ednum as DOOM) --
+					// without this the tagged landing spot never spawns
+					// and EV_Teleport finds no target (teleporters dead)
+
 	// ---- the 10 artifacts (crispy heretic doomednums) ----
 	case 82: return MT_HARTI_FLASK;		// Quartz Flask
 	case 32: return MT_HARTI_URN;		// Mystic Urn

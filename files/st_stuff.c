@@ -1111,14 +1111,126 @@ void ST_diffDraw(void)
     ST_drawWidgets(false);
 }
 
+// ===========================================================================
+//  Heretic status bar
+//
+//  heretic.wad has no DOOM status-bar art (STBAR/STTNUM/STF*), so the DOOM bar
+//  renders black + "!".  Heretic's own bar (BARBACK @ y158, STATBAR overlay,
+//  IN0-9 numbers, the health CHAIN + LIFEGEM) IS present -- draw it, ported from
+//  crispy-doom heretic/sb_bar.c (DrawMainBar layout).  Drawn directly to screen 0
+//  at absolute base (320x200) coords (V_DrawPatch scales for hires), so it needs
+//  none of the DOOM screens[4]/ST_HEIGHT compositing.  Layout matches Heretic; the
+//  animated Corvus face, artifacts/inventory and Tome/flight icons need Heretic
+//  subsystems not present yet and are omitted.  Ammo shows the current (still-DOOM)
+//  weapon's ammo until the Heretic weapon set is ported.
+// ===========================================================================
+extern int	heretic_mode;
+
+static patch_t*	h_barback;
+static patch_t*	h_statbar;
+static patch_t*	h_chain;
+static patch_t*	h_chainback;
+static patch_t*	h_lifegem;
+static patch_t*	h_blacksq;
+static patch_t*	h_inum[10];
+static patch_t*	h_ykey;
+static patch_t*	h_gkey;
+static patch_t*	h_bkey;
+static int	h_sb_loaded;
+
+static patch_t* ST_HCache (const char* n)		// NULL if the lump is absent
+{
+    int l = W_CheckNumForName ((char*) n);
+    return (l >= 0) ? (patch_t*) W_CacheLumpNum (l, PU_STATIC) : NULL;
+}
+
+static void ST_HereticLoad (void)
+{
+    int i; char nm[9];
+    if (h_sb_loaded) return;
+    h_sb_loaded = 1;
+    h_barback   = ST_HCache ("BARBACK");
+    h_statbar   = ST_HCache ("STATBAR");
+    h_chain     = ST_HCache ("CHAIN");
+    h_chainback = ST_HCache ("CHAINBACK");
+    h_lifegem   = ST_HCache ("LIFEGEM2");		// single-player gem
+    if (!h_lifegem) h_lifegem = ST_HCache ("LIFEGEM0");
+    h_blacksq   = ST_HCache ("BLACKSQ");
+    for (i = 0; i < 10; i++) { sprintf (nm, "IN%d", i); h_inum[i] = ST_HCache (nm); }
+    h_ykey = ST_HCache ("YKEYICON");
+    h_gkey = ST_HCache ("GKEYICON");
+    h_bkey = ST_HCache ("BKEYICON");
+}
+
+// Right-justified small (IN) number at x,y -- crispy DrINumber layout (9px cells).
+static void ST_HDrINumber (int val, int x, int y)
+{
+    int oldval = val;
+    if (val < 0)   val = 0;
+    if (val > 999) val = 999;
+    if (val > 99 && h_inum[val/100])                   V_DrawPatch (x,      y, 0, h_inum[val/100]);
+    val %= 100;
+    if ((val > 9 || oldval > 99) && h_inum[val/10])    V_DrawPatch (x + 9,  y, 0, h_inum[val/10]);
+    val %= 10;
+    if (h_inum[val])                                   V_DrawPatch (x + 18, y, 0, h_inum[val]);
+}
+
+static void ST_HereticDrawer (void)
+{
+    int hp;
+
+    if (!plyr) return;
+    ST_HereticLoad ();
+
+    if (h_barback) V_DrawPatch (0,  158, 0, h_barback);		// full 42px bar bg (opaque)
+    if (h_statbar) V_DrawPatch (34, 160, 0, h_statbar);		// main-bar overlay frame
+
+    // Health (green number)
+    ST_HDrINumber (plyr->health, 61, 170);
+
+    // Ammo of the ready weapon
+    if (weaponinfo[plyr->readyweapon].ammo != am_noammo)
+    {
+	if (h_blacksq) V_DrawPatch (108, 161, 0, h_blacksq);
+	ST_HDrINumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], 109, 162);
+    }
+
+    // Armor
+    ST_HDrINumber (plyr->armorpoints, 228, 170);
+
+    // Keys -- Heretic yellow/green/blue map onto DOOM yellow/red/blue card slots
+    // (green uses the "red" slot; see P_TouchHereticItem).
+    if (plyr->cards[it_yellowcard] && h_ykey) V_DrawPatch (153, 164, 0, h_ykey);
+    if (plyr->cards[it_redcard]    && h_gkey) V_DrawPatch (153, 172, 0, h_gkey);
+    if (plyr->cards[it_bluecard]   && h_bkey) V_DrawPatch (153, 180, 0, h_bkey);
+
+    // Health chain + sliding life gem along the bottom
+    if (h_chainback) V_DrawPatch (0, 190, 0, h_chainback);
+    if (h_chain)     V_DrawPatch (0, 190, 0, h_chain);
+    if (h_lifegem)
+    {
+	hp = plyr->health; if (hp < 0) hp = 0; if (hp > 100) hp = 100;
+	V_DrawPatch (2 + (hp * 270) / 100, 190, 0, h_lifegem);	// slides right with health
+    }
+}
+
 void ST_Drawer (boolean fullscreen, boolean refresh)
 {
-  
+
     st_statusbaron = (!fullscreen) || automapactive;
     st_firsttime = st_firsttime || refresh;
 
     // Do red-/gold-shifts from damage/items
     ST_doPaletteStuff();
+
+    // Heretic: heretic.wad lacks the DOOM bar art -- draw Heretic's own bar
+    // (drawn every frame straight to screen 0; no diff-draw needed).
+    if (heretic_mode)
+    {
+	if (st_statusbaron)
+	    ST_HereticDrawer ();
+	return;
+    }
 
     // ID24 SBARDEF (opt-in via -sbardef): draw the data-driven bar instead.
     if (ST_SBARDEF_Active ()) { ST_SBARDEF_Draw (fullscreen); return; }

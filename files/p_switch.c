@@ -113,14 +113,32 @@ void P_InitSwitchList(void)
     int		index;
     int		episode;
 
-    // Heretic (phase 1) has its own switch textures (SW1* names differ) -- the DOOM
-    // alphSwitchList references textures heretic.wad lacks, and R_TextureNumForName
-    // I_Errors on a miss.  Skip building the switch list until Heretic switches are
-    // ported (a later phase); animated switches just won't toggle for now.
+    // Heretic has its own switch textures (SW1*/SW2* names differ from DOOM's), so
+    // the DOOM alphSwitchList never matches and switches wouldn't toggle.  Build the
+    // list from Heretic's own pairs (crispy-doom heretic/p_switch.c); each is guarded
+    // with R_CheckTextureNumForName so a texture absent from this IWAD is skipped
+    // rather than I_Error'd.
     if (heretic_mode)
     {
-	numswitches = 0;
-	switchlist[0] = -1;
+	static const char* const her_sw[][2] = {
+	    {"SW1OFF","SW1ON"},   {"SW2OFF","SW2ON"},
+	    {"SW1CTY","SW2CTY"},  {"SW1ORGRY","SW2ORGRY"}, {"SW1GRSTN","SW2GRSTN"},
+	    {"SW1SNDP","SW2SNDP"},{"SW1SPINE","SW2SPINE"}, {"SW1SQPEB","SW2SQPEB"},
+	    {"SW1TRST1","SW2TRST1"},{"SW1CSTL","SW2CSTL"}, {"SW1MOSS","SW2MOSS"},
+	    {"SW1SNDSQ","SW2SNDSQ"},{"SW1RED","SW2RED"},   {"SW1WOOD","SW2WOOD"},
+	    {"SW1BROWN","SW2BROWN"},{"SW1TRST2","SW2TRST2"},{"SW1MSC","SW2MSC"},
+	    {"SW1MSC2","SW2MSC2"}, {"SW1GRDMD","SW2GRDMD"},
+	};
+	int n = (int)(sizeof(her_sw)/sizeof(her_sw[0]));
+	for (index = 0, i = 0; i < n && index < MAXSWITCHES*2 - 2; i++)
+	    if (R_CheckTextureNumForName ((char*)her_sw[i][0]) >= 0 &&
+		R_CheckTextureNumForName ((char*)her_sw[i][1]) >= 0)
+	    {
+		switchlist[index++] = R_TextureNumForName ((char*)her_sw[i][0]);
+		switchlist[index++] = R_TextureNumForName ((char*)her_sw[i][1]);
+	    }
+	numswitches = index/2;
+	switchlist[index] = -1;
 	return;
     }
 
