@@ -363,7 +363,7 @@ S_StartSoundAtVolume
 
   // try to find a channel
   cnum = S_getChannel(origin, sfx);
-  
+
   if (cnum<0)
     return;
 
@@ -882,6 +882,12 @@ S_AdjustSoundParams
 // naturally one-at-a-time, which is exactly what a single reserved channel serves.)
 static boolean S_IsReservedSound (int id)
 {
+    // (H) The whole Heretic weapon fire/hit/pickup block (sfx_hw_*) is reserved too,
+    // or the player's weapon SFX get denied a channel and go silent when monsters +
+    // the buddy saturate the general channels in a busy Heretic fight.
+    if (id >= sfx_hw_gldhit && id <= sfx_hw_wpnup)
+	return true;
+
     switch (id)
     {
       case sfx_pistol: case sfx_shotgn: case sfx_sgcock: case sfx_dshtgn:
