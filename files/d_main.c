@@ -899,6 +899,7 @@ static const struct { const char* name; int mode; } known_iwads[] = {
     { "freedm.wad",    commercial },
     { "chex3.wad",     retail     },	// Chex Quest 3 (Ultimate-Doom format)
     { "blasphemer.wad",retail     },	// Blasphemer (free Heretic IWAD: ExMy episodes)
+    { "blasphem.wad",  retail     },	// ... and the 8.3 name it actually ships under
 };
 
 // Steam install locations (relative to steamapps/common) + game mode.
@@ -950,7 +951,7 @@ static int IWAD_ModeFromName (const char* path)
     if ((s = strrchr(b,'\\'))) b = s+1;
     for (i=0; b[i] && i<63; i++) { c = b[i]; if (c>='A'&&c<='Z') c+=32; low[i]=(char)c; }
     low[i] = 0;
-    if (strstr(low,"heretic") || strstr(low,"blasphemer")) return retail;	// Heretic / Blasphemer (ExMy, multi-episode)
+    if (strstr(low,"heretic") || strstr(low,"blasphem")) return retail;	// Heretic / Blasphemer (ExMy, multi-episode)
     if (strstr(low,"chex")) return retail;		// Chex Quest (1/2/3): Ultimate-Doom format
     if (strstr(low,"doom2") || strstr(low,"plutonia") || strstr(low,"tnt")
 	|| strstr(low,"freedoom2") || strstr(low,"freedm")) return commercial;
@@ -964,15 +965,21 @@ static int IWAD_ModeFromName (const char* path)
 // to a gamemode.  Robust to renamed/custom IWADs; returns `indetermined` (use the
 // filename guess) only when the file isn't a recognisable IWAD.  `label` (optional)
 // receives a human version string, e.g. "The Ultimate Doom (v1.9)".
-static int IWAD_ModeFromContent (const char* path, char* label, int cap)
+// `id_out` (optional) receives the raw game id, for the callers that need to know WHICH
+// game it is (Heretic family -> heretic_mode), not just its map/episode format.
+static int IWAD_ModeFromContent (const char* path, char* label, int cap, iwid_t* id_out)
 {
-    switch (IWID_Identify (path, label, cap, NULL))
+    iwid_t id = IWID_Identify (path, label, cap, NULL);
+
+    if (id_out) *id_out = id;
+    switch (id)
     {
       case IWID_DOOM_SW:                    return shareware;
       case IWID_DOOM_REG:                   return registered;
       case IWID_DOOM_ULTIMATE:
       case IWID_FREEDOOM1:
       case IWID_HERETIC:
+      case IWID_BLASPHEMER:
       case IWID_CHEX3:                      return retail;
       case IWID_DOOM2:     case IWID_PLUTONIA:
       case IWID_TNT:       case IWID_FREEDOOM2:
@@ -1142,31 +1149,37 @@ void IdentifyVersion (void)
 
     if (found)
     {
+	char	lbl[80];
+	iwid_t	iwid = IWID_NONE;
+	int	cm;
+
 	printf ("IWAD: %s\n", found);
-	// Heretic game mode (phase 1): if the resolved IWAD name contains "heretic"
-	// (case-insensitive), treat it as a multi-episode game (retail's 4-episode menu
-	// is fine for now) and route map things through the Heretic doomednum table.
+	// Content-first: identify the IWAD by its lumps / MD5 (w_iwadid.h) and let that
+	// override the filename guess -- so a renamed or custom IWAD is still recognised.
+	lbl[0] = 0;
+	cm = IWAD_ModeFromContent (found, lbl, sizeof lbl, &iwid);
+	if (cm != indetermined) { mode = cm; printf ("IWAD identified by content: %s\n", lbl); }
+
+	// Heretic game mode (phase 1): treat the Heretic family (Heretic, Blasphemer) as a
+	// multi-episode game (retail's 4-episode menu is fine for now) and route map things
+	// through the Heretic doomednum table.  Driven by the CONTENT id, so a Heretic IWAD
+	// under any name (blasphem.wad, a renamed heretic.wad) is caught; the name test is
+	// only the fallback for a file IWID_Identify couldn't read.
 	{
 	    const char* b = found; const char* s; char low[256]; int i, c;
 	    if ((s = strrchr(b,'/')))  b = s+1;
 	    if ((s = strrchr(b,'\\'))) b = s+1;
 	    for (i=0; b[i] && i<255; i++) { c=b[i]; if (c>='A'&&c<='Z') c+=32; low[i]=(char)c; }
 	    low[i] = 0;
-	    if (strstr(low, "heretic") || strstr(low, "blasphemer"))
+	    if (iwid == IWID_HERETIC || iwid == IWID_BLASPHEMER
+		|| (iwid == IWID_NONE && (strstr(low, "heretic") || strstr(low, "blasphem"))))
 	    {
 		heretic_mode = 1;
 		gametype = GT_HERETIC;		// heretic_mode kept in sync (bridge)
 		mode = retail;
 		printf ("%s IWAD detected -- heretic mode\n",
-			strstr(low, "blasphemer") ? "Blasphemer" : "Heretic");
+			lbl[0] ? lbl : (strstr(low, "blasphem") ? "Blasphemer" : "Heretic"));
 	    }
-	}
-	// Content-first: identify the IWAD by its lumps / MD5 (w_iwadid.h) and let that
-	// override the filename guess -- so a renamed or custom IWAD is still recognised.
-	if (!heretic_mode)
-	{
-	    char lbl[80]; int cm = IWAD_ModeFromContent (found, lbl, sizeof lbl);
-	    if (cm != indetermined) { mode = cm; printf ("IWAD identified by content: %s\n", lbl); }
 	}
 	// doom.wad is BOTH the registered (3-episode) and the Ultimate/retail (4-episode) IWAD --
 	// same filename, only the content differs.  If a "registered" doom.wad actually has an
@@ -1653,7 +1666,8 @@ void D_DoomMain (void)
 	// populate static tables, so they're safe this early (before R_Init/P_Init).
 	extern void Heretic_Init(void), Hexen_Init(void), Freedoom_Init(void),
 		    RevMarine_Init(void), Morph_Init(void), HereticInv_Init(void),
-		    Heretic_Items_Init(void), Heretic_Deco_Init(void), Heretic_MVar_Init(void);
+		    Heretic_Items_Init(void), Heretic_Deco_Init(void), Heretic_MVar_Init(void),
+		    Heretic_Weapons_Init(void);
 	extern void Hexen_Deco_Init(void), Hexen_Items_Init(void), Hexen_Mon_Init(void);
 	extern void Sounds_Heretic_Init(void), Sounds_Hexen_Init(void);
 	Heretic_Init (); Heretic_Deco_Init (); Heretic_MVar_Init ();	// (H) monsters + scenery + variants
@@ -1661,6 +1675,7 @@ void D_DoomMain (void)
 	Freedoom_Init ();
 	RevMarine_Init (); Morph_Init (); HereticInv_Init ();
 	Heretic_Items_Init ();		// (H) map-placeable Heretic keys/ammo/weapons/shields/vial
+	Heretic_Weapons_Init ();	// (H) player weapons -- Phase 1: Staff + Gold Wand (heretic_mode only)
 	// (X) The Hexen wave-2 pack is summon-only (no hexen_mode map path yet): force every
 	// Hexen additive type's doomednum to -1 so real Hexen ednums can't shadow DOOM/Heretic
 	// map things.  MT_XZARMORCHUNK is the first of the block; it runs to NUMMOBJTYPES.

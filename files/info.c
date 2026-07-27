@@ -121,7 +121,9 @@ char *sprnames_builtin[NUMSPRITES] = {
     "AFWP","ACWP","AMWP","AGER","AGR2","AGR3","AGR4",
     "WFR1","WFR2","WFR3","WCH1","WCH2","WCH3","WMS1","WMS2","WMS3",
     // (X) Hexen monster/boss sprites (files/hexen_mon.c) -- native codes
-    "DEM2","D2FX","KORX","MLFX","SPIR","SORC","SBS1","SBS2","SBS3","SBS4"
+    "DEM2","D2FX","KORX","MLFX","SPIR","SORC","SBS1","SBS2","SBS3","SBS4",
+    // (H) Heretic weapon psprites + puffs (files/heretic_weapons.c) -- native codes
+    "STFF","GWND","PUF3","PUF2"
 };
 
 

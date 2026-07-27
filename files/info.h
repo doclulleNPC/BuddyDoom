@@ -311,6 +311,8 @@ typedef enum
     // (X) Hexen monster/boss sprites (files/hexen_mon.c; native codes)
     SPR_XDEM2, SPR_XD2FX, SPR_XKORX, SPR_XMLFX, SPR_XSPIR,
     SPR_XSORC, SPR_XSBS1, SPR_XSBS2, SPR_XSBS3, SPR_XSBS4,
+    // (H) Heretic weapon psprites + puffs (files/heretic_weapons.c)
+    SPR_STFF, SPR_GWND, SPR_PUF3, SPR_PUF2,
     NUMSPRITES
 
 } spritenum_t;
@@ -1743,6 +1745,13 @@ typedef enum
     S_XSF3_EXP1, S_XSF3_EXP2, S_XSF3_EXP3, S_XSF3_EXP4, S_XSF3_EXP5,
     S_XSF4_1, S_XSF4_2, S_XSF4_3,
     S_XSF4_D1, S_XSF4_D2, S_XSF4_D3, S_XSF4_D4, S_XSF4_D5,
+    // (H) Heretic weapons -- PL1 staff + gold wand psprites/puffs (files/heretic_weapons.c)
+    S_HWP_STAFFREADY, S_HWP_STAFFDOWN, S_HWP_STAFFUP,
+    S_HWP_STAFFATK1_1, S_HWP_STAFFATK1_2, S_HWP_STAFFATK1_3,
+    S_HWP_STAFFPUFF1, S_HWP_STAFFPUFF2, S_HWP_STAFFPUFF3, S_HWP_STAFFPUFF4,
+    S_HWP_GWANDREADY, S_HWP_GWANDDOWN, S_HWP_GWANDUP,
+    S_HWP_GWANDATK1_1, S_HWP_GWANDATK1_2, S_HWP_GWANDATK1_3, S_HWP_GWANDATK1_4,
+    S_HWP_GWANDPUFF1, S_HWP_GWANDPUFF2, S_HWP_GWANDPUFF3, S_HWP_GWANDPUFF4, S_HWP_GWANDPUFF5,
     NUMSTATES
 } statenum_t;
 
@@ -2095,6 +2104,8 @@ typedef enum {
     MT_XDEMON2, MT_XDEMON2_FX, MT_XWRAITHB,
     MT_XKORAX, MT_XKORAX_BOLT, MT_XKORAX_SPIRIT,
     MT_XHERESIARCH, MT_XSORCFX1, MT_XSORCFX2, MT_XSORCFX3, MT_XSORCFX4,
+    // (H) Heretic weapon puffs (files/heretic_weapons.c)
+    MT_HWP_STAFFPUFF, MT_HWP_GWANDPUFF,
     NUMMOBJTYPES
 
 } mobjtype_t;

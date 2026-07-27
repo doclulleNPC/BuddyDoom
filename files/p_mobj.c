@@ -896,6 +896,12 @@ void P_SpawnMapThing (mapthing_t* mthing)
 //
 extern fixed_t attackrange;
 
+// Which puff actor the next hitscan spawns.  DOOM defaults to MT_PUFF; the
+// Heretic weapons (files/heretic_weapons.c) set this to their own puff before
+// firing (crispy-style).  Reset to MT_PUFF after every spawn so it can never
+// leak into a subsequent DOOM/monster puff.
+mobjtype_t	PuffType = MT_PUFF;
+
 void
 P_SpawnPuff
 ( fixed_t	x,
@@ -903,19 +909,24 @@ P_SpawnPuff
   fixed_t	z )
 {
     mobj_t*	th;
-	
+    mobjtype_t	type = PuffType;
+    PuffType = MT_PUFF;			// consume; back to the default
+
     z += ((P_Random()-P_Random())<<10);
 
-    th = P_SpawnMobj (x,y,z, MT_PUFF);
+    th = P_SpawnMobj (x,y,z, type);
     th->momz = FRACUNIT;
-    th->tics -= P_Random()&3;
 
-    if (th->tics < 1)
-	th->tics = 1;
-	
-    // don't make punches spark on the wall
-    if (attackrange == MELEERANGE)
-	P_SetMobjState (th, S_PUFF3);
+    if (type == MT_PUFF)
+    {
+	// DOOM puff: randomise the animation, and don't spark on the wall
+	// for melee (fist) hits.
+	th->tics -= P_Random()&3;
+	if (th->tics < 1)
+	    th->tics = 1;
+	if (attackrange == MELEERANGE)
+	    P_SetMobjState (th, S_PUFF3);
+    }
 }
 
 
