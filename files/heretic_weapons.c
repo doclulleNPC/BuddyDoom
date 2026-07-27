@@ -2,26 +2,27 @@
 //-----------------------------------------------------------------------------
 //
 // DESCRIPTION:
-//	(H) Heretic player WEAPONS in the DOOM engine -- Phase 1: Staff + Gold Wand.
+//	(H) The full Heretic player WEAPON set in the DOOM engine (PL1 / un-Tomed).
 //
-//	Ported 1:1 from crispy-doom src/heretic/{p_pspr.c,info.c}.  Two orthogonal
-//	pieces, both appended to the engine tables at runtime (no info.c data edits
-//	beyond the enum slots in info.h + the four sprite names in info.c):
+//	Ported 1:1 from crispy-doom src/heretic/{p_pspr.c,info.c}.  The psprite states,
+//	projectile/puff mobjs and firing code pointers are appended to the engine
+//	tables at runtime in Heretic_Weapons_Init (heretic_mode only), overwriting the
+//	DOOM weaponinfo[] slots.  Slot map (DOOM slot <- Heretic weapon, ammo pool):
+//	  wp_fist    <- Staff              (am_noammo)   wp_shotgun <- Crossbow  (am_shell)
+//	  wp_pistol  <- Gold Wand          (am_clip)     wp_chaingun<- DragonClaw(am_cell)
+//	  wp_chainsaw<- Gauntlets          (am_noammo)   wp_missile <- Hellstaff (am_misl)
+//	                                                 wp_plasma  <- Phoenix   (am_fuel)
+//	                                                 wp_bfg     <- Firemace  (am_mace)
+//	The player starts owning fist+pistol (=> Staff+Gold Wand); the rest are picked
+//	up on Heretic maps (heretic_items.c ground pickups -> P_GiveWeapon).
 //
-//	  1. Weapon PSPRITES: the STFF/GWND view-model states, wired into
-//	     weaponinfo[wp_fist] (Staff, slot 1) and weaponinfo[wp_pistol]
-//	     (Gold Wand, slot 2).  The player already starts owning wp_fist+wp_pistol
-//	     (g_game.c G_PlayerReborn), so the Heretic starting kit appears for free.
-//	  2. The hit PUFFS the two weapons spawn (MT_HWP_STAFFPUFF using PUF3,
-//	     MT_HWP_GWANDPUFF using PUF2), selected per-shot via the global PuffType
-//	     (p_mobj.c) the way crispy's P_SpawnPuff does.
-//
-//	SCOPE (Phase 1): PL1 (un-Tomed) only -- this engine has a single weaponinfo[]
-//	table and no Tome-of-Power / pw_weaponlevel2 dispatch, so the crispy PL2
-//	("powered") variants are unreachable and intentionally omitted.  No firing
-//	SOUND yet: BuddyDoom's Heretic sfx table carries only monster sounds, not the
-//	weapon fire/hit lumps, so the weapons are silent on use for now (the psprite
-//	swing + puff are the feedback).  Ammo: crispy am_goldwand maps to DOOM am_clip.
+//	SCOPE: PL1 only -- this engine has a single weaponinfo[] table and no
+//	Tome-of-Power / pw_weaponlevel2 dispatch, so the crispy PL2 ("powered") variants
+//	are unreachable and intentionally omitted.  This engine also lacks Heretic's
+//	MF2_* physics (floorbounce/windthrust/lowgrav) and MF_TRANSLUCENT, so the
+//	projectiles are straight-flying opaque NOGRAVITY missiles (the Firemace ball
+//	doesn't floor-bounce; no lob variant).  Fire/hit SOUNDS use the native Heretic
+//	lumps registered by Sounds_HWeapons_Init (sfx_hw_*, sounds_heretic.c).
 //
 //-----------------------------------------------------------------------------
 
@@ -126,6 +127,7 @@ void A_StaffAttackPL1 (player_t* player, pspdef_t* psp)
     P_LineAttack (player->mo, angle, MELEERANGE, slope, damage);
     if (linetarget)
     {
+	S_StartSound (player->mo, sfx_hw_stfhit);
 	// turn to face target
 	player->mo->angle = R_PointToAngle2 (player->mo->x, player->mo->y,
 					     linetarget->x, linetarget->y);
@@ -148,9 +150,10 @@ void A_FireGoldWandPL1 (player_t* player, pspdef_t* psp)
 	angle += P_SubRandom() << 18;
     PuffType = MT_HWP_GWANDPUFF;
     P_LineAttack (mo, angle, MISSILERANGE, bulletslope, damage);
+    S_StartSound (mo, sfx_hw_gldhit);
 }
 
-// ---- Phase 2-4 fire code pointers (silent for now; sounds are phase 5) --------
+// ---- Phase 2-4 fire code pointers -----------------------------------------
 
 // Crossbow (crispy A_FireCrossbowPL1): 1 straight bolt + 2 side bolts at +/-ANG45/10.
 void A_FireCrossbowPL1 (player_t* player, pspdef_t* psp)
@@ -178,6 +181,7 @@ void A_FireBlasterPL1 (player_t* player, pspdef_t* psp)
 	angle += P_SubRandom() << 18;
     PuffType = MT_HWP_BLSRPUFF;
     P_LineAttack (mo, angle, MISSILERANGE, bulletslope, damage);
+    S_StartSound (mo, sfx_hw_blssht);
 }
 
 // Hellstaff / Skull Rod PL1 (crispy A_FireSkullRodPL1): one MT_HWP_HRODFX1 missile,
@@ -245,12 +249,14 @@ void A_GauntletAttack (player_t* player, pspdef_t* psp)
     {
 	if (P_Random() > 64)
 	    player->extralight = !player->extralight;
+	S_StartSound (player->mo, sfx_hw_gntful);
 	return;
     }
     randVal = P_Random();
     if (randVal < 64)       player->extralight = 0;
     else if (randVal < 160) player->extralight = 1;
     else                    player->extralight = 2;
+    S_StartSound (player->mo, sfx_hw_gnthit);
     // turn to face the target (crispy's clamped turn)
     angle = R_PointToAngle2 (player->mo->x, player->mo->y, linetarget->x, linetarget->y);
     if (angle - player->mo->angle > ANG180)
@@ -307,12 +313,12 @@ static void Puff (mobjtype_t mt, statenum_t spawn)
 // use the DOOM-compatible flag subset: it flies via momx/y/z (NOGRAVITY), damages,
 // and animates its death state on impact.
 static void Proj (mobjtype_t mt, statenum_t spawn, statenum_t death,
-		  int speed, int dmg, int radius, int height, int deathsnd)
+		  int speed, int dmg, int radius, int height, int seesnd, int deathsnd)
 {
     mobjinfo_t*	m = &mobjinfo[mt];
     m->doomednum   = -1;
     m->spawnstate  = spawn;  m->spawnhealth = 1000;
-    m->seestate    = S_NULL; m->seesound    = sfx_None; m->reactiontime = 8;
+    m->seestate    = S_NULL; m->seesound    = seesnd;  m->reactiontime = 8;
     m->attacksound = sfx_None; m->painstate = S_NULL;   m->painchance = 0;
     m->painsound   = sfx_None; m->meleestate = S_NULL;  m->missilestate = S_NULL;
     m->deathstate  = death;  m->xdeathstate = S_NULL;   m->deathsound = deathsnd;
@@ -384,8 +390,8 @@ void Heretic_Weapons_Init (void)
     ST (S_HWP_CBOWFXI3_1, SPR_FX03, BRIGHT|2, 8, NULL, S_HWP_CBOWFXI3_2);
     ST (S_HWP_CBOWFXI3_2, SPR_FX03, BRIGHT|3, 8, NULL, S_HWP_CBOWFXI3_3);
     ST (S_HWP_CBOWFXI3_3, SPR_FX03, BRIGHT|4, 8, NULL, S_NULL);
-    Proj (MT_HWP_CBOWFX1, S_HWP_CBOWFX1, S_HWP_CBOWFXI1_1, 30, 10, 11, 8, sfx_None);
-    Proj (MT_HWP_CBOWFX3, S_HWP_CBOWFX3, S_HWP_CBOWFXI3_1, 20,  2, 11, 8, sfx_None);
+    Proj (MT_HWP_CBOWFX1, S_HWP_CBOWFX1, S_HWP_CBOWFXI1_1, 30, 10, 11, 8, sfx_hw_bowsht, sfx_hw_hrnhit);
+    Proj (MT_HWP_CBOWFX3, S_HWP_CBOWFX3, S_HWP_CBOWFXI3_1, 20,  2, 11, 8, sfx_None,      sfx_hw_hrnhit);
 
     // ---- DRAGON CLAW / BLASTER (wp_chaingun) -- hitscan ----------------------
     ST (S_HWP_BLSRREADY, SPR_BLSR, 0, 1, (actionf_p1)A_WeaponReady,     S_HWP_BLSRREADY);
@@ -419,7 +425,7 @@ void Heretic_Weapons_Init (void)
     ST (S_HWP_HRODFXI1_4, SPR_FX00, BRIGHT|10, 4, NULL, S_HWP_HRODFXI1_5);
     ST (S_HWP_HRODFXI1_5, SPR_FX00, BRIGHT|11, 3, NULL, S_HWP_HRODFXI1_6);
     ST (S_HWP_HRODFXI1_6, SPR_FX00, BRIGHT|12, 3, NULL, S_NULL);
-    Proj (MT_HWP_HRODFX1, S_HWP_HRODFX1_1, S_HWP_HRODFXI1_1, 22, 3, 12, 8, sfx_None);
+    Proj (MT_HWP_HRODFX1, S_HWP_HRODFX1_1, S_HWP_HRODFXI1_1, 22, 3, 12, 8, sfx_hw_hrnsht, sfx_hw_hrnhit);
 
     // ---- PHOENIX ROD (wp_plasma) -- exploding missile + flame trail ----------
     ST (S_HWP_PHNXREADY, SPR_PHNX, 0, 1, (actionf_p1)A_WeaponReady,     S_HWP_PHNXREADY);
@@ -444,7 +450,7 @@ void Heretic_Weapons_Init (void)
     ST (S_HWP_PHNXPUFF3, SPR_FX04, 3, 4, NULL, S_HWP_PHNXPUFF4);
     ST (S_HWP_PHNXPUFF4, SPR_FX04, 4, 4, NULL, S_HWP_PHNXPUFF5);
     ST (S_HWP_PHNXPUFF5, SPR_FX04, 5, 4, NULL, S_NULL);
-    Proj (MT_HWP_PHNXFX1, S_HWP_PHNXFX1, S_HWP_PHNXFXI1, 20, 20, 11, 8, sfx_None);
+    Proj (MT_HWP_PHNXFX1, S_HWP_PHNXFX1, S_HWP_PHNXFXI1, 20, 20, 11, 8, sfx_hw_phosht, sfx_hw_phohit);
     Puff (MT_HWP_PHNXPUFF, S_HWP_PHNXPUFF1);
 
     // ---- FIREMACE (wp_bfg) -- simplified: straight ball, no floor-bounce -------
@@ -468,7 +474,7 @@ void Heretic_Weapons_Init (void)
     ST (S_HWP_MACEFXI1_3, SPR_FX02, BRIGHT|7, 4, NULL, S_HWP_MACEFXI1_4);
     ST (S_HWP_MACEFXI1_4, SPR_FX02, BRIGHT|8, 4, NULL, S_HWP_MACEFXI1_5);
     ST (S_HWP_MACEFXI1_5, SPR_FX02, BRIGHT|9, 4, NULL, S_NULL);
-    Proj (MT_HWP_MACEFX1, S_HWP_MACEFX1_1, S_HWP_MACEFXI1_1, 20, 2, 8, 6, sfx_None);
+    Proj (MT_HWP_MACEFX1, S_HWP_MACEFX1_1, S_HWP_MACEFXI1_1, 20, 2, 8, 6, sfx_hw_lobsht, sfx_hw_lobhit);
 
     // ---- GAUNTLETS (wp_chainsaw) -- melee -------------------------------------
     ST (S_HWP_GAUNREADY, SPR_GAUN, 0, 1, (actionf_p1)A_WeaponReady,      S_HWP_GAUNREADY);

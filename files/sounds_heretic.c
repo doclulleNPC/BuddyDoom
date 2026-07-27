@@ -58,3 +58,34 @@ void Sounds_Heretic_Init (void)
 	s->volume      = -1;
     }
 }
+
+
+// (H) Heretic WEAPON sounds -- native lump names, in EXACT sfx_hw_* enum order
+// (sounds.h), from gldhit.  Filled into their S_sfx_builtin slots at startup.
+static const struct { char* name; int priority; } hweapon_sfx[] =
+{
+    { "gldhit", 118 }, { "stfhit", 32 },  { "stfpow", 118 }, { "bowsht", 118 },
+    { "blssht", 118 }, { "blshit", 32 },  { "hrnsht", 118 }, { "hrnhit", 32 },
+    { "phosht", 118 }, { "phohit", 32 },  { "lobsht", 118 }, { "lobhit", 32 },
+    { "gntful", 118 }, { "gnthit", 118 }, { "gntpow", 118 }, { "wpnup",  32 },
+};
+
+void Sounds_HWeapons_Init (void)
+{
+    int	n = (int)(sizeof hweapon_sfx / sizeof hweapon_sfx[0]);
+    int	i;
+
+    if (n != (sfx_hw_wpnup - sfx_hw_gldhit + 1))	// guard against enum drift
+	return;
+
+    for (i = 0; i < n; i++)
+    {
+	sfxinfo_t* s = &S_sfx_builtin[sfx_hw_gldhit + i];
+	s->name        = hweapon_sfx[i].name;
+	s->singularity = false;
+	s->priority    = hweapon_sfx[i].priority;
+	s->link        = 0;
+	s->pitch       = -1;
+	s->volume      = -1;
+    }
+}

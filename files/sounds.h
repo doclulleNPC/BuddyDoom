@@ -404,6 +404,24 @@ typedef enum
     sfx_secdr_active,	// SECDRON2
     sfx_secdr_detect,	// SECDRON3 (attack)
     sfx_secdr_death,	// SECDRON4
+    // ---- (H) Heretic WEAPON sounds -- native lump names (files/sounds_heretic.c
+    // Sounds_HWeapons_Init).  Contiguous block, in enum order from sfx_hw_gldhit.
+    sfx_hw_gldhit,	// GLDHIT  gold wand / dragon claw
+    sfx_hw_stfhit,	// STFHIT  staff hit
+    sfx_hw_stfpow,	// STFPOW  staff (tomed) hit
+    sfx_hw_bowsht,	// BOWSHT  crossbow fire
+    sfx_hw_blssht,	// BLSSHT  dragon claw fire
+    sfx_hw_blshit,	// BLSHIT  dragon claw impact
+    sfx_hw_hrnsht,	// HRNSHT  hellstaff fire
+    sfx_hw_hrnhit,	// HRNHIT  hellstaff / crossbow impact
+    sfx_hw_phosht,	// PHOSHT  phoenix fire
+    sfx_hw_phohit,	// PHOHIT  phoenix impact
+    sfx_hw_lobsht,	// LOBSHT  firemace fire
+    sfx_hw_lobhit,	// LOBHIT  firemace impact
+    sfx_hw_gntful,	// GNTFUL  gauntlet whiff
+    sfx_hw_gnthit,	// GNTHIT  gauntlet hit
+    sfx_hw_gntpow,	// GNTPOW  gauntlet (tomed) hit
+    sfx_hw_wpnup,	// WPNUP   weapon pickup
     NUMSFX
 } sfxenum_t;
 

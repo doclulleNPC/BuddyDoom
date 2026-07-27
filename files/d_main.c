@@ -1672,7 +1672,7 @@ void D_DoomMain (void)
 		    Heretic_Items_Init(void), Heretic_Deco_Init(void), Heretic_MVar_Init(void),
 		    Heretic_Weapons_Init(void);
 	extern void Hexen_Deco_Init(void), Hexen_Items_Init(void), Hexen_Mon_Init(void);
-	extern void Sounds_Heretic_Init(void), Sounds_Hexen_Init(void);
+	extern void Sounds_Heretic_Init(void), Sounds_Hexen_Init(void), Sounds_HWeapons_Init(void);
 	Heretic_Init (); Heretic_Deco_Init (); Heretic_MVar_Init ();	// (H) monsters + scenery + variants
 	Hexen_Init (); Hexen_Deco_Init (); Hexen_Items_Init (); Hexen_Mon_Init ();	// (X) full Hexen pack
 	Freedoom_Init ();
@@ -1686,7 +1686,7 @@ void D_DoomMain (void)
 	  for (i = MT_XZARMORCHUNK; i < NUMMOBJTYPES; i++) mobjinfo[i].doomednum = -1; }
 	// Per-game SFX tables (files/sounds_heretic.c, files/sounds_hexen.c): fill the
 	// sfx_h_*/sfx_x_* slots with native lump names before I_InitSound precaches.
-	Sounds_Heretic_Init (); Sounds_Hexen_Init ();
+	Sounds_Heretic_Init (); Sounds_Hexen_Init (); Sounds_HWeapons_Init ();	// (H) +weapon sfx
     }
     {   // DeHackEd/BEX/MBF21: apply every DEHACKED lump + -deh files before the tables are read
         extern void D_ProcessDehInWads (void);
