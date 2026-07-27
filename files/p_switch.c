@@ -322,6 +322,15 @@ P_UseSpecialLine
 {
     if (!side && P_DoGenLineSpecial (line, thing, 1)) return true;   // Boom generalized (switch)
 
+    // Heretic S1 "Build Stairs 16" is special 107 (DOOM uses 107 differently), so the
+    // DOOM switch below would never build the staircase.  Handle it here.
+    if (heretic_mode && thing->player && line->special == 107)
+    {
+	if (EV_BuildStairs (line, turbo16))
+	    P_ChangeSwitchTexture (line, 0);	// S1: fires once
+	return true;
+    }
+
     // Err...
     // Use the back sides of VERY SPECIAL lines...
     if (side)

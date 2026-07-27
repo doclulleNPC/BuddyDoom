@@ -537,8 +537,31 @@ P_CrossSpecialLine
 {
     line_t*	line;
     int		ok;
+    extern int	heretic_mode;
 
     line = &lines[linenum];
+
+    // Heretic reassigns a few walk-trigger line specials vs DOOM (see crispy-doom
+    // heretic/p_spec.c vs doom/p_spec.c).  Handle the divergent numbers here so the
+    // DOOM interpretation doesn't mis-fire them (e.g. DOOM reads 100 as "build stairs
+    // 16", but in Heretic 100 is a turbo door).
+    if (heretic_mode && thing->player)
+    {
+	switch (line->special)
+	{
+	  case 106:			// Heretic W1 Build Stairs 16
+	    EV_BuildStairs (line, turbo16);
+	    line->special = 0;		// W1: fires once
+	    return;
+	  case 100:			// Heretic WR Raise Door Turbo (DOOM 100 = W1 stairs 16)
+	    EV_DoDoor (line, blazeRaise);
+	    return;			// WR: repeatable, keep the special
+	  case 105:			// Heretic W1 Secret Exit (DOOM 105 = WR blaze door)
+	    G_SecretExitLevel ();
+	    return;
+	}
+    }
+
     if (P_DoGenLineSpecial (line, thing, 0)) return;   // Boom generalized (walk)
     
     //	Triggers that other things can activate

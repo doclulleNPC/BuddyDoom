@@ -1794,6 +1794,9 @@ void WI_unloadData(void)
     int		i;
     int		j;
 
+    if (heretic_mode)
+	return;			// WI_loadData loaded nothing in heretic_mode -> nothing to free
+
     Z_ChangeTag(wiminus, PU_CACHE);
 
     for (i=0 ; i<10 ; i++)
