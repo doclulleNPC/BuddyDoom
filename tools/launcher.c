@@ -91,6 +91,7 @@
 #define MON_HEX_X  (PAD + 410)		// "Hexen" checkbox
 #define IWAD_Y    362
 #define IWAD_H    22
+#define IWAD_SHOW 9			// IWAD dropdown rows shown at once (rest via mouse-wheel scroll)
 #define PWAD_Y    390			// extra WAD1 selector (one row below IWAD)
 #define WAD2_Y    418			// extra WAD2 selector (one row below WAD1)
 #define LAUNCH_Y  544			// lowered 50px (window grew 50px to match)
@@ -190,6 +191,7 @@ static int     pwad_count;
 static int     pwad_sel;			// 0 = none, else index into pwads[]
 static int     pwad_dd_open;			// WAD1 dropdown open
 static int     pwad_scroll;			// first visible row when the open list overflows
+static int     iwad_scroll;			// first visible IWAD row when the list overflows IWAD_SHOW
 
 static int     wad2_sel;			// 0 = none, else index into pwads[]
 static int     wad2_dd_open;			// WAD2 dropdown open
@@ -793,11 +795,15 @@ static void draw_iwad_dropdown(void)
     const char* arrow = dropdown_open ? "^" : "v";
     text(x + w - FONT_CW - 6, y + (h - FONT_CH)/2, arrow, COL_DIM);
 
-    // If open: draw options below
+    // If open: draw the options below (scrollable when > IWAD_SHOW rows).
     if (dropdown_open && n > 0) {
         float dy = y + h;
-        int show = n < 6 ? n : 6;
+        int max_scroll = n - IWAD_SHOW; if (max_scroll < 0) max_scroll = 0;
+        if (iwad_scroll > max_scroll) iwad_scroll = max_scroll;
+        if (iwad_scroll < 0) iwad_scroll = 0;
+        int show = n < IWAD_SHOW ? n : IWAD_SHOW;
         for (int i=0; i<show; i++) {
+            int idx = iwad_scroll + i;
             float oy = dy + i * IWAD_H;
             int hover = (mouse_x >= x && mouse_x <= x+w &&
                          mouse_y >= oy && mouse_y <= oy + IWAD_H);
@@ -807,10 +813,16 @@ static void draw_iwad_dropdown(void)
                          COL_DD_BD_R, COL_DD_BD_G, COL_DD_BD_B);
 
             text(x + 8, oy + (IWAD_H - FONT_CH)/2,
-                 iwads[i].name,
-                 iwads[i].detected ? 255 : 200,
-                 iwads[i].detected ? 230 : 200,
-                 iwads[i].detected ? 100 : 180);
+                 iwads[idx].name,
+                 iwads[idx].detected ? 255 : 200,
+                 iwads[idx].detected ? 230 : 200,
+                 iwads[idx].detected ? 100 : 180);
+
+            // scroll hints (mouse-wheel scrolls when the list overflows IWAD_SHOW rows)
+            if (i == 0 && iwad_scroll > 0)
+                text(x + w - FONT_CW - 6, oy + (IWAD_H - FONT_CH)/2, "^", COL_DIM);
+            if (i == show-1 && iwad_scroll < max_scroll)
+                text(x + w - FONT_CW - 6, oy + (IWAD_H - FONT_CH)/2, "v", COL_DIM);
         }
     }
 }
@@ -824,13 +836,13 @@ static int hit_iwad_dropdown(int mouse_px, int mouse_py)
 
     if (!dropdown_open) return -1;
 
-    // Open list
-    int show = iwad_count < 6 ? iwad_count : 6;
+    // Open list (scroll-adjusted)
+    int show = iwad_count < IWAD_SHOW ? iwad_count : IWAD_SHOW;
     for (int i=0; i<show; i++) {
         float oy = IWAD_Y + IWAD_H + i * IWAD_H;
         if (mouse_px >= PAD && mouse_px <= WINW-PAD &&
             mouse_py >= oy && mouse_py <= oy + IWAD_H)
-            return i + 1;   // 1-based option index
+            return iwad_scroll + i + 1;   // 1-based, scroll-adjusted index
     }
     return -1;
 }
@@ -1529,7 +1541,7 @@ int main(int argc, char** argv)
                         if (hh > 0) wad2_sel = hh - 1;
                         wad2_dd_open = 0;
                     } else if (hit_iwad_dropdown(mouse_x, mouse_y) == 0) {
-                        dropdown_open = 1;
+                        dropdown_open = 1; iwad_scroll = 0;
                     } else if (hit_pwad_dropdown(mouse_x, mouse_y) == 0) {
                         pwad_dd_open = 1; pwad_scroll = 0;
                     } else if (hit_wad2_dropdown(mouse_x, mouse_y) == 0) {
@@ -1635,7 +1647,12 @@ int main(int argc, char** argv)
                 mouse_down = 0;
                 break;
             case SDL_EVENT_MOUSE_WHEEL:
-                if (pwad_dd_open) {     // scroll the open WAD1 list
+                if (dropdown_open) {     // scroll the open IWAD list
+                    int ms = iwad_count - IWAD_SHOW; if (ms < 0) ms = 0;
+                    iwad_scroll -= (int)ev.wheel.y;
+                    if (iwad_scroll < 0)  iwad_scroll = 0;
+                    if (iwad_scroll > ms) iwad_scroll = ms;
+                } else if (pwad_dd_open) {     // scroll the open WAD1 list
                     int ms = pwad_count - PWAD_SHOW; if (ms < 0) ms = 0;
                     pwad_scroll -= (int)ev.wheel.y;
                     if (pwad_scroll < 0)  pwad_scroll = 0;
