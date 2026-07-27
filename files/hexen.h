@@ -24,6 +24,14 @@ int  Hexen_TypeByName (const char* name);
 // gated on the poison art (PSBG/SHRM) rather than the monster sprites.  -1 if unknown/absent.
 int  Hexen_PoisonTypeByName (const char* name);
 
+// Additive Hexen wave-2 content: decorations/scenery (files/hexen_deco.c), items/pickups/
+// puzzle pieces (files/hexen_items.c), and monster variants + bosses (files/hexen_mon.c).
+// Call each once at startup after Hexen_Init (they append to the same tables).  All are
+// summon-only (doomednum forced to -1 in D_DoomMain -- no hexen_mode map path yet).
+void Hexen_Deco_Init (void);
+void Hexen_Mon_Init (void);
+int  Hexen_Mon_TypeByName (const char* name);	// "korax"/"heresiarch"/... -> MT_ or -1
+
 // Spawn a Hexen monster at (x,y) on the floor; NULL if unavailable or type<0.
 struct mobj_s* Hexen_Spawn (int type, fixed_t x, fixed_t y);
 

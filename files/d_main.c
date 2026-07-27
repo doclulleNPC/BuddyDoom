@@ -1610,11 +1610,18 @@ void D_DoomMain (void)
 	extern void Heretic_Init(void), Hexen_Init(void), Freedoom_Init(void),
 		    RevMarine_Init(void), Morph_Init(void), HereticInv_Init(void),
 		    Heretic_Items_Init(void), Heretic_Deco_Init(void), Heretic_MVar_Init(void);
+	extern void Hexen_Deco_Init(void), Hexen_Items_Init(void), Hexen_Mon_Init(void);
 	extern void Sounds_Heretic_Init(void), Sounds_Hexen_Init(void);
 	Heretic_Init (); Heretic_Deco_Init (); Heretic_MVar_Init ();	// (H) monsters + scenery + variants
-	Hexen_Init (); Freedoom_Init ();
+	Hexen_Init (); Hexen_Deco_Init (); Hexen_Items_Init (); Hexen_Mon_Init ();	// (X) full Hexen pack
+	Freedoom_Init ();
 	RevMarine_Init (); Morph_Init (); HereticInv_Init ();
 	Heretic_Items_Init ();		// (H) map-placeable Heretic keys/ammo/weapons/shields/vial
+	// (X) The Hexen wave-2 pack is summon-only (no hexen_mode map path yet): force every
+	// Hexen additive type's doomednum to -1 so real Hexen ednums can't shadow DOOM/Heretic
+	// map things.  MT_XZARMORCHUNK is the first of the block; it runs to NUMMOBJTYPES.
+	{ extern mobjinfo_t* mobjinfo; int i;
+	  for (i = MT_XZARMORCHUNK; i < NUMMOBJTYPES; i++) mobjinfo[i].doomednum = -1; }
 	// Per-game SFX tables (files/sounds_heretic.c, files/sounds_hexen.c): fill the
 	// sfx_h_*/sfx_x_* slots with native lump names before I_InitSound precaches.
 	Sounds_Heretic_Init (); Sounds_Hexen_Init ();

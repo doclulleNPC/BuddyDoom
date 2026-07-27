@@ -63,7 +63,36 @@ The additive artifact inventory is usable from the current inventory/console pat
 | Stalker (`MT_XSTALKER`) | Ambush/melee/spit actor |
 | Death Wyvern (`MT_XDRAGON`) | Flying boss-style guard actor |
 
-Each current ranged actor has an appended projectile. Multi-stage rituals, teleport/summon behavior and full Hexen `special1/2` semantics are simplified or omitted. Heresiarch/Korax are not full boss implementations, and the Hexen weapon/player system is not ported.
+Each current ranged actor has an appended projectile. Multi-stage rituals, teleport/summon behavior and full Hexen `special1/2` semantics are simplified or omitted. The Hexen weapon/player system is not ported.
+
+### Wave-2 expansion (files/hexen_deco.c, hexen_items.c, hexen_mon.c)
+
+A large additive expansion ports most of the remaining Hexen bestiary/scenery/items
+from crispy-doom (verified to build MSVC x64 and boot; all `doomednum = -1` **summon-only**
+— forced in `D_DoomMain` — because there is no `hexen_mode`/`P_HexenThingType` map path yet,
+so real Hexen ednums can't shadow DOOM/Heretic map things):
+
+- **`hexen_deco.c`** — ~136 decoration/scenery actors: statues, rocks, trees/stumps,
+  mushrooms, stalagmites/stalactites (stone + ice), moss, tombstones, 13 gargoyle statues,
+  torches (wall/twined/brass/fire-bull, lit + unlit), cauldron, chandelier, candles, bell
+  (full swing), banner, log, chains, table clutter, and **destructibles** (pottery, suit of
+  armor, xmas tree, shrubs, destructible tree) that shatter into chunk sub-actors.
+- **`hexen_items.c`** — ~56 pickups: 3 mana, 4 armor, 11 keys, artifacts, 17 puzzle pieces,
+  9 class weapon pieces. They appear with correct art; effects are minimal (health→`P_GiveBody`,
+  armor→`P_GiveArmor`, the rest cosmetic) since there's no Hexen class/mana/key subsystem.
+  Touch handled by `P_TouchHexenItem` (dispatched in `p_inter.c`).
+- **`hexen_mon.c`** — 11 combatants: Chaos Serpent 2, buried Wraith, and the bosses
+  **Korax** (`MT_XKORAX`, bone-pop death scattering spirits, lightning column, 6-shot missile
+  fan) and the **Heresiarch** (`MT_XHERESIARCH`) + their projectiles. The bosses are
+  faithful-as-feasible: the ACS ritual, Korax's TID teleports, and the Heresiarch's three
+  orbiting Sorcerer Balls are dropped (this engine has no `mobj_t.special1/args`/ACS) — they
+  chase and cast direct spell volleys with the real death sequences. MASH/Disc-of-Repulsion
+  chunk duplicates and the Fighter/Cleric/Mage class-bosses are skipped (need weapon FX).
+
+All summonable by name (`summon korax`, `summon heresiarch`, `summon barrel`, …) via
+`Hexen_TypeByName` chaining `Hexen_Mon_TypeByName`/`Hexen_ItemTypeByName`. Native Hexen sprite
+codes are registered directly (5 collide with DOOM and are aliased, like the `X*` monster
+sprites); the art renders when a Hexen sprite WAD is loaded, else the actors spawn invisibly.
 
 ### Poison cloud + poison damage-over-time
 

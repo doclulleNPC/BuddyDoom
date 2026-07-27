@@ -90,7 +90,38 @@ char *sprnames_builtin[NUMSPRITES] = {
     "HMS1","HMS2","HWTR","HHCO","HKG1","HKGB","HKGG","HKGY",
     "HVLC","HVFB","HVTF","HXPL","HSFF","HTGL","HTLE",
     // (H) Heretic monster-variant sprites (files/heretic_mvar.c) -- H* codes remapped
-    "HMUF","HKRX","HIMB","HSR1","HS1B"
+    "HMUF","HKRX","HIMB","HSR1","HS1B",
+    // (X) Hexen decoration/scenery sprites (files/hexen_deco.c) -- native codes, 5 aliased
+    "BARL","BBLL","BCKT","BDPL","BDRP","BDSH",
+    "BNR1","BRTR","ZCAN","CDLR","CDRN","CHNS",
+    "CNDL","CPB1","CPB2","CPB3","CPB4","CPS1",
+    "CPS2","CPS3","CPS4","CPS5","CPS6","FBUL",
+    "FFLG","FFSM","FSKL","GAR1","GAR2","GAR3",
+    "GAR4","GAR5","GAR6","GAR7","GAR8","GAR9",
+    "ICM1","ICM2","ICM3","ICM4","ICT1","ICT2",
+    "ICT3","ICT4","IRON","LEF1","LEF2","LEF3",
+    "LOGG","MSH1","MSH2","MSH3","MSH4","MSH5",
+    "MSH6","MSH7","MSH8","MSS1","MSS2","PBIT",
+    "POT1","POT2","POT3","RBL1","RBL2","RBL3",
+    "RCK1","RCK2","RCK3","RCK4","RKBK","RKBL",
+    "RKBS","ZRCK","SGM1","SGM2","SGM3","SGMP",
+    "SHB1","SHB2","SLC1","SLC2","SLC3","STM1",
+    "STM2","STM3","STM4","STT2","STT3","STT4",
+    "STT5","STWN","ZSUI","SWMV","TMS1","TMS2",
+    "TMS3","TMS4","TMS5","TMS6","TMS7","TRDT",
+    "ZTR1","ZTR2","TRE3","TRE4","TRE5","TRE6",
+    "TRE7","TSMK","TST0","TST1","TST2","TST3",
+    "TST4","TST5","TST6","TST7","TST8","TST9",
+    "TWTR","VASE","WLTR","XMAS",
+    // (X) Hexen item/pickup/puzzle sprites (files/hexen_items.c) -- native codes
+    "MAN1","MAN2","MAN3","ARM3","ARM4",
+    "KEY1","KEY2","KEY3","KEY4","KEY5","KEY6","KEY7","KEY8","KEY9","KEYA","KEYB",
+    "PTN2","TELO","SPED","BMAN","BRAC","BLST","HRAD",
+    "ASKU","ABGM","AGMR","AGMG","AGG2","AGMB","AGB2","ABK1","ABK2","ASK2",
+    "AFWP","ACWP","AMWP","AGER","AGR2","AGR3","AGR4",
+    "WFR1","WFR2","WFR3","WCH1","WCH2","WCH3","WMS1","WMS2","WMS3",
+    // (X) Hexen monster/boss sprites (files/hexen_mon.c) -- native codes
+    "DEM2","D2FX","KORX","MLFX","SPIR","SORC","SBS1","SBS2","SBS3","SBS4"
 };
 
 

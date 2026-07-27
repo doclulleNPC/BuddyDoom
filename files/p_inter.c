@@ -49,6 +49,7 @@ rcsid[] = "$Id: p_inter.c,v 1.4 1997/02/03 22:45:11 b1 Exp $";
 #include "p_invent.h"		// (J) artifact inventory pickups/use
 #include "p_inv_heretic.h"	// (H) Heretic artifact pickups
 #include "heretic_items.h"	// (H) map-placeable Heretic item pickups
+#include "hexen_items.h"	// (X) map-placeable Hexen item/puzzle pickups
 
 #include "s_sound.h"
 
@@ -452,6 +453,20 @@ P_TouchSpecialThing
     // sprites with no DOOM-sprite case, so they'd otherwise hit the I_Error
     // default.  EFFECTS are out of scope (see files/heretic_items.c).
     if (P_TouchHereticItem (player, special))
+    {
+	if (special->flags & MF_COUNTITEM)
+	    player->itemcount++;
+	P_RemoveMobj (special);
+	player->bonuscount += BONUSADD;
+	if (player == &players[consoleplayer])
+	    S_StartSound (NULL, sound);
+	return;
+    }
+
+    // (X) Map-placeable Hexen item (MT_Z* mana/keys/armor/artifacts/puzzle/weapon
+    // pieces): handled by mobjtype before the sprite switch, same as the Heretic
+    // path.  EFFECTS out of scope (see files/hexen_items.c).
+    if (P_TouchHexenItem (player, special))
     {
 	if (special->flags & MF_COUNTITEM)
 	    player->itemcount++;

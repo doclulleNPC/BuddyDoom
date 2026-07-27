@@ -25,6 +25,7 @@
 #include "p_mobj.h"
 #include "r_state.h"		// sprites[] -- presence test by parsed sprite, not lump name
 #include "hexen.h"
+#include "hexen_items.h"	// Hexen_ItemTypeByName -- chained into Hexen_TypeByName
 
 extern state_t *states;
 extern mobjinfo_t *mobjinfo;
@@ -942,6 +943,48 @@ int Hexen_TypeByName (const char* name)
     if (!strcmp (name, "stalkerboss") || !strcmp (name, "serpentleader")) return MT_XSTALKERBOSS;
     if (!strcmp (name, "stalker")) return MT_XSTALKER;
     if (!strcmp (name, "wyvern") || !strcmp (name, "dragon") || !strcmp (name, "deathwyvern")) return MT_XDRAGON;
+    // (X) wave-2 monsters/bosses (files/hexen_mon.c): korax, heresiarch, demon2, wraithb
+    { int t = Hexen_Mon_TypeByName (name); if (t >= 0) return t; }
+    // (X) items/pickups/puzzle pieces (files/hexen_items.c)
+    { int t = Hexen_ItemTypeByName (name); if (t >= 0) return t; }
+    // (X) decorations / scenery (files/hexen_deco.c)
+    if (!strcmp (name, "barrel")) return MT_XZBARREL;
+    if (!strcmp (name, "bucket")) return MT_XZBUCKET;
+    if (!strcmp (name, "cauldron")) return MT_XZCAULDRON;
+    if (!strcmp (name, "firebull")) return MT_XZFIREBULL;
+    if (!strcmp (name, "brasstorch")) return MT_XZBRASSTORCH;
+    if (!strcmp (name, "firething")) return MT_XZFIRETHING;
+    if (!strcmp (name, "walltorch")) return MT_XZWALLTORCH;
+    if (!strcmp (name, "twinedtorch")) return MT_XZTWINEDTORCH;
+    if (!strcmp (name, "bluecandle")) return MT_XZBLUECANDLE;
+    if (!strcmp (name, "candle")) return MT_XZCANDLE;
+    if (!strcmp (name, "chandelier")) return MT_XZCHANDELIER;
+    if (!strcmp (name, "ironmaiden")) return MT_XZIRONMAIDEN;
+    if (!strcmp (name, "bell")) return MT_XZBELL;
+    if (!strcmp (name, "xmastree")) return MT_XZXMASTREE;
+    if (!strcmp (name, "suitofarmor") || !strcmp (name, "armor")) return MT_XZSUITOFARMOR;
+    if (!strcmp (name, "shrub")) return MT_XZSHRUB1;
+    if (!strcmp (name, "shrub2")) return MT_XZSHRUB2;
+    if (!strcmp (name, "treedestructible") || !strcmp (name, "bustabletree")) return MT_XZTREEDESTRUCTIBLE;
+    if (!strcmp (name, "pottery")) return MT_XZPOTTERY1;
+    if (!strcmp (name, "pottery2")) return MT_XZPOTTERY2;
+    if (!strcmp (name, "pottery3")) return MT_XZPOTTERY3;
+    if (!strcmp (name, "wingedstatue")) return MT_XZWINGEDSTATUE;
+    if (!strcmp (name, "bloodpool")) return MT_XZBLOODPOOL;
+    if (!strcmp (name, "leafspawner")) return MT_XZLEAFSPAWNER;
+    if (!strcmp (name, "telesmoke")) return MT_XZTELESMOKE;
+    if (!strcmp (name, "flamesmall")) return MT_XZFLAMESMALL;
+    if (!strcmp (name, "flamelarge")) return MT_XZFLAMELARGE;
+    if (!strcmp (name, "corpsesitting")) return MT_XZCORPSESITTING;
+    if (!strcmp (name, "lynchedcorpse")) return MT_XZLYNCHEDNOHEART;
+    if (!strcmp (name, "bridge")) return MT_XZBRIDGE;
+    if (!strcmp (name, "statue")) return MT_XZGARGGREENTALL;
+    if (!strcmp (name, "tree")) return MT_XZTREE;
+    if (!strcmp (name, "log")) return MT_XZLOG;
+    if (!strcmp (name, "stalagmite")) return MT_XZSTALAGMITELARGE;
+    if (!strcmp (name, "stalactite")) return MT_XZSTALACTITELARGE;
+    if (!strcmp (name, "mushroom")) return MT_XZSHROOMLARGE1;
+    if (!strcmp (name, "vase")) return MT_XZVASEPILLAR;
     return -1;
 }
 
