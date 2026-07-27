@@ -72,7 +72,6 @@ rcsid[] = "$Id: g_game.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #include "g_game.h"
 #include "g_agent.h"		// G_AgentActive/BuildTiccmd -- full agent/LLM player control
 #include "p_ai_coop.h"		// P_AICoop_Slot (skip consistency check for the buddy)
-#include "p_buddydef.h"		// ...and the same orders for a BUDDYDEF mobj companion
 #include "p_turret.h"		// P_TurretDeploy (key_turret hotkey)
 #include "p_invent.h"		// (J) artifact inventory scroll/use
 #include "p_ai_llm.h"		// P_AI_NetService (service director socket every gamestate)
@@ -718,23 +717,15 @@ boolean G_Responder (event_t* ev)
 	// themselves report "(no companion)" when no buddy is active.
 	if (gamestate == GS_LEVEL)
 	{
-	    // A BUDDYDEF mobj companion (Buddy menu slot > 0) replaces the player-2
-	    // marine, so the P_AICoop_* orders would all answer "(no companion)".  When
-	    // one is out there the same keys drive it via p_buddydef.c.
-	    mobj_t* bmo = P_Buddy_Mobj ();
-
 	    if (ev->data1 == key_buddy_attack)
-	    { players[consoleplayer].message = (char*)
-		  (bmo ? P_Buddy_Attack () : P_AICoop_Attack ()); return true; }
+	    { players[consoleplayer].message = (char*) P_AICoop_Attack (); return true; }
 	    if (ev->data1 == key_buddy_come)
-	    { players[consoleplayer].message = bmo ? (char*) P_Buddy_Summon ()
-		  : (P_AICoop_Summon () ? "[Buddy] On my way!" : "[Buddy] (no companion)"); return true; }
+	    { players[consoleplayer].message =
+		  P_AICoop_Summon () ? "[Buddy] On my way!" : "[Buddy] (no companion)"; return true; }
 	    if (ev->data1 == key_buddy_stay)
-	    { players[consoleplayer].message = (char*)
-		  (bmo ? P_Buddy_Wait () : P_AICoop_Wait ()); return true; }
+	    { players[consoleplayer].message = (char*) P_AICoop_Wait (); return true; }
 	    if (ev->data1 == key_buddy_mode)
-	    { players[consoleplayer].message = (char*)
-		  (bmo ? P_Buddy_ToggleMode () : P_AICoop_ToggleMode ()); return true; }
+	    { players[consoleplayer].message = (char*) P_AICoop_ToggleMode (); return true; }
 	    // Deploy a sentry turret in front of the player (costs 25 shells or 50 bullets).
 	    if (ev->data1 == key_turret)
 	    { players[consoleplayer].message = (char*) P_TurretDeploy (&players[consoleplayer]); return true; }

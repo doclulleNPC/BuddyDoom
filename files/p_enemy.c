@@ -44,7 +44,6 @@ rcsid[] = "$Id: p_enemy.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 #include "r_state.h"
 
 #include "p_ai_llm.h"
-#include "p_buddydef.h"	// P_Buddy_Recalled / P_Buddy_Held -- console orders for a mobj buddy
 
 // Data.
 #include "sounds.h"
@@ -983,11 +982,14 @@ void A_Chase (mobj_t*	actor)
 
 
 //
-// Buddy codepointers (BuddyDoom): turn any MF_FRIEND actor into a co-op companion.
+// Friendly-actor codepointers (BuddyDoom): turn any MF_FRIEND actor into an escort.
 // A modder builds a normal DEHACKED/DECOHack actor but uses A_BuddyLook in Spawn and
 // A_BuddyChase in See -- then it hunts enemy monsters like a friend AND follows the
-// human when there is nothing to fight.  (The hardcoded player-2 marine buddy is
-// unaffected; this is the data-driven, modder-definable buddy path -- e.g. "Frank".)
+// human when there is nothing to fight.
+//
+// These are for DEHACKED-authored actors only.  The co-op BUDDY is player 2 and runs
+// on the bot in p_ai_coop.c -- it takes no orders from here, and neither does an actor
+// using these pointers: a monster has no player_t to be ordered, revived or HUD'd.
 //
 #define BUDDY_FOLLOW_DIST	(160*FRACUNIT)	// stay within this of the human when idle
 
@@ -1028,16 +1030,6 @@ static void A_BuddyFollow (mobj_t* self)
 // logic; if there is none, follow the human.
 void A_BuddyChase (mobj_t* self)
 {
-    // Console orders (only ever set for the selected mobj buddy, see p_buddydef.c):
-    // "wait" pins it where it stands, "come" makes it break off and pad back to you.
-    if (self == P_Buddy_Mobj ())
-    {
-	if (P_Buddy_Held ())
-	    return;
-	if (P_Buddy_Recalled ())
-	    { self->target = NULL; A_BuddyFollow (self); return; }
-    }
-
     if (!self->target
 	|| self->target->health <= 0
 	|| !(self->target->flags & MF_SHOOTABLE)

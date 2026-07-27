@@ -3,7 +3,14 @@
 BuddyDoom lets modders add selectable co-op **buddies** with no external toolchain.
 Drop a `BUDDYDEF` text lump into a WAD (plus the buddy's sprites and sounds) and it
 shows up in **Main Menu → Buddy** (a Hexen-style select screen) and can be chosen as
-your companion. The engine builds the whole friendly actor for you.
+your companion.
+
+> **Status:** a buddy is **always player 2** — that is how it inherits door use,
+> orders, the HUD, revive, the pathfinder and weapons from the co-op bot. The old path
+> (generating a standalone monster actor from your record) is gone. Applying a record
+> to player 2 is in progress: your buddy is listed, previewed and its `ability` runs,
+> but the body is still the Marine's for now. See
+> [`../docs/BUDDY_MODDING.md`](../docs/BUDDY_MODDING.md).
 
 There are two formats here; pick one:
 
@@ -12,9 +19,9 @@ There are two formats here; pick one:
 | `frank.buddydef` | **native BUDDYDEF** — read straight from the WAD | **No** |
 | `frank.dh` | DECOHack source (→ DEHACKED) | Yes (DoomTools `decohack`) |
 
-The native `BUDDYDEF` route is the recommended one — no `decohack`, and it carries the
-name/description the select screen shows. Use `frank.dh` only if you want a full
-DECOHack actor with custom states.
+`BUDDYDEF` is the buddy format. `frank.dh` is something else: a DECOHack **friendly
+actor** using the `A_BuddyLook`/`A_BuddyChase` code pointers — a monster that walks
+with you and shoots things, with no orders, no HUD and no menu entry.
 
 ## The BUDDYDEF format
 
@@ -32,24 +39,23 @@ buddy {
   height      64
   mass        1000
   painchance  100                   # 0-255
-  attack      baron                 # see list below
+  color       green                 # default colour on the Buddy screen
   seesound    FRANKN                # DS-lump suffix -> dsfrankn (blank = silent)
   painsound   FRANKN
   deathsound  FRANKN
   activesound FRANKN
-  ednum       30001                 # optional DoomEd number (also map-placeable)
+  special     "Tanky bruiser"       # blurb on the Buddy screen
+  ability     poisoncloud           # none | drone | poisoncloud | turret
 }
 ```
 
-**`attack`** picks the fire behaviour (all reuse stock projectiles, so nothing else is
-needed): `baron`, `imp`, `poss`, `spos`, `cpos`, `sarg`/`melee`, `head`, `skel`,
-`fatt`, `bspi`, or `none` (pacifist follower).
+`attack` and `ednum` are still accepted but no longer do anything: player 2 fights with
+weapons and cannot be placed in a map.
 
-**Sprite frames** follow the standard DOOM monster convention — the engine builds all
-states from them: `A`–`B` idle, `A`–`D` walk, `E`–`G` attack, `H` pain, `I`–`O` death.
-So a full sheet is `SPRTA1..SPRTO1` (+ rotations). BuddyDoom injects `A_BuddyLook`
-(spawn) and `A_BuddyChase` (see) — a friendly actor that fights the nearest enemy and
-otherwise follows you.
+**Sprite frames** follow the standard DOOM monster convention: `A`–`B` idle, `A`–`D`
+walk, `E`–`G` attack, `H` pain, `I`–`O` death — a full sheet is `SPRTA1..SPRTO1`
+(+ rotations). Frame `A` is what the select screen previews; the rest is what the
+pending player-skin remap expects.
 
 ## Sprites: Doom patch **or** PNG
 
@@ -67,16 +73,18 @@ To try the buddy system immediately with **stock IWAD art**, point `sprite` at a
 already in your IWAD, e.g. `sprite BOSS` (Baron of Hell) or `sprite TROO` (Imp).
 
 See **[`../docs/BUDDY_MODDING.md`](../docs/BUDDY_MODDING.md)** for the full field
-reference, attack-style table, and packaging guide.
+reference and packaging guide.
 
 ## How selection works
 
 - Roster slot **0** is always the built-in **Marine** (the hard-coded player-2 buddy) —
   unchanged default.
 - Slots **1..N** are your `BUDDYDEF` buddies.
-- Choosing a `BUDDYDEF` buddy replaces the marine: it spawns beside you at the start of
-  each level and follows/fights via the friendly AI. Persisted as `buddy_select` in
-  `run/buddydoom.cfg`; takes effect from the next level.
+- Slots **1..N** are your `BUDDYDEF` buddies. The choice is persisted as
+  `buddy_select` in `run/buddydoom.cfg`.
+- Whichever is selected, the companion is **player 2**, spawned by the normal co-op
+  path. During the transition a modder selection prints a notice at startup and you
+  play with the Marine's body; the selected buddy's `ability` still runs.
 
 ```
 buddydoom -iwad DOOM2.WAD -file yourbuddy.wad   # then Main Menu -> Buddy

@@ -162,7 +162,7 @@ void P_Ticker (void)
 	P_Director_Ticker ();	// vanilla: the L4D director's spawns would desync a recorded demo
     P_MorphTicker ();		// (M) age morph timers; restore expired morphs
     RevMarine_Ticker ();	// (G) revived marines heal +1 HP/sec up to 100
-    P_Buddy_AbilityTicker ();	// BUDDYDEF `ability`: the mobj companion's special power
+    P_Buddy_AbilityTicker ();	// BUDDYDEF `ability`: the buddy's special power
 
     P_RunThinkers ();
     P_UpdateSpecials ();

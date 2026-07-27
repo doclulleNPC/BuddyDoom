@@ -17,7 +17,41 @@ it in a WAD with your sprites and sounds, and it appears in **Main Menu → Budd
 
 ---
 
+## ⚠ Status: the buddy is becoming player 2
+
+A modder buddy used to be built as its own **actor** — BuddyDoom generated a 29-state
+monster from your record and spawned it beside you. That was a dead end: a monster
+cannot open a door, cannot be ordered, cannot be revived and has no HUD, so every one
+of those features had to be re-implemented for it, badly.
+
+The rule now is: **a buddy is always player 2.** That is the marine bot's slot, so a
+buddy inherits door use, orders, the HUD strip, the automap marker, revive, the
+pathfinder, weapons, pickups and savegame support without a line of duplicate code.
+
+**What that means for your `BUDDYDEF` today:** the actor path is gone; applying your
+record's properties to player 2 is the work in progress. Right now a record is a
+**roster entry** — your buddy is listed on the Buddy screen with its name,
+description, preview sprite, colour and stats, and its `ability` runs — but the body
+you get in-game is still the Marine's. Every key below is parsed and kept, so a lump
+you write today stays valid; the columns marked *(pending)* are the ones that don't
+reach the game yet. Design and remaining steps: [`BUDDYDEF.md`](BUDDYDEF.md).
+
+---
+
 ## Quick start (3 steps)
+
+> Or skip the text editor: **`run/mybuddy`** is a small SDL3 app that does all of this
+> for you — open (or create) a WAD, add/duplicate/delete buddy records, edit every key
+> with pickers for the values the engine actually knows, watch the `BUDDYDEF` text it
+> will write in a live preview, and save. It colour-codes each key by whether it
+> reaches the game today, so you can see at a glance what is worth tuning.
+>
+> It also edits the **WAD** itself — import a file as a lump, export, rename, delete —
+> and puts imported art straight into the sprite namespace, so step 2 below is a button
+> rather than a trip through SLADE. A **sprite preview** shows frame A of your buddy's
+> art (Doom patch or PNG) as the engine will see it, which catches a wrong `sprite` base
+> or a sprite outside `S_START`/`S_END` before you launch the game.
+> `mybuddy --check yourbuddy.wad` prints the same report on the console.
 
 1. Make a text lump named **`BUDDYDEF`** describing your buddy (see below).
 2. Add your buddy's **sprites** (Doom patch *or* PNG) and **sounds** to the same WAD.
@@ -50,37 +84,42 @@ buddy {
   height      64
   mass        1000                  # higher = harder to knock back
   painchance  100                   # 0–255 chance to flinch when hit
-  attack      baron                 # attack style, see table below
+  color       green                 # default colour on the Buddy screen
   seesound    FRANKN                # name of the sound lump (blank = silent)
   painsound   FRANKN
   deathsound  FRANKN
   activesound FRANKN
-  ednum       30001                 # OPTIONAL DoomEd number (also map-placeable)
+  special     "Tanky bruiser"       # blurb shown on the Buddy screen
+  ability     poisoncloud           # NAMED power: none | drone | poisoncloud | turret
 }
 ```
 
 ### Fields
 
-| Key | Meaning | Default |
-|-----|---------|---------|
-| `name` | Display name (Buddy menu) | `Buddy` |
-| `desc` / `about` / `info` | Description (wrapped) | *(empty)* |
-| `sprite` | 4-char sprite base name | `PLAY` |
-| `health` / `hp` | Spawn health | `200` |
-| `speed` | Move speed, map units | `8` |
-| `radius` | Collision radius, map units | `20` |
-| `height` | Collision height, map units | `56` |
-| `mass` | Knockback resistance | `100` |
-| `painchance` | Flinch chance, 0–255 | `120` |
-| `reactiontime` / `reaction` | Tics before reacting to a target | `8` |
-| `attack` | Attack style (table below) | `melee` |
-| `special` / `abilities` | Free-text blurb (shown on the Buddy screen) | *(empty)* |
-| `ability` | **Named** special ability the buddy actually uses (table below) | `none` |
-| `seesound` | Wake-up sound (lump name) | *(none)* |
-| `painsound` | Hurt sound | *(none)* |
-| `deathsound` | Death sound | *(none)* |
-| `activesound` | Idle grunt | *(none)* |
-| `ednum` / `doomednum` | Map editor number | `-1` (not map-placed) |
+| Key | Meaning | Default | Live? |
+|-----|---------|---------|-------|
+| `name` | Display name (Buddy menu) | `Buddy` | yes |
+| `desc` / `about` / `info` | Description (wrapped) | *(empty)* | yes |
+| `sprite` | 4-char sprite base name | `PLAY` | select-screen preview; as the in-game skin *(pending)* |
+| `color` / `colour` | Default menu colour: `Green Gray Brown Red Blue Orange Purple White`, or 0–7 | *(none)* | yes |
+| `special` / `abilities` | Free-text blurb (shown on the Buddy screen) | *(empty)* | yes |
+| `ability` | **Named** special ability the buddy actually uses (table below) | `none` | yes |
+| `health` / `hp` | Spawn health | `200` | shown on the stats panel; on the body *(pending)* |
+| `speed` | Move speed, map units | `8` | as above *(pending)* — becomes a ticcmd speed, players don't use `info->speed` |
+| `radius` | Collision radius, map units | `20` | as above *(pending)* |
+| `height` | Collision height, map units | `56` | as above *(pending)* |
+| `mass` | Knockback resistance | `100` | as above *(pending)* |
+| `painchance` | Flinch chance, 0–255 | `120` | as above *(pending)* |
+| `reactiontime` / `reaction` | Tics before reacting to a target | `8` | as above *(pending)* |
+| `seesound` | Wake-up sound (lump name) | *(none)* | *(pending)* |
+| `painsound` | Hurt sound | *(none)* | *(pending)* |
+| `deathsound` | Death sound | *(none)* | *(pending)* |
+| `activesound` | Idle grunt | *(none)* | *(pending)* |
+| `attack` | Attack style (table below) | `melee` | **retired** — player 2 fights with weapons |
+| `ednum` / `doomednum` | Map editor number | `-1` | **retired** — a player is not map-placeable |
+
+The two **retired** keys are still accepted so old lumps load without complaint;
+they no longer do anything. `attack` is expected to be replaced by a weapon loadout.
 
 The **Buddy select screen** (Options → Buddy) is laid out in quarters over an animated
 lava backdrop:
@@ -105,7 +144,7 @@ for whichever buddy you have selected:
 | `none` (default) | No special power |
 | `poisoncloud` | Every 2 s, a cloud of gas around the buddy damages every enemy monster within 160 map units (4 damage, same-ish floor height) and puffs visible smoke. Players, other friendlies and corpses are never touched. |
 | `drone` | Deploys a friendly **Security Drone** (`MT_SECDRONE`, `p_secdrone.c`) when an enemy is within 1024 units and none of ours is already out; at most one per 20 s. |
-| `turret` | Tosses out a **sentry turret** exactly like the player's `key_turret` deploy (`MT_TURRET`, `p_turret.c`): spawned at the buddy, nudged forward so a wall can't swallow it, then thrown with a little arc. Same gate as the drone — an enemy within 1024 units, none of ours already out, at most one per 30 s. Costs no ammo (an mobj buddy has no inventory to spend, unlike the player's 50 bullets / 25 shells), so the cap and cooldown are the balance instead. |
+| `turret` | Tosses out a **sentry turret** exactly like the player's `key_turret` deploy (`MT_TURRET`, `p_turret.c`): spawned at the buddy, nudged forward so a wall can't swallow it, then thrown with a little arc. Same gate as the drone — an enemy within 1024 units, none of ours already out, at most one per 30 s. Costs no ammo, so the cap and cooldown are the balance instead. |
 
 An unknown value is refused at load time with a console warning and falls back to
 `none`, so a typo can't silently pretend the buddy has a power. All of them wait until
@@ -113,31 +152,24 @@ An unknown value is refused at load time with a console warning and falls back t
 
 The built-in **Marine** (roster slot 0) reports `ability drone`, which names behaviour it
 already had: `P_AICoop_MaybeSpawnDrone` deploys drones when it is under heavy fire,
-surrounded, or its ammo is capped. That path is the marine's own (it needs a `player_t`),
-so it is not driven by the ticker above.
+surrounded, or its ammo is capped. That is the bot's own path, so the ticker above stays
+out of the way while slot 0 is selected.
 
-### Attack styles
+The ability runs on **whatever body your buddy currently has**. The code takes a plain
+map object and never asks whether it is a player, so it needed no change when the actor
+path went away — during the transition that means: pick a modder buddy and you get the
+Marine's body with *your* buddy's power.
 
-Each `attack` maps to a stock DOOM attack (all reuse built-in projectiles, so you
-need nothing extra):
+### Attack styles *(retired)*
 
-| `attack` value(s) | Behaviour |
-|-------------------|-----------|
-| `baron`, `bruiser`, `hellknight`, `knight` | Claw up close, green plasma ball at range |
-| `imp`, `troop` | Claw or fireball |
-| `poss`, `zombie`, `pistol`, `zombieman` | Hitscan pistol |
-| `spos`, `shotgun`, `shotgunguy` | Hitscan shotgun spread |
-| `cpos`, `chaingun`, `chaingunner` | Hitscan chaingun |
-| `sarg`, `demon`, `melee`, `bite` | Melee bite (no projectile) |
-| `head`, `caco`, `cacodemon` | Cacodemon fireball |
-| `skel`, `revenant` | Homing missile |
-| `fatt`, `mancubus` | Mancubus fireballs |
-| `bspi`, `arachnotron` | Plasma |
-| `none` | Pacifist — follows but never attacks |
-
-Behaviour of every buddy: it hunts the **nearest enemy** and fights it; when no
-enemy is in reach it **follows you**. (Implemented by the `A_BuddyLook` /
-`A_BuddyChase` code pointers — see *Advanced* below.)
+`attack` used to pick a monster codepointer for the generated actor. Player 2 fights
+with **weapons**, so the key no longer does anything — it is still parsed (old lumps
+load fine) and still shown on the stats panel, and is expected to be replaced by a
+weapon loadout key. The values that remain accepted: `baron`/`bruiser`/`hellknight`/
+`knight`, `imp`/`troop`, `poss`/`zombie`/`pistol`/`zombieman`, `spos`/`shotgun`/
+`shotgunguy`, `cpos`/`chaingun`/`chaingunner`, `sarg`/`demon`/`melee`/`bite`,
+`head`/`caco`/`cacodemon`, `skel`/`revenant`, `fatt`/`mancubus`,
+`bspi`/`arachnotron`, `none`.
 
 ---
 
@@ -145,8 +177,8 @@ enemy is in reach it **follows you**. (Implemented by the `A_BuddyLook` /
 
 ### Frame naming
 
-Sprites follow the standard DOOM monster convention. For a 4-char base like `FRAN`,
-BuddyDoom builds all states from these frame letters:
+Author the sheet in the standard DOOM **monster** convention. For a 4-char base like
+`FRAN`:
 
 | Frames | Used for |
 |--------|----------|
@@ -155,11 +187,18 @@ BuddyDoom builds all states from these frame letters:
 | `E`, `F`, `G` | attacking |
 | `H` | pain |
 | `I`–`O` | death |
-| `O`…`I` (reverse) | resurrection (Arch-Vile / director revive) |
 
 So a full sheet is `FRANA1`, `FRANB1`, … `FRANO1` (plus rotations `FRANA2A8`, etc.,
 exactly like an IWAD monster). Put them between `S_START`/`S_END` **or**
-`SS_START`/`SS_END` markers.
+`SS_START`/`SS_END` markers. Frame `A` is what the Buddy select screen previews, so
+that one is needed even for a buddy you never see in-game yet.
+
+> **Why the convention will matter.** Player frames run `A`–`W` with different
+> meanings (`G` = pain, `H`–`N` = death, `O`–`W` = gibs) — a monster sheet dropped
+> straight onto player 2 would show the wrong frames when your buddy is hurt or dies.
+> Using a monster sheet as a player skin therefore needs a frame-remap table, which is
+> part of the pending skin work; keep authoring monster-convention sheets, they are
+> what the remap expects.
 
 ### Doom patch **or** PNG — both work
 
@@ -267,35 +306,32 @@ buddydoom -iwad DOOM2.WAD -file FRANK.wad my_frank_buddydef.wad
 
 ---
 
-## How selection & spawning works
+## How selection works
 
 - The **Buddy** menu lists roster slot **0 = Marine** (built-in) followed by every
   `BUDDYDEF` buddy found in the loaded WADs.
 - Picking a buddy stores its index as **`buddy_select`** in `run/buddydoom.cfg`.
-- Choosing a `BUDDYDEF` buddy **replaces the marine**: at the start of every level it
-  spawns beside you and follows/fights via the friendly AI. Choosing **Marine**
-  (slot 0) restores the built-in companion. The change takes effect from the next
-  level.
-- If you gave the buddy an `ednum`, mappers can also place it directly in a map with
-  a DoomEd editor.
+- A buddy is **player 2** — the co-op slot the marine bot drives (`p_ai_coop.c`). It is
+  spawned by the normal co-op path, not by anything in `BUDDYDEF`.
+- **During the transition**: selecting a modder buddy prints a one-line notice at
+  startup and you play with the Marine's body. Its `ability` does run. Everything else
+  the record declares is shown on the select screen and applied once the skin/stats
+  work lands.
 
 ### What the game shows and how you order it around
 
-A `BUDDYDEF` buddy is an **mobj**, not player 2 — `P_Buddy_SpawnSelected` switches the
-marine's co-op slot off. Since the HUD, the automap marker and the console orders were
-all keyed on that slot, they ask `P_Buddy_Mobj()` (`p_buddydef.c`) instead when it is
-empty, so a modder buddy is recognised just like the marine:
+Because the buddy *is* player 2, there is exactly one implementation of all of this —
+the marine bot's — and your buddy gets it:
 
-- **HUD strip** (top-right, config `show_buddy_hud`) — the buddy's **name**, `HP n/max`
-  coloured by percentage, and its state: `FOLLOWING` / `FIGHTING` / `HOLDING` /
-  `COMING` / `DOWN`. No armor/weapon/ammo/mugshot line: an mobj has none of those.
-- **Automap** — a yellow arrow (green when it is down), same as the marine's.
+- **HUD strip** (top of screen, config `show_buddy_hud`) — name, HP, armor, current
+  weapon and ammo, artifact inventory and the `BUF*` mugshot.
+- **Automap** — a yellow arrow, a green medkit cross while down.
 - **Console orders** — `where` (aliases `buddy`, `comp`), `report`/`status`,
-  `come`/`follow`, `wait`/`stay`, `attack`, and `buddyhome`/`buddytp` (warps it back to
-  your side; a mobj buddy has no map spawn point to return to). `come` makes it break
-  off and pad back to you for 8 seconds; `wait` toggles hold-position. `A_BuddyChase`
-  checks both each time it runs. `buddygod`/`buddyheal`/`buddyarm` are marine-player
-  powers and reply that they only work for the Marine.
+  `come`/`follow`, `wait`/`stay`, `attack`, `buddyhome`/`buddytp`, plus the
+  player-only powers `buddygod`/`buddyheal`/`buddyarm`/`buddygive`.
+- **Key binds** — `key_buddy_come` / `key_buddy_stay` / `key_buddy_attack` and the
+  `key_buddy_mode` toggle (right mouse button by default).
+- **Revive** — stand next to your downed buddy and press USE.
 
 ---
 
@@ -316,21 +352,24 @@ sprites go in the sprite namespace; sounds are `DS…` lumps.
 
 ---
 
-## Advanced: DECOHack / DEHACKED buddies
+## Advanced: DECOHack / DEHACKED friendly actors
 
-If you'd rather author a full actor in **DECOHack** (or hand-written DEHACKED),
-BuddyDoom exposes two code pointers that turn any friendly (`+FRIEND`) actor into a
-companion:
+Separately from `BUDDYDEF`, BuddyDoom exposes two code pointers that turn any friendly
+(`+FRIEND`) DECOHack/DEHACKED actor into an **escort**:
 
 - **`A_BuddyLook`** (spawn state) — acquire the nearest enemy, then go active.
 - **`A_BuddyChase`** (see state) — fight that enemy; when none, follow the human.
 
-See [`modding/frank.dh`](../modding/frank.dh) for a complete DECOHack buddy. If your
-DECOHack build doesn't know these pointer names, emit the frames with `A_NULL` and
-assign them in a BEX `[CODEPTR]` block — BuddyDoom parses `[CODEPTR]` and knows
-`BuddyLook` / `BuddyChase`. Note: DECOHack requires the `decohack` compiler; the
-native `BUDDYDEF` route above does not, and also carries the name/description the
-menu shows (DEHACKED does not), so `BUDDYDEF` is recommended for most modders.
+See [`modding/frank.dh`](../modding/frank.dh) for a complete example. If your DECOHack
+build doesn't know these pointer names, emit the frames with `A_NULL` and assign them
+in a BEX `[CODEPTR]` block — BuddyDoom parses `[CODEPTR]` and knows `BuddyLook` /
+`BuddyChase`.
+
+> This is **not** the buddy path. Such an actor is a friendly monster: it walks with
+> you and shoots things, and that is all. It takes no orders, has no HUD strip or
+> automap marker, cannot open a door, cannot be revived and does not appear in the
+> Buddy menu — because those all belong to a `player_t`, and it hasn't got one. If you
+> want a companion, write a `BUDDYDEF` record.
 
 ---
 
@@ -344,11 +383,16 @@ menu shows (DEHACKED does not), so `BUDDYDEF` is recommended for most modders.
   sprites for exact control.
 - **No sound.** Sound fields take the DS-suffix (`FRANKN`, not `DSFRANKN`), and the
   `DS…` lump (or a stock IWAD sound) must be present.
-- **Buddy doesn't appear in-game after selecting.** Selection applies from the next
-  level — start a new game or change level. Buddies are disabled in `-vanilla`, in
-  netgames, and during demo playback.
-- **Attack does nothing.** `attack none` never fires; otherwise verify the value is
-  in the attack table.
+- **I selected my buddy and got the Marine.** Expected during the transition — see
+  the status box at the top. The startup console says so explicitly:
+  `P_Buddy: '<name>' selected -- BUDDYDEF buddies are being ported to the player-2
+  path; the Marine is your companion for now.`
+- **No buddy at all on this map.** The co-op slot needs a `Player_2_Start` thing; a
+  map without one disables the buddy and says so on the console. (Spawning player 2
+  beside player 1 when the map has no co-op start is part of the pending work.)
+  Buddies are also disabled in `-vanilla`, in netgames and during demo playback.
+- **My buddy isn't in the menu.** The record is skipped when its `sprite` base has no
+  art: `Buddy: '<name>' skipped -- sprite XXXX not found in WADs.`
 
 See also: [`modding/README.md`](../modding/README.md), and for the renderer's PNG
 handling, `docs/LEGACY_FIXES.md` (§17).

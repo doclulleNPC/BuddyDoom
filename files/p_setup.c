@@ -1201,13 +1201,6 @@ P_SetupLevel
     // level instead of silently failing.
     P_AICoop_VerifySpawn ();
 
-    // Buddy menu: if the human picked a BUDDYDEF mobj buddy (config buddy_select > 0),
-    // it replaces the marine as the companion -- spawn it beside player 1 now.
-    {
-	extern void P_Buddy_SpawnSelected (void);
-	P_Buddy_SpawnSelected ();
-    }
-
     // build subsector connect matrix
     //	UNUSED P_ConnectSubsectors ();
 

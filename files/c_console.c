@@ -43,7 +43,6 @@
 
 #include "c_console.h"
 #include "p_ai_coop.h"		// companion commands (where/come/wait/attack/report)
-#include "p_buddydef.h"		// ...same commands for a BUDDYDEF mobj companion
 #include "p_invent.h"		// (J) givearti console command
 #include "p_ai_llm.h"		// director on/off toggle
 
@@ -294,15 +293,7 @@ static int C_MobjByName (const char* s)
 	    if (d >= 0) return d;
 	}
     }
-    // Modder buddies by name (BUDDYDEF), e.g. "summon frank".
-    if (s[0])
-    {
-	extern int P_Buddy_TypeByName (const char* s);
-	int b = P_Buddy_TypeByName (s);
-	if (b >= 0) return b;
-    }
-    // Numeric arg -> editor number: summon ANY DEHACKED/BUDDYDEF thing by its ednum
-    // (e.g. "summon 30001" for Frank).
+    // Numeric arg -> editor number: summon ANY DEHACKED thing by its ednum.
     if (s[0] >= '0' && s[0] <= '9')
     {
 	extern mobjinfo_t* mobjinfo;
@@ -737,31 +728,6 @@ static void C_Execute (char* line)
 	if (Heretic_Available ())
 	    C_Printf ("Heretic: mummy clink gargoyle knight");
 	C_Printf ("spawn with: summon | summonfriend | summonfoe <name>");
-    }
-    // A BUDDYDEF mobj companion (Buddy menu slot > 0) replaces the player-2 marine,
-    // so every P_AICoop_* order below would report "no companion".  When one is out
-    // there, the same commands drive it through the p_buddydef.c equivalents.
-    else if (P_Buddy_Mobj ()
-	     && (!strcmp(cmd,"where") || !strcmp(cmd,"buddy") || !strcmp(cmd,"comp")
-	      || !strcmp(cmd,"come")  || !strcmp(cmd,"follow")
-	      || !strcmp(cmd,"wait")  || !strcmp(cmd,"stay")
-	      || !strcmp(cmd,"attack")
-	      || !strcmp(cmd,"report")|| !strcmp(cmd,"status")
-	      || !strcmp(cmd,"buddyhome") || !strcmp(cmd,"buddytp")
-	      || !strcmp(cmd,"buddygod")  || !strcmp(cmd,"buddyheal")
-	      || !strcmp(cmd,"buddyhp")   || !strcmp(cmd,"buddyarm")
-	      || !strcmp(cmd,"buddygive")))
-    {
-	if      (!strcmp(cmd,"come")  || !strcmp(cmd,"follow"))	C_Printf ("%s", P_Buddy_Summon ());
-	else if (!strcmp(cmd,"wait")  || !strcmp(cmd,"stay"))	C_Printf ("%s", P_Buddy_Wait ());
-	else if (!strcmp(cmd,"attack"))				C_Printf ("%s", P_Buddy_Attack ());
-	else if (!strcmp(cmd,"report")|| !strcmp(cmd,"status"))	C_Printf ("%s", P_Buddy_StatusReport ());
-	else if (!strcmp(cmd,"buddyhome") || !strcmp(cmd,"buddytp"))
-								C_Printf ("%s", P_Buddy_Warp ());
-	else if (!strcmp(cmd,"where") || !strcmp(cmd,"buddy") || !strcmp(cmd,"comp"))
-								C_Printf ("%s", P_Buddy_Report ());
-	else	// god / heal / arm are marine-player powers; a mobj buddy has none
-	    C_Printf ("[Buddy] (%s only works for the Marine buddy)", cmd);
     }
     else if (!strcmp(cmd, "where") || !strcmp(cmd, "buddy") || !strcmp(cmd, "comp"))
     {

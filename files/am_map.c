@@ -43,7 +43,6 @@ static const char rcsid[] = "$Id: am_map.c,v 1.4 1997/02/03 21:24:33 b1 Exp $";
 // State.
 #include "doomstat.h"
 #include "p_ai_coop.h"	// P_AICoop_Slot -- draw the buddy on the automap
-#include "p_buddydef.h"	// P_Buddy_Mobj -- ...and the BUDDYDEF mobj companion
 #include "r_state.h"
 
 // Data.
@@ -1376,15 +1375,6 @@ void AM_drawPlayers(void)
 	// (incapacitated) so the player can still find him to revive.
 	{
 	    int bs = P_AICoop_Slot ();
-	    // BUDDYDEF mobj companion: it is not a player, so the marine slot is off --
-	    // mark it with the same yellow arrow (p_buddydef.c).
-	    {
-		mobj_t* bm = (bs < 0 || !playeringame[bs]) ? P_Buddy_Mobj () : NULL;
-		if (bm)
-		    AM_drawLineCharacter
-			(player_arrow, NUMPLYRLINES, 0, bm->angle,
-			 bm->health > 0 ? YELLOWS : GREENS, bm->x, bm->y);
-	    }
 	    if (bs >= 0 && playeringame[bs] && players[bs].mo)
 	    {
 		if (players[bs].playerstate == PST_LIVE)

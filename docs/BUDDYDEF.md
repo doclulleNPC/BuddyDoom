@@ -1,9 +1,31 @@
 # BUDDYDEF — the buddy template
 
-**Status: design document.** This describes what a `BUDDYDEF` record *must* be able to
-express so that a modder buddy is a first-class companion. It is written against the
-code as it stands; nothing here is implemented yet. `docs/BUDDY_MODDING.md` documents
-the format as it exists **today**.
+**Status: design document, being executed.** This describes what a `BUDDYDEF` record
+*must* be able to express so that a modder buddy is a first-class companion.
+`docs/BUDDY_MODDING.md` documents the format as it exists **today**.
+
+**Decided:** a buddy is **always player 2**, so it inherits the whole co-op bot
+(`p_ai_coop.c`) instead of re-implementing it. One buddy at a time. That answers §6's
+"what happens to the standalone-actor path?": it is **gone**. Removed with it —
+
+- the generated 29-state actor + mobjtype per record (`Buddy_Register`), the `attack`
+  codepointer table and the BUDDYDEF sound registration (`p_buddydef.c`);
+- `P_Buddy_SpawnSelected`, the thinker-list lookup `P_Buddy_Mobj` and the duplicate
+  order commands (`come`/`wait`/`attack`/`report`/`where`/`buddyhome`/mode toggle) that
+  existed only because an mobj buddy had no `player_t`;
+- the mobj branches in the HUD (`hu_buddy.c`), the automap (`am_map.c`), the console
+  (`c_console.c`) and the key binds (`g_game.c`) — the marine bot's implementations are
+  now the only ones;
+- `summon <buddyname>` and map placement by `ednum` (both needed a real mobjtype).
+
+Kept: the parser and the roster (the select screen reads it), the preview sprite, and
+the three `ability` mechanics — that code takes a plain `mobj_t*` and never asks whether
+it is a player, so it runs on the buddy's player body unchanged.
+
+**Remaining steps**, in order: (1) parser declared-mask + correct Marine defaults (§5),
+(2) spawn player 2 when the map has no `Player_2_Start`, (3) skin + frame remap (§4.3,
+§6), (4) stats incl. the `G_PlayerReborn` hook (§3), (5) per-buddy behaviour values
+(§4.5), (6) sounds (§3), (7) voice + faces (§4.4).
 
 ---
 
