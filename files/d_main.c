@@ -632,11 +632,17 @@ void D_PageDrawer (void)
     if (lump < 0)
 	return;				// nothing drawable -- don't crash on a missing lump
 
-    // The page graphics (TITLEPIC / CREDIT / HELP) are 4:3 (320 wide).  In widescreen, black the
-    // pillarbox sides and centre the page so it isn't left-aligned (WIDESCREENDELTA is 0 in 4:3).
-    if (WIDESCREENDELTA)
-	memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
-    V_DrawPatch (WIDESCREENDELTA, 0, 0, W_CacheLumpNum (lump, PU_CACHE));
+    // The page graphics (TITLEPIC / CREDIT / HELP) are 4:3 (320 wide).  Heretic's are RAW
+    // 320x200 dumps (64000 bytes), not patches -- V_DrawRawScreen handles those (and its own
+    // widescreen centring/pillarbox); DOOM's are patches, centred with WIDESCREENDELTA.
+    if (W_LumpLength (lump) == 64000)
+	V_DrawRawScreen (lump);
+    else
+    {
+	if (WIDESCREENDELTA)
+	    memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
+	V_DrawPatch (WIDESCREENDELTA, 0, 0, W_CacheLumpNum (lump, PU_CACHE));
+    }
 }
 
 

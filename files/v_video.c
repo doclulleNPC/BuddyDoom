@@ -30,6 +30,7 @@ rcsid[] = "$Id: v_video.c,v 1.5 1997/02/03 22:45:13 b1 Exp $";
 
 #include "m_swap.h"
 #include "i_system.h"
+#include "z_zone.h"			// PU_CACHE (V_DrawRawScreen caches the lump)
 #include "r_local.h"
 
 #include "doomdef.h"
@@ -278,6 +279,55 @@ V_DrawPatch
 				    + 4 );
 	}
     }
+}
+
+
+//
+// V_DrawRawScreen
+// Draw a RAW 320x200 fullscreen image (a 64000-byte linear pixel dump, NOT a patch --
+// e.g. Heretic's TITLE / HELP1 / HELP2 / CREDIT) into screens[0], scaled by `hires` and
+// centred with WIDESCREENDELTA (black pillarbox at the sides in widescreen).
+//
+void V_DrawRawScreen (int lumpnum)
+{
+    extern void* W_CacheLumpNum (int lump, int tag);
+    const byte*	src = (const byte*) W_CacheLumpNum (lumpnum, PU_CACHE);
+    int		s = hires, xoff = WIDESCREENDELTA * s;
+    int		by, bx, i;
+
+    if (WIDESCREENDELTA)
+	memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
+    for (by = 0; by < 200; by++)
+    {
+	byte*		drow = screens[0] + (by*s)*SCREENWIDTH + xoff;
+	const byte*	srow = src + by*320;
+	for (bx = 0; bx < 320; bx++)		// horizontal replicate each source pixel
+	{
+	    byte c = srow[bx];
+	    for (i = 0; i < s; i++) drow[bx*s + i] = c;
+	}
+	for (i = 1; i < s; i++)			// vertical replicate the whole scaled row
+	    memcpy (screens[0] + (by*s+i)*SCREENWIDTH + xoff, drow, 320*s);
+    }
+}
+
+//
+// V_DrawFullscreenLumpName
+// Draw a fullscreen page (title / help / credits) by lump name, auto-detecting raw
+// (64000-byte Heretic-style) vs a patch, and centring it in widescreen.  A missing
+// lump draws nothing (no crash).
+//
+void V_DrawFullscreenLumpName (const char* name)
+{
+    extern int   W_CheckNumForName (char* name);
+    extern int   W_LumpLength (int lump);
+    extern void* W_CacheLumpNum (int lump, int tag);
+    int l = W_CheckNumForName ((char*) name);
+    if (l < 0) return;
+    if (W_LumpLength (l) == 64000)
+	V_DrawRawScreen (l);
+    else
+	V_DrawPatch (WIDESCREENDELTA, 0, 0, (patch_t*) W_CacheLumpNum (l, PU_CACHE));
 }
 
 //

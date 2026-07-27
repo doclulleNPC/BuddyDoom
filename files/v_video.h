@@ -129,6 +129,11 @@ patch_t* V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_
 // Draw a patch with a 256-entry palette translation applied per pixel (NULL = none).
 void V_DrawPatchTranslated (int x, int y, int scrn, patch_t* patch, const byte* trans);
 
+// Fullscreen page (title/help/credits) helpers: raw 320x200 (Heretic-style 64000-byte
+// lumps) vs patch, auto-detected, centred in widescreen.  See v_video.c.
+void V_DrawRawScreen (int lumpnum);
+void V_DrawFullscreenLumpName (const char* name);
+
 // V_DrawPatchScaled + palette translation, magnified around the patch's origin
 // (trans == NULL -> no remap).  Used for the enlarged, recoloured buddy preview.
 void V_DrawPatchScaledTranslated (int x, int y, int scrn, patch_t* patch, int sc, const byte* trans);

@@ -1178,39 +1178,42 @@ static void ST_HDrINumber (int val, int x, int y)
 static void ST_HereticDrawer (void)
 {
     int hp;
+    int wd = WIDESCREENDELTA;	// the bar is 320-wide -> centre it in widescreen (0 in 4:3)
 
     if (!plyr) return;
     ST_HereticLoad ();
 
-    if (h_barback) V_DrawPatch (0,  158, 0, h_barback);		// full 42px bar bg (opaque)
-    if (h_statbar) V_DrawPatch (34, 160, 0, h_statbar);		// main-bar overlay frame
+    // The 320-wide bar is centred (wd); in widescreen the full-height 3D view shows on
+    // both sides of it, matching the DOOM widescreen bar.
+    if (h_barback) V_DrawPatch (wd + 0,  158, 0, h_barback);	// full 42px bar bg (opaque)
+    if (h_statbar) V_DrawPatch (wd + 34, 160, 0, h_statbar);	// main-bar overlay frame
 
     // Health (green number)
-    ST_HDrINumber (plyr->health, 61, 170);
+    ST_HDrINumber (plyr->health, wd + 61, 170);
 
     // Ammo of the ready weapon
     if (weaponinfo[plyr->readyweapon].ammo != am_noammo)
     {
-	if (h_blacksq) V_DrawPatch (108, 161, 0, h_blacksq);
-	ST_HDrINumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], 109, 162);
+	if (h_blacksq) V_DrawPatch (wd + 108, 161, 0, h_blacksq);
+	ST_HDrINumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], wd + 109, 162);
     }
 
     // Armor
-    ST_HDrINumber (plyr->armorpoints, 228, 170);
+    ST_HDrINumber (plyr->armorpoints, wd + 228, 170);
 
     // Keys -- Heretic yellow/green/blue map onto DOOM yellow/red/blue card slots
     // (green uses the "red" slot; see P_TouchHereticItem).
-    if (plyr->cards[it_yellowcard] && h_ykey) V_DrawPatch (153, 164, 0, h_ykey);
-    if (plyr->cards[it_redcard]    && h_gkey) V_DrawPatch (153, 172, 0, h_gkey);
-    if (plyr->cards[it_bluecard]   && h_bkey) V_DrawPatch (153, 180, 0, h_bkey);
+    if (plyr->cards[it_yellowcard] && h_ykey) V_DrawPatch (wd + 153, 164, 0, h_ykey);
+    if (plyr->cards[it_redcard]    && h_gkey) V_DrawPatch (wd + 153, 172, 0, h_gkey);
+    if (plyr->cards[it_bluecard]   && h_bkey) V_DrawPatch (wd + 153, 180, 0, h_bkey);
 
     // Health chain + sliding life gem along the bottom
-    if (h_chainback) V_DrawPatch (0, 190, 0, h_chainback);
-    if (h_chain)     V_DrawPatch (0, 190, 0, h_chain);
+    if (h_chainback) V_DrawPatch (wd + 0, 190, 0, h_chainback);
+    if (h_chain)     V_DrawPatch (wd + 0, 190, 0, h_chain);
     if (h_lifegem)
     {
 	hp = plyr->health; if (hp < 0) hp = 0; if (hp > 100) hp = 100;
-	V_DrawPatch (2 + (hp * 270) / 100, 190, 0, h_lifegem);	// slides right with health
+	V_DrawPatch (wd + 2 + (hp * 270) / 100, 190, 0, h_lifegem);	// slides right with health
     }
 }
 

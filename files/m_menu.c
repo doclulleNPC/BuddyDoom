@@ -864,15 +864,17 @@ void M_QuickLoad(void)
 void M_DrawReadThis1(void)
 {
     inhelpscreens = true;
+    // V_DrawFullscreenLumpName handles Heretic's RAW 320x200 help pages (drawing them as
+    // a patch showed an empty/garbled screen) and centres the page in widescreen.
     switch ( gamemode )
     {
       case commercial:
-	V_DrawPatchDirect (0,0,0,W_CacheLumpName("HELP",PU_CACHE));
+	V_DrawFullscreenLumpName ("HELP");
 	break;
       case shareware:
       case registered:
       case retail:
-	V_DrawPatchDirect (0,0,0,W_CacheLumpName("HELP1",PU_CACHE));
+	V_DrawFullscreenLumpName ("HELP1");
 	break;
       default:
 	break;
@@ -893,11 +895,11 @@ void M_DrawReadThis2(void)
       case retail:
       case commercial:
 	// This hack keeps us from having to change menus.
-	V_DrawPatchDirect (0,0,0,W_CacheLumpName("CREDIT",PU_CACHE));
+	V_DrawFullscreenLumpName ("CREDIT");
 	break;
       case shareware:
       case registered:
-	V_DrawPatchDirect (0,0,0,W_CacheLumpName("HELP2",PU_CACHE));
+	V_DrawFullscreenLumpName ("HELP2");
 	break;
       default:
 	break;
