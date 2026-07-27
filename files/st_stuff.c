@@ -1136,6 +1136,13 @@ static patch_t*	h_inum[10];
 static patch_t*	h_ykey;
 static patch_t*	h_gkey;
 static patch_t*	h_bkey;
+// (H) inventory bar
+static patch_t*	h_invbar;
+static patch_t*	h_selectbox;
+static patch_t*	h_invgeml[2];
+static patch_t*	h_invgemr[2];
+static patch_t*	h_smnum[10];
+static patch_t*	h_artiicon[NUMARTIFACTS];	// lazy per-artifact icon (NULL = none/uncached)
 static int	h_sb_loaded;
 
 static patch_t* ST_HCache (const char* n)		// NULL if the lump is absent
@@ -1164,6 +1171,51 @@ static void ST_HereticLoad (void)
     h_ykey = ST_HCache ("YKEYICON");
     h_gkey = ST_HCache ("GKEYICON");
     h_bkey = ST_HCache ("BKEYICON");
+    // (H) inventory bar art
+    h_invbar    = ST_HCache ("INVBAR");
+    h_selectbox = ST_HCache ("SELECTBO");	// 8-char truncation of "SELECTBOX"
+    h_invgeml[0] = ST_HCache ("INVGEML1"); h_invgeml[1] = ST_HCache ("INVGEML2");
+    h_invgemr[0] = ST_HCache ("INVGEMR1"); h_invgemr[1] = ST_HCache ("INVGEMR2");
+    for (i = 0; i < 10; i++) { sprintf (nm, "SMALLIN%d", i); h_smnum[i] = ST_HCache (nm); }
+}
+
+// Map a BuddyDoom artifact slot to its Heretic inventory-icon lump (NULL = none:
+// the DOOM overflow/ammo slots + flechette have no Heretic icon and are skipped).
+static const char* ST_HArtiIconName (artitype_t a)
+{
+    switch (a)
+    {
+      case h_arti_flask:  return "ARTIPTN2";	// Quartz Flask
+      case h_arti_urn:    return "ARTISPHL";	// Mystic Urn
+      case h_arti_tome:   return "ARTIPWBK";	// Tome of Power
+      case h_arti_torch:  return "ARTITRCH";	// Torch
+      case h_arti_bomb:   return "ARTIFBMB";	// Time Bomb
+      case h_arti_ring:   return "ARTIINVU";	// Ring of Invincibility
+      case h_arti_shadow: return "ARTIINVS";	// Shadowsphere
+      case h_arti_chaos:  return "ARTIATLP";	// Chaos Device
+      case h_arti_wings:  return "ARTISOAR";	// Wings of Wrath
+      case h_arti_egg:    return "ARTIEGGC";	// Morph Ovum
+      default:            return NULL;
+    }
+}
+
+static patch_t* ST_HArtiIcon (artitype_t a)		// cached
+{
+    const char* nm;
+    if (a <= arti_none || a >= NUMARTIFACTS) return NULL;
+    if (h_artiicon[a]) return h_artiicon[a];
+    nm = ST_HArtiIconName (a);
+    return nm ? (h_artiicon[a] = ST_HCache (nm)) : NULL;
+}
+
+// Small SMALLIN count under an artifact icon (crispy DrSmallNumber: a count of 1
+// draws nothing; tens at x, ones at x+4).
+static void ST_HDrSmallNumber (int val, int x, int y)
+{
+    if (val <= 1) return;
+    if (val > 9 && h_smnum[val/10]) V_DrawPatch (x, y, 0, h_smnum[val/10]);
+    val %= 10;
+    if (h_smnum[val]) V_DrawPatch (x + 4, y, 0, h_smnum[val]);
 }
 
 // Right-justified small (IN) number at x,y -- crispy DrINumber layout (9px cells).
@@ -1179,6 +1231,53 @@ static void ST_HDrINumber (int val, int x, int y)
     if (h_inum[val])                                   V_DrawPatch (x + 18, y, 0, h_inum[val]);
 }
 
+// The inventory bar pops up (over the main-bar stat area) for a few seconds after
+// the player scrolls the artifact selection; P_InvScroll stamps hinv_show_until.
+int hinv_show_until = 0;
+
+static boolean ST_HInvActive (void)
+{
+    return plyr && plyr->invslot != arti_none && leveltime < hinv_show_until;
+}
+
+// Draw the 7-slot Heretic inventory bar (crispy DrawInventoryBar layout) over the
+// main-bar area.  Builds the compacted list of held, icon-having artifacts (the
+// DOOM overflow/ammo slots have no Heretic icon and are skipped), keeps the
+// selection on screen, and blinks the scroll gems when the list runs off an edge.
+static void ST_HereticInvBar (int wd)
+{
+    artitype_t	held[NUMARTIFACTS];
+    int		cnt [NUMARTIFACTS];
+    int		n = 0, sel = 0, first, i;
+    artitype_t	a;
+
+    for (a = (artitype_t)(arti_none + 1); a < NUMARTIFACTS; a = (artitype_t)(a + 1))
+	if (plyr->inventory[a] > 0 && ST_HArtiIconName (a))
+	{
+	    if (a == (artitype_t) plyr->invslot) sel = n;
+	    cnt[n]    = plyr->inventory[a];
+	    held[n++] = a;
+	}
+
+    if (h_invbar) V_DrawPatch (wd + 34, 160, 0, h_invbar);
+    if (n == 0) return;
+
+    // scroll window: keep the selection visible, centred where possible
+    first = (n <= 7) ? 0 : (sel <= 3 ? 0 : (sel >= n - 4 ? n - 7 : sel - 3));
+
+    for (i = 0; i < 7 && first + i < n; i++)
+    {
+	patch_t* ic = ST_HArtiIcon (held[first + i]);
+	if (ic) V_DrawPatch (wd + 50 + i*31, 160, 0, ic);
+	ST_HDrSmallNumber (cnt[first + i], wd + 69 + i*31, 182);
+    }
+    if (h_selectbox) V_DrawPatch (wd + 50 + (sel - first)*31, 189, 0, h_selectbox);
+    if (first != 0 && h_invgeml[0])
+	V_DrawPatch (wd + 38, 159, 0, (leveltime & 4) ? h_invgeml[1] : h_invgeml[0]);
+    if (n - first > 7 && h_invgemr[0])
+	V_DrawPatch (wd + 269, 159, 0, (leveltime & 4) ? h_invgemr[1] : h_invgemr[0]);
+}
+
 static void ST_HereticDrawer (void)
 {
     int hp;
@@ -1190,26 +1289,45 @@ static void ST_HereticDrawer (void)
     // The 320-wide bar is centred (wd); in widescreen the full-height 3D view shows on
     // both sides of it, matching the DOOM widescreen bar.
     if (h_barback) V_DrawPatch (wd + 0,  158, 0, h_barback);	// full 42px bar bg (opaque)
-    if (h_statbar) V_DrawPatch (wd + 34, 160, 0, h_statbar);	// main-bar overlay frame
 
-    // Health (green number)
-    ST_HDrINumber (plyr->health, wd + 61, 170);
-
-    // Ammo of the ready weapon
-    if (weaponinfo[plyr->readyweapon].ammo != am_noammo)
+    if (ST_HInvActive ())
     {
-	if (h_blacksq) V_DrawPatch (wd + 108, 161, 0, h_blacksq);
-	ST_HDrINumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], wd + 109, 162);
+	// Inventory bar replaces the stat frame while the player is browsing artifacts.
+	ST_HereticInvBar (wd);
     }
+    else
+    {
+	if (h_statbar) V_DrawPatch (wd + 34, 160, 0, h_statbar);	// main-bar overlay frame (LIFEBAR/STATBAR)
 
-    // Armor
-    ST_HDrINumber (plyr->armorpoints, wd + 228, 170);
+	// Health (green number)
+	ST_HDrINumber (plyr->health, wd + 61, 170);
 
-    // Keys -- Heretic yellow/green/blue map onto DOOM yellow/red/blue card slots
-    // (green uses the "red" slot; see P_TouchHereticItem).
-    if (plyr->cards[it_yellowcard] && h_ykey) V_DrawPatch (wd + 153, 164, 0, h_ykey);
-    if (plyr->cards[it_redcard]    && h_gkey) V_DrawPatch (wd + 153, 172, 0, h_gkey);
-    if (plyr->cards[it_bluecard]   && h_bkey) V_DrawPatch (wd + 153, 180, 0, h_bkey);
+	// Ammo of the ready weapon
+	if (weaponinfo[plyr->readyweapon].ammo != am_noammo)
+	{
+	    if (h_blacksq) V_DrawPatch (wd + 108, 161, 0, h_blacksq);
+	    ST_HDrINumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], wd + 109, 162);
+	}
+
+	// Armor
+	ST_HDrINumber (plyr->armorpoints, wd + 228, 170);
+
+	// Keys -- Heretic yellow/green/blue map onto DOOM yellow/red/blue card slots
+	// (green uses the "red" slot; see P_TouchHereticItem).
+	if (plyr->cards[it_yellowcard] && h_ykey) V_DrawPatch (wd + 153, 164, 0, h_ykey);
+	if (plyr->cards[it_redcard]    && h_gkey) V_DrawPatch (wd + 153, 172, 0, h_gkey);
+	if (plyr->cards[it_bluecard]   && h_bkey) V_DrawPatch (wd + 153, 180, 0, h_bkey);
+
+	// Selected-artifact box (crispy DrawMainBar): the ready artifact shows here
+	// persistently, so you always see what a "use" would spend even between browses.
+	if (plyr->invslot != arti_none && plyr->inventory[plyr->invslot] > 0)
+	{
+	    patch_t* ic = ST_HArtiIcon ((artitype_t) plyr->invslot);
+	    if (h_blacksq) V_DrawPatch (wd + 180, 161, 0, h_blacksq);
+	    if (ic)        V_DrawPatch (wd + 179, 160, 0, ic);
+	    ST_HDrSmallNumber (plyr->inventory[plyr->invslot], wd + 201, 182);
+	}
+    }
 
     // Health chain + sliding life gem along the bottom
     if (h_chainback) V_DrawPatch (wd + 0, 190, 0, h_chainback);
@@ -1736,6 +1854,8 @@ void ST_Start (void)
     ST_createWidgets();
     st_stopped = false;
 
+    hinv_show_until = 0;	// (H) don't carry a stale inventory-bar timer across levels
+					// (leveltime resets to 0 each level; see ST_HInvActive)
 }
 
 void ST_Stop (void)

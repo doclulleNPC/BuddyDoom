@@ -142,6 +142,15 @@ void P_InvScroll (player_t* player, int dir)
     if (dir == 0) return;
     dir = (dir < 0) ? -1 : 1;
 
+    // (H) Pop up the Heretic inventory bar for a few seconds when the local player
+    // browses artifacts (st_stuff.c ST_HInvActive reads this; buddy scrolls don't
+    // count -- it's the human's HUD).
+    if (player == &players[consoleplayer])
+    {
+	extern int hinv_show_until;
+	hinv_show_until = leveltime + 4*TICRATE;
+    }
+
     // Step through real artifact slots (1 .. NUMARTIFACTS-1) until one is held.
     for (i = 0; i < NUMARTIFACTS - 1; i++)
     {

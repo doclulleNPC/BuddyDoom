@@ -551,6 +551,7 @@ void HU_Inventory_Drawer (void)
     int         wb, tx;
 
     if (!show_inventory_hud) return;
+    { extern int heretic_mode; if (heretic_mode) return; }	// heretic draws its own bar box (st_stuff.c)
     if (menuactive || paused) return;
     {
 	extern gamestate_t wipegamestate;
