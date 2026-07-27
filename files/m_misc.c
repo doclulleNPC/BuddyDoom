@@ -198,6 +198,7 @@ extern int	truecolor;		// i_video.c -- truecolor 3D view (config: fullcolor)
 extern int	hd_sprites;		// r_things.c -- full-colour HD sprites in truecolor
 extern int	key_spy;
 extern int	crosshair;
+extern int	crosshair_color;	// r_draw.c -- crosshair colour index
 extern int	scale_mode;
 extern int	vsync;
 extern int	integer_scale;
@@ -299,6 +300,7 @@ default_t	defaults[] =
     {"key_console",&key_console, KEY_BACKQUOTE},
     {"key_spy",&key_spy, KEY_F12},	// spy mode (view the AI buddy); default F12
     {"crosshair",&crosshair, 0},
+    {"crosshair_color",&crosshair_color, 0},
 
     {"monster_pack",&monster_pack, 0},		// default OFF -> vanilla 1993 monster AI
     {"monster_pack_range",&monster_pack_range, 2048},

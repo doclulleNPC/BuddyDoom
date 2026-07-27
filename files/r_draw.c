@@ -88,11 +88,56 @@ extern int		truecolor;
 // Gameplay crosshair: 0 off, 1 cross, 2 dot, 3 big cross.  Drawn into the 8-bit
 // frame at the 3D-view centre (see R_DrawCrosshair, called from D_Display).
 int		crosshair = 0;
+// Crosshair colour: an index into a small named set (Green/White/Red/Yellow/Blue),
+// resolved to the nearest PLAYPAL entry so it looks right in DOOM/Heretic/Hexen
+// (their palettes differ).  Set from Options -> Crosshair.
+int		crosshair_color = 0;
 
 static void XHairPix (int x, int y, int col)
 {
     if (x >= 0 && y >= 0 && x < SCREENWIDTH && y < SCREENHEIGHT)
 	screens[0][y*SCREENWIDTH + x] = (byte)col;
+}
+
+// Nearest palette index to the wanted crosshair colour.  Cached on the colour
+// index (the loaded palette is stable for the run), so this scans PLAYPAL only
+// when the user changes the colour.
+static int XHairColorIndex (void)
+{
+    static const byte want[5][3] =
+    {
+	{   0, 255,   0 },	// Green (default; nearest to the old hard-coded 0x70)
+	{ 255, 255, 255 },	// White
+	{ 255,   0,   0 },	// Red
+	{ 255, 255,   0 },	// Yellow
+	{  64, 160, 255 }	// Blue
+    };
+    static int cached_c = -1, cached_i = 0x70;
+    const byte* pal;
+    const byte* t;
+    int i, c;
+
+    c = (crosshair_color >= 0 && crosshair_color <= 4) ? crosshair_color : 0;
+    if (c == cached_c)
+	return cached_i;
+
+    pal = (const byte*) W_CacheLumpName ("PLAYPAL", PU_CACHE);
+    if (!pal)
+	return 0x70;
+    t = want[c];
+    {
+	int best = 0, bestd = 0x7fffffff;
+	for (i = 0; i < 256; i++)
+	{
+	    int dr = pal[i*3+0] - t[0];
+	    int dg = pal[i*3+1] - t[1];
+	    int db = pal[i*3+2] - t[2];
+	    int d  = dr*dr + dg*dg + db*db;
+	    if (d < bestd) { bestd = d; best = i; }
+	}
+	cached_c = c; cached_i = best;
+    }
+    return cached_i;
 }
 
 void R_DrawCrosshair (void)
@@ -103,7 +148,7 @@ void R_DrawCrosshair (void)
 	return;
     cx  = viewwindowx + scaledviewwidth/2;
     cy  = viewwindowy + viewheight/2;
-    col = 0x70;					// Doom palette: bright green
+    col = XHairColorIndex ();			// user-selected colour (nearest palette)
 
     if (crosshair == 2)				// filled dot
     {

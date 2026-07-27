@@ -369,10 +369,15 @@ enum
     controls,
     buddyopt,		// BuddyDoom: pick your co-op companion (was on the main menu)
     automapopt,		// Automap style: vanilla / boom / textured
+    crosshairopt,	// Crosshair type + colour submenu
     opt_end
 } options_e;
 
 void M_ControlsMenu(int choice);
+void M_Crosshair(int choice);		// Options -> Crosshair submenu
+void M_CrosshairType(int choice);	// cycle Off / Cross / Dot / Big
+void M_CrosshairColor(int choice);	// cycle Green / White / Red / Yellow / Blue
+void M_DrawCrosshair(void);
 
 menuitem_t OptionsMenu[]=
 {
@@ -387,7 +392,8 @@ menuitem_t OptionsMenu[]=
     {1,"",	M_Video,'v'},
     {1,"",	M_ControlsMenu,'c'},
     {1,"",	M_Buddy,'b'},
-    {2,"",	M_Automap,'a'}		// left/right cycles vanilla / boom / textured
+    {2,"",	M_Automap,'a'},		// left/right cycles vanilla / boom / textured
+    {1,"",	M_Crosshair,'x'}	// enters the Crosshair submenu
 };
 
 menu_t  OptionsDef =
@@ -439,6 +445,32 @@ menu_t  VideoDef =
     &OptionsDef,
     VideoMenu,
     M_DrawVideo,
+    60,37,
+    0
+};
+
+//
+// Crosshair MENU (Options -> Crosshair): type + colour, text-drawn.
+//
+enum
+{
+    xh_type,		// Off / Cross / Dot / Big Cross
+    xh_color,		// Green / White / Red / Yellow / Blue
+    xh_end
+} crosshair_e;
+
+menuitem_t CrosshairMenu[]=
+{
+    {2,"",	M_CrosshairType,'t'},	// left/right cycles the shape
+    {2,"",	M_CrosshairColor,'c'}	// left/right cycles the colour
+};
+
+menu_t  CrosshairDef =
+{
+    xh_end,
+    &OptionsDef,
+    CrosshairMenu,
+    M_DrawCrosshair,
     60,37,
     0
 };
@@ -1136,6 +1168,8 @@ void M_DrawOptions(void)
 	M_WriteText (x+130, y+LINEHEIGHT*automapopt,
 		     nm[(automap_style>=0 && automap_style<=2) ? automap_style : 2]);
     }
+
+    M_WriteText (x, y+LINEHEIGHT*crosshairopt, "Crosshair");
 }
 
 //
@@ -1574,6 +1608,51 @@ void M_StatusBarStyle(int choice)
     else        statusbar_style = (statusbar_style + 2) % 3;
     R_SetViewSize (screenblocks, detailLevel);	// styles 1/2 need a full-height view
     M_SaveDefaults ();
+}
+
+//
+// Options -> Crosshair submenu (type + colour).  `crosshair` (0..3) lives in
+// r_draw.c and `crosshair_color` (0..4) resolves to the nearest palette entry
+// at draw time (R_DrawCrosshair), so it looks right in DOOM/Heretic/Hexen.
+//
+static char* M_XHairTypeNames[4]  = { "Off", "Cross", "Dot", "Big Cross" };
+static char* M_XHairColorNames[5] = { "Green", "White", "Red", "Yellow", "Blue" };
+
+void M_CrosshairType(int choice)
+{
+    extern int crosshair;
+    if (choice) crosshair = (crosshair + 1) % 4;
+    else        crosshair = (crosshair + 3) % 4;
+    M_SaveDefaults ();
+}
+
+void M_CrosshairColor(int choice)
+{
+    extern int crosshair_color;
+    if (choice) crosshair_color = (crosshair_color + 1) % 5;
+    else        crosshair_color = (crosshair_color + 4) % 5;
+    M_SaveDefaults ();
+}
+
+void M_Crosshair(int choice)
+{
+    choice = 0;
+    M_SetupNextMenu (&CrosshairDef);
+}
+
+void M_DrawCrosshair(void)
+{
+    extern int crosshair, crosshair_color;
+    int x = CrosshairDef.x, y = CrosshairDef.y;
+    int t = (crosshair       >= 0 && crosshair       <= 3) ? crosshair       : 0;
+    int c = (crosshair_color >= 0 && crosshair_color <= 4) ? crosshair_color : 0;
+
+    M_DrawMenuGraphic (108,15,"M_OPTTTL");
+
+    M_WriteText (x,     y+LINEHEIGHT*xh_type,  "Crosshair");
+    M_WriteText (x+130, y+LINEHEIGHT*xh_type,  M_XHairTypeNames[t]);
+    M_WriteText (x,     y+LINEHEIGHT*xh_color, "Color");
+    M_WriteText (x+130, y+LINEHEIGHT*xh_color, M_XHairColorNames[c]);
 }
 
 void M_VideoRes(int choice)
