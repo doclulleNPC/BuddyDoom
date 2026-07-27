@@ -47,6 +47,7 @@ extern mobjinfo_t *mobjinfo;
 // engine pieces we call (declared by hand, like heretic.c / p_inv_heretic.c)
 extern boolean	P_GiveBody  (player_t* player, int num);
 extern boolean	P_GiveArmor (player_t* player, int armortype);
+extern boolean	P_GiveWeapon (player_t* player, weapontype_t weapon, boolean dropped);
 
 
 // ---------------------------------------------------------------------------
@@ -190,13 +191,17 @@ boolean P_TouchHereticItem (player_t* player, mobj_t* special)
       case MT_HAMBLSRWIMPY:
       case MT_HAMBLSRHEFTY: player->message = "CLAW ORB";             return true;
 
-      // ---- ground weapons (no Heretic weapon system -> cosmetic pickup) ----
-      case MT_HWMACE:       player->message = "GOT THE FIREMACE";           return true;
-      case MT_HWSKULLROD:   player->message = "GOT THE HELLSTAFF";          return true;
-      case MT_HWPHOENIXROD: player->message = "GOT THE PHOENIX ROD";        return true;
-      case MT_HWCROSSBOW:   player->message = "GOT THE ETHEREAL CROSSBOW";  return true;
-      case MT_HWGAUNTLETS:  player->message = "GOT THE GAUNTLETS";          return true;
-      case MT_HWBLASTER:    player->message = "GOT THE DRAGON CLAW";        return true;
+      // ---- ground weapons -> grant the real weapon + ammo (heretic_weapons.c
+      // overwrote these DOOM slots with the Heretic weapon set; P_GiveWeapon also
+      // gives the mapped ammo and auto-switches to it).  slot map:
+      // crossbow=shotgun, dragonclaw=chaingun, hellstaff=missile, phoenix=plasma,
+      // firemace=bfg, gauntlets=chainsaw.
+      case MT_HWMACE:       P_GiveWeapon (player, wp_bfg,      false); player->message = "GOT THE FIREMACE";          return true;
+      case MT_HWSKULLROD:   P_GiveWeapon (player, wp_missile,  false); player->message = "GOT THE HELLSTAFF";         return true;
+      case MT_HWPHOENIXROD: P_GiveWeapon (player, wp_plasma,   false); player->message = "GOT THE PHOENIX ROD";       return true;
+      case MT_HWCROSSBOW:   P_GiveWeapon (player, wp_shotgun,  false); player->message = "GOT THE ETHEREAL CROSSBOW"; return true;
+      case MT_HWGAUNTLETS:  P_GiveWeapon (player, wp_chainsaw, false); player->message = "GOT THE GAUNTLETS";         return true;
+      case MT_HWBLASTER:    P_GiveWeapon (player, wp_chaingun, false); player->message = "GOT THE DRAGON CLAW";       return true;
 
       // ---- armor -> closest DOOM equivalent ----
       case MT_HITEMSHIELD1:

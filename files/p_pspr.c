@@ -163,10 +163,15 @@ boolean P_CheckAmmo (player_t* player)
     ammotype_t		ammo;
     int			count;
 
+    extern int heretic_mode;
     ammo = weaponinfo[player->readyweapon].ammo;
 
-    // Minimal amount for one shot varies.
-    if (player->readyweapon == wp_bfg)
+    // Minimal amount for one shot varies.  Every Heretic weapon uses exactly 1
+    // per shot (their weaponinfo is overwritten in heretic_weapons.c) -- so don't
+    // apply DOOM's per-weapon amounts (BFGCELLS etc.) to the mapped slots.
+    if (heretic_mode)
+	count = 1;
+    else if (player->readyweapon == wp_bfg)
 	count = BFGCELLS;
     else if (player->readyweapon == wp_supershotgun)
 	count = 2;	// Double barrel.
@@ -177,7 +182,28 @@ boolean P_CheckAmmo (player_t* player)
     // Return if current ammunition sufficient.
     if (ammo == am_noammo || player->ammo[ammo] >= count)
 	return true;
-		
+
+    // Out of ammo -> switch.  Heretic has its own weapon/ammo mapping, so the DOOM
+    // preference chain (which checks am_cell for wp_plasma etc.) is wrong here; pick
+    // the best owned Heretic weapon that has ammo, else the staff (never empty).
+    if (heretic_mode)
+    {
+	static const int pref[6] = { wp_bfg, wp_plasma, wp_missile, wp_chaingun,
+				     wp_shotgun, wp_pistol };
+	int i;
+	player->pendingweapon = wp_nochange;
+	for (i = 0; i < 6; i++)
+	{
+	    int w = pref[i];
+	    if (player->weaponowned[w] && player->ammo[weaponinfo[w].ammo] > 0)
+		{ player->pendingweapon = w; break; }
+	}
+	if (player->pendingweapon == wp_nochange)
+	    player->pendingweapon = wp_fist;	// staff -- am_noammo, always fireable
+	P_SetPsprite (player, ps_weapon, weaponinfo[player->readyweapon].downstate);
+	return false;
+    }
+
     // Out of ammo, pick a weapon to change to.
     // Preferences are set here.
     do

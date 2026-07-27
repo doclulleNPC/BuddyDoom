@@ -30,7 +30,7 @@
 // Global parameters/defines.
 //
 // DOOM version
-enum { VERSION_NUM =  120 };	// bumped: player_t grew (am_fuel ammo + 2 ID24 weapons)
+enum { VERSION_NUM =  121 };	// bumped: player_t grew (am_fuel ammo + 2 ID24 weapons)
 
 // Demo format version -- DECOUPLED from VERSION_NUM (which auto-bumps for savegame struct
 // changes).  The stock IWAD attract demos are version 109 (DOOM 1.9); keeping the demo
@@ -234,6 +234,8 @@ typedef enum
     am_cell,	// Plasma rifle, BFG.
     am_misl,	// Missile launcher.
     am_fuel,	// ID24 Legacy-of-Rust: Incinerator / Heatwave (Calamity Blade).
+    am_mace,	// (H) Heretic Firemace spheres -- 6th pool (heretic_mode only; the other
+		// 5 Heretic weapons reuse clip/shell/cell/misl/fuel).
     NUMAMMO,
     am_noammo	// Unlimited for chainsaw / fist.
 
