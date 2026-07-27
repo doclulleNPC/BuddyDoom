@@ -51,6 +51,8 @@ void ST_Ticker (void);
 void ST_Drawer (boolean fullscreen, boolean refresh);
 void ST_DrawScaled (void);	// status bar @50%, centred
 void ST_DrawAltHUD (void);	// minimal fullscreen HUD (health + ammo)
+void ST_HereticScaled (void);	// (H) Heretic bar @50%, centred
+void ST_HereticAltHUD (void);	// (H) Heretic minimal fullscreen HUD (health + ammo)
 extern int statusbar_style;	// 0=vanilla 1=small 2=alt HUD
 
 // Called when the console player is spawned on each level.

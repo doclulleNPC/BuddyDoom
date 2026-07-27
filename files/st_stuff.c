@@ -1150,7 +1150,11 @@ static void ST_HereticLoad (void)
     if (h_sb_loaded) return;
     h_sb_loaded = 1;
     h_barback   = ST_HCache ("BARBACK");
-    h_statbar   = ST_HCache ("STATBAR");
+    // Heretic ships TWO main-bar overlays (crispy sb_bar.c SB_Init): LIFEBAR is
+    // the single-player frame (health/armor/keys/artifact), STATBAR is the
+    // deathmatch frame (frags).  Vanilla picks by mode -- we were always using
+    // STATBAR, so single-player showed the deathmatch bar.
+    h_statbar   = ST_HCache (deathmatch ? "STATBAR" : "LIFEBAR");
     h_chain     = ST_HCache ("CHAIN");
     h_chainback = ST_HCache ("CHAINBACK");
     h_lifegem   = ST_HCache ("LIFEGEM2");		// single-player gem
@@ -1215,6 +1219,61 @@ static void ST_HereticDrawer (void)
 	hp = plyr->health; if (hp < 0) hp = 0; if (hp > 100) hp = 100;
 	V_DrawPatch (wd + 2 + (hp * 270) / 100, 190, 0, h_lifegem);	// slides right with health
     }
+}
+
+// Heretic status-bar style 1: the full Heretic bar rendered then scaled to 50%
+// and centred along the bottom -- same snapshot/capture/restore/downscale trick
+// as the DOOM ST_DrawScaled, but over Heretic's 42px bar geometry.  The Heretic
+// bar is drawn in BASE coords (V_DrawPatch scales by hires), so a 4:3 bar spans
+// device rows [158..200)*hires and is centred with WIDESCREENDELTA in widescreen.
+void ST_HereticScaled (void)
+{
+    static byte* vsave = NULL; static int vcap  = 0;
+    static byte* bcap  = NULL; static int bccap = 0;
+    int hh    = 42 * hires;				// Heretic bar height (base 42)
+    int top   = SCREENHEIGHT - hh;			// = 158*hires
+    int bx    = WIDESCREENDELTA * hires;		// bar left edge (device)
+    int bw    = 320 * hires;				// bar is 320 wide (base)
+    int strip, dw, dh, dx, dy, x, y;
+
+    if (!plyr) return;
+    ST_doPaletteStuff ();				// keep damage/pickup palette flashes
+    if (bx < 0) bx = 0;
+    if (bx + bw > SCREENWIDTH) bw = SCREENWIDTH - bx;
+    strip = SCREENWIDTH * hh;
+    dw = bw/2; dh = hh/2;
+    dx = (SCREENWIDTH - dw)/2; dy = SCREENHEIGHT - dh;
+
+    if (vcap  < strip) { if (vsave) Z_Free(vsave); vsave = Z_Malloc(strip, PU_STATIC, 0); vcap  = strip; }
+    if (bccap < bw*hh) { if (bcap)  Z_Free(bcap);  bcap  = Z_Malloc(bw*hh, PU_STATIC, 0); bccap = bw*hh; }
+
+    memcpy (vsave, screens[0] + top*SCREENWIDTH, strip);	// 1) snapshot the view
+    ST_HereticDrawer ();					// 2) full bar -> screens[0]
+    for (y = 0; y < hh; y++)					// 3) capture the bar
+	memcpy (bcap + y*bw, screens[0] + (top+y)*SCREENWIDTH + bx, bw);
+    memcpy (screens[0] + top*SCREENWIDTH, vsave, strip);	// 4) put the view back
+    for (y = 0; y < dh; y++)					// 5) scale the bar -> 50%, centred
+    {
+	byte* d = screens[0] + (dy+y)*SCREENWIDTH + dx;
+	byte* s = bcap + (y*2)*bw;
+	for (x = 0; x < dw; x++) d[x] = s[x*2];
+    }
+}
+
+// Heretic status-bar style 2: minimal fullscreen HUD -- big Heretic IN numbers,
+// health bottom-left, ready-weapon ammo bottom-right, over the full view.
+void ST_HereticAltHUD (void)
+{
+    int wbase = SCREENWIDTH / hires;			// wide base width
+    int y     = BASE_HEIGHT - 13;			// IN glyphs are ~11px tall
+
+    if (!plyr) return;
+    ST_HereticLoad ();
+    ST_doPaletteStuff ();				// keep damage/pickup palette flashes
+
+    ST_HDrINumber (plyr->health, 4, y);			// health, bottom-left
+    if (weaponinfo[plyr->readyweapon].ammo != am_noammo)	// ammo, bottom-right (3-cell block = 27px)
+	ST_HDrINumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], wbase - 4 - 27, y);
 }
 
 void ST_Drawer (boolean fullscreen, boolean refresh)
