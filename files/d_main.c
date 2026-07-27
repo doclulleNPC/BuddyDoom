@@ -33,9 +33,17 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>	// strrchr/strcasecmp -- declared so their pointer/return isn't truncated (LLP64)
 #include <ctype.h>	// toupper (DEMOLOOP lump names)
+#ifdef _WIN32
+#include <io.h>		// _findfirst -- directory scan for auto-loading buddy WADs
+#else
+#include <dirent.h>
+#endif
 
-extern int access(char *file, int mode);
+#ifndef _WIN32
+extern int access(char *file, int mode);	// on Windows <io.h> (above) already declares it
+#endif
 
 #define R_OK	4
 #if 0
@@ -62,6 +70,7 @@ static int access(char *file, int mode)
 
 #include "z_zone.h"
 #include "w_wad.h"
+#include "w_iwadid.h"		// content-based IWAD identification (lump signatures + MD5)
 #include "s_sound.h"
 #include "w_json.h"		// ID24 DEMOLOOP (JSON)
 #include "v_video.h"
@@ -283,7 +292,9 @@ void D_Display (void)
       case GS_LEVEL:
 	if (!gametic)
 	    break;
-	if (automapactive)
+	// Boom overlay draws the map AFTER the 3D view (below); vanilla/textured
+	// replace the view, so draw them here.
+	if (automapactive && !AM_Overlay ())
 	    AM_Drawer ();
 	if (wipe || (viewheight != SCREENHEIGHT && fullscreen) )
 	    redrawsbar = true;
@@ -312,8 +323,9 @@ void D_Display (void)
     // draw buffered stuff to screen
     I_UpdateNoBlit ();
     
-    // draw the view directly
-    if (gamestate == GS_LEVEL && !automapactive && gametic)
+    // draw the view directly -- also when the Boom automap overlay is up, so its
+    // transparent map lines draw over the live view instead of a black fill.
+    if (gamestate == GS_LEVEL && (!automapactive || AM_Overlay ()) && gametic)
     {
 	// Safety: if the spied-on player (F12 spy mode) lost its body since we
 	// switched to it -- a co-op/AI buddy mid-death/reborn -- snap back to our
@@ -324,6 +336,11 @@ void D_Display (void)
 	R_RenderPlayerView (&players[displayplayer]);
 	I_CaptureTrueColorView ();	// snapshot the 8-bit view before 2D overlays draw
 	R_DrawCrosshair ();		// over the 3D view, under the HUD/menu/console
+
+	// Boom automap: overlay the map lines on top of the just-rendered view
+	// (AM_Drawer skips the background fill in this style).
+	if (AM_Overlay ())
+	    AM_Drawer ();
     }
 
     // Status bar, drawn AFTER the view: in widescreen the bar mode renders a
@@ -739,8 +756,87 @@ void D_AddFile (char *file)
 
     newfile = malloc (strlen(file)+1);
     strcpy (newfile, file);
-	
+
     wadfiles[numwadfiles] = newfile;
+}
+
+// ---------------------------------------------------------------------------
+//  Auto-discover buddy WADs.  Any *.wad in ID0/ that carries a BUDDYDEF lump is
+//  loaded early (before W_InitMultipleFiles), so a modder buddy pack dropped into
+//  ID0/ appears in the Buddy menu with no -file needed.  WADs already on the command
+//  line (or auto-loaded) are skipped, so a buddy is never registered twice.
+// ---------------------------------------------------------------------------
+
+// Peek a WAD's directory (no full load) for an 8-char lump name.
+static boolean D_WadHasLump (const char* path, const char* lump)
+{
+    FILE*		f = fopen (path, "rb");
+    unsigned char	hdr[12], e[16];
+    unsigned		n, of, i;
+    boolean		found = false;
+    if (!f) return false;
+    if (fread (hdr, 1, 12, f) == 12
+	&& (!memcmp (hdr, "PWAD", 4) || !memcmp (hdr, "IWAD", 4)))
+    {
+	n  = hdr[4] | hdr[5]<<8 | hdr[6]<<16 | ((unsigned)hdr[7]<<24);
+	of = hdr[8] | hdr[9]<<8 | hdr[10]<<16 | ((unsigned)hdr[11]<<24);
+	if (n && n <= 100000 && fseek (f, (long)of, SEEK_SET) == 0)
+	    for (i = 0; i < n && !found; i++)
+	    {
+		if (fread (e, 1, 16, f) != 16) break;
+		if (!strncasecmp ((char*)e + 8, lump, 8)) found = true;
+	    }
+    }
+    fclose (f);
+    return found;
+}
+
+// Is a WAD with this basename already in wadfiles[] (loaded / on the command line)?
+static boolean D_WadAlreadyLoaded (const char* base)
+{
+    int i;
+    for (i = 0; wadfiles[i]; i++)
+    {
+	const char* w = wadfiles[i];
+	const char* s = strrchr (w, '/');
+	const char* b = strrchr (w, '\\');
+	if (b > s) s = b;
+	s = s ? s + 1 : w;
+	if (!strcasecmp (s, base)) return true;
+    }
+    return false;
+}
+
+static void D_AutoloadBuddyWads (void)
+{
+    char path[300];
+#ifdef _WIN32
+    struct _finddata_t	fd;
+    intptr_t		h = _findfirst ("ID0\\*.wad", &fd);
+    if (h == -1) return;
+    do {
+	if (fd.attrib & _A_SUBDIR) continue;
+	if (D_WadAlreadyLoaded (fd.name)) continue;
+	snprintf (path, sizeof path, "ID0/%s", fd.name);
+	if (D_WadHasLump (path, "BUDDYDEF"))
+	{ D_AddFile (fd.name); printf ("Buddy WAD: %s -> auto-loaded (has BUDDYDEF)\n", fd.name); }
+    } while (_findnext (h, &fd) == 0);
+    _findclose (h);
+#else
+    DIR*		d = opendir ("ID0");
+    struct dirent*	de;
+    if (!d) return;
+    while ((de = readdir (d)))
+    {
+	size_t L = strlen (de->d_name);
+	if (L <= 4 || strcasecmp (de->d_name + L - 4, ".wad")) continue;
+	if (D_WadAlreadyLoaded (de->d_name)) continue;
+	snprintf (path, sizeof path, "ID0/%s", de->d_name);
+	if (D_WadHasLump (path, "BUDDYDEF"))
+	{ D_AddFile (de->d_name); printf ("Buddy WAD: %s -> auto-loaded (has BUDDYDEF)\n", de->d_name); }
+    }
+    closedir (d);
+#endif
 }
 
 //
@@ -820,6 +916,28 @@ static int IWAD_ModeFromName (const char* path)
     if (strstr(low,"doom1")) return shareware;
     if (strstr(low,"doom"))  return registered;
     return commercial;
+}
+
+// Identify the IWAD by its CONTENT (lump signatures + MD5 table, w_iwadid.h) and map
+// to a gamemode.  Robust to renamed/custom IWADs; returns `indetermined` (use the
+// filename guess) only when the file isn't a recognisable IWAD.  `label` (optional)
+// receives a human version string, e.g. "The Ultimate Doom (v1.9)".
+static int IWAD_ModeFromContent (const char* path, char* label, int cap)
+{
+    switch (IWID_Identify (path, label, cap, NULL))
+    {
+      case IWID_DOOM_SW:                    return shareware;
+      case IWID_DOOM_REG:                   return registered;
+      case IWID_DOOM_ULTIMATE:
+      case IWID_FREEDOOM1:
+      case IWID_HERETIC:
+      case IWID_CHEX3:                      return retail;
+      case IWID_DOOM2:     case IWID_PLUTONIA:
+      case IWID_TNT:       case IWID_FREEDOOM2:
+      case IWID_FREEDM:    case IWID_HEXEN:
+      case IWID_STRIFE:                     return commercial;
+      default:                              return indetermined;
+    }
 }
 
 // Does the IWAD file contain a lump with this (<=8 char, uppercase) name?  Reads the WAD
@@ -998,6 +1116,13 @@ void IdentifyVersion (void)
 		mode = retail;
 		printf ("Heretic IWAD detected -- heretic mode\n");
 	    }
+	}
+	// Content-first: identify the IWAD by its lumps / MD5 (w_iwadid.h) and let that
+	// override the filename guess -- so a renamed or custom IWAD is still recognised.
+	if (!heretic_mode)
+	{
+	    char lbl[80]; int cm = IWAD_ModeFromContent (found, lbl, sizeof lbl);
+	    if (cm != indetermined) { mode = cm; printf ("IWAD identified by content: %s\n", lbl); }
 	}
 	// doom.wad is BOTH the registered (3-episode) and the Ultimate/retail (4-episode) IWAD --
 	// same filename, only the content differs.  If a "registered" doom.wad actually has an
@@ -1230,11 +1355,10 @@ void D_DoomMain (void)
     // in P_Director_Init / P_AICoop_Init via vanilla_mode) gives you the bare 1993 game.
     if (M_CheckParm ("-vanilla"))
     {
-	extern int automap_textured;
 	vanilla_mode     = 1;
 	over_under       = 0;	// vanilla: actors are infinitely tall
 	autoaim          = 1;	// vanilla: vertical aim-assist on
-	automap_textured = 0;	// vanilla: line automap, no floor flats
+	automap_style    = AMS_VANILLA;	// vanilla: plain black-background line automap
     }
     // -nofriendlyfire (alias -noff): the player and the AI buddy can't damage each other.
     { extern int ff_protect;
@@ -1468,6 +1592,11 @@ void D_DoomMain (void)
 	printf ("ID24 resources: id24res.wad -> loaded early (LoR sprites/sounds + SBARDEF)\n");
     }
 
+    // Auto-load any buddy WAD (a *.wad in ID0/ with a BUDDYDEF lump) so it shows up
+    // in the Buddy menu without an explicit -file.  Must run BEFORE W_InitMultipleFiles
+    // (its lumps need to be in the directory for P_Buddy_LoadDefs + R_InitSprites).
+    D_AutoloadBuddyWads ();
+
     printf ("W_Init: Init WADfiles.\n");
     W_InitMultipleFiles (wadfiles);
     {   // Fill BuddyDoom's *appended* builtin mobjtypes (Heretic/Hexen/Freedoom/RevMarine/
@@ -1479,9 +1608,16 @@ void D_DoomMain (void)
 	// spawned as "unknown type" (no Ghouls, missing scenery).  These installers only
 	// populate static tables, so they're safe this early (before R_Init/P_Init).
 	extern void Heretic_Init(void), Hexen_Init(void), Freedoom_Init(void),
-		    RevMarine_Init(void), Morph_Init(void), HereticInv_Init(void);
-	Heretic_Init (); Hexen_Init (); Freedoom_Init ();
+		    RevMarine_Init(void), Morph_Init(void), HereticInv_Init(void),
+		    Heretic_Items_Init(void), Heretic_Deco_Init(void), Heretic_MVar_Init(void);
+	extern void Sounds_Heretic_Init(void), Sounds_Hexen_Init(void);
+	Heretic_Init (); Heretic_Deco_Init (); Heretic_MVar_Init ();	// (H) monsters + scenery + variants
+	Hexen_Init (); Freedoom_Init ();
 	RevMarine_Init (); Morph_Init (); HereticInv_Init ();
+	Heretic_Items_Init ();		// (H) map-placeable Heretic keys/ammo/weapons/shields/vial
+	// Per-game SFX tables (files/sounds_heretic.c, files/sounds_hexen.c): fill the
+	// sfx_h_*/sfx_x_* slots with native lump names before I_InitSound precaches.
+	Sounds_Heretic_Init (); Sounds_Hexen_Init ();
     }
     {   // DeHackEd/BEX/MBF21: apply every DEHACKED lump + -deh files before the tables are read
         extern void D_ProcessDehInWads (void);

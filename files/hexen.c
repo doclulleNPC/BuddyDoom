@@ -19,6 +19,7 @@
 #include "info.h"
 #include "m_random.h"
 #include "m_fixed.h"
+#include "tables.h"		// finesine/FINEANGLES/FINEMASK -- poison cloud bob
 #include "sounds.h"
 #include "w_wad.h"
 #include "p_mobj.h"
@@ -42,6 +43,7 @@ extern mobj_t*	P_SpawnMobj (fixed_t x, fixed_t y, fixed_t z, mobjtype_t type);
 extern boolean	P_SetMobjState (mobj_t* mobj, statenum_t state);
 extern mobj_t*	P_SpawnMonsterChecked (fixed_t x, fixed_t y, mobjtype_t type);
 extern mobj_t*	P_SpawnMissile (mobj_t* source, mobj_t* dest, mobjtype_t type);
+extern void	P_PoisonRadiusAttack (mobj_t* spot, mobj_t* source);	// poison cloud (p_map.c)
 
 // Hexen's HITDICE(d) melee damage = ((P_Random() & 7) + 1) * d.
 #define HITDICE(d)	(((P_Random () & 7) + 1) * (d))
@@ -246,6 +248,62 @@ void A_DragonAttack (mobj_t* actor)
 	return;
     if (P_SpawnMissile (actor, actor->target, MT_XDRAGON_FX))
 	S_StartSound (actor, actor->info->attacksound);
+}
+
+// ---------------------------------------------------------------------------
+// Poison cloud (crispy hexen/a_action.c A_PoisonBag*).  The lingering green gas
+// left by the Cleric's Flechette (MT_XPOISONCLOUD).  Each damage frame does a
+// short-radius POISON hit (routed to the poison-over-time path in P_DamageMobj,
+// files/p_inter.c) and bobs the cloud; it lives for `reactiontime` check-cycles
+// (crispy's special1 lifetime), then fades out.  Reuses mobj_t.reactiontime as the
+// lifetime counter and mobj_t.movecount as the bob phase (this engine's mobj_t has
+// no special1/special2), so no savegame-layout change.
+// ---------------------------------------------------------------------------
+
+// Repeated poison tick + gentle vertical bob (crispy A_PoisonBagDamage:
+// A_Explode + z += FloatBobOffsets[i] >> 4, a 64-step sine period, amp 8 units).
+void A_PoisonBagDamage (mobj_t* actor)
+{
+    int	bob;
+
+    P_PoisonRadiusAttack (actor, actor->target);
+
+    bob = actor->movecount & 63;
+    actor->z += FixedMul (finesine[(bob * (FINEANGLES/64)) & FINEMASK], 8*FRACUNIT) >> 4;
+    actor->movecount = (bob + 1) & 63;
+}
+
+// Count down the cloud's lifetime; when it runs out, start the fade-out
+// (crispy A_PoisonBagCheck decrements special1, then -> S_POISONCLOUD_X1).
+void A_PoisonBagCheck (mobj_t* actor)
+{
+    // On nightmare skill P_SpawnMobj leaves reactiontime at 0 (it skips info->reactiontime),
+    // which would underflow the countdown and make the cloud immortal -- seed it here.
+    if (actor->reactiontime <= 0)
+	actor->reactiontime = 27;
+    if (!--actor->reactiontime)
+	P_SetMobjState (actor, S_XPCL_X1);	// lifetime spent -> fade out
+    // else: keep looping the damage frames until the counter reaches 0
+}
+
+// The thrown Flechette poison bag settles, then bursts into the cloud a little above
+// it (crispy A_PoisonBagInit, adapted to DOOM's 1-arg action signature).  The cloud
+// inherits the bag's ->target so its poison kills attribute to whoever threw the bag.
+void A_PoisonBagInit (mobj_t* actor)
+{
+    mobj_t*	cloud = P_SpawnMobj (actor->x, actor->y, actor->z + 28*FRACUNIT,
+				     MT_XPOISONCLOUD);
+    if (!cloud)
+	return;
+    cloud->target = actor->target;
+    cloud->reactiontime = 24 + (P_Random () & 7);	// lifetime (crispy special1)
+}
+
+// Poison shroom idle throttle: hold the pulse frame a long random time between
+// twitches (crispy A_PoisonShroom), so the plant sits mostly still.
+void A_PoisonShroom (mobj_t* actor)
+{
+    actor->tics = 128 + (P_Random () << 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -780,6 +838,84 @@ void Hexen_Init (void)
     m->speed = 24*FRACUNIT; m->radius = 12*FRACUNIT; m->height = 10*FRACUNIT; m->mass = 100;
     m->damage = 6; m->activesound = sfx_None;
     m->flags = MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY; m->raisestate = S_NULL;
+
+    // ---- Poison cloud (crispy S_POISONCLOUD*; the Flechette's lingering gas).
+    //      18 damage-tick frames looping via A_PoisonBagCheck until the lifetime
+    //      (reactiontime) runs out, then a 4-frame fade.  Frames use PSBG 3-8. ----
+    ST (S_XPCL1,   SPR_PSBG, 3, 1, NULL,                       S_XPCL2);
+    ST (S_XPCL2,   SPR_PSBG, 3, 1, (actionf_p1)A_Scream,       S_XPCL3);	// gas-burst hiss (deathsound)
+    ST (S_XPCL3,   SPR_PSBG, 3, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL4);
+    ST (S_XPCL4,   SPR_PSBG, 4, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL5);
+    ST (S_XPCL5,   SPR_PSBG, 4, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL6);
+    ST (S_XPCL6,   SPR_PSBG, 4, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL7);
+    ST (S_XPCL7,   SPR_PSBG, 5, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL8);
+    ST (S_XPCL8,   SPR_PSBG, 5, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL9);
+    ST (S_XPCL9,   SPR_PSBG, 5, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL10);
+    ST (S_XPCL10,  SPR_PSBG, 6, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL11);
+    ST (S_XPCL11,  SPR_PSBG, 6, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL12);
+    ST (S_XPCL12,  SPR_PSBG, 6, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL13);
+    ST (S_XPCL13,  SPR_PSBG, 7, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL14);
+    ST (S_XPCL14,  SPR_PSBG, 7, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL15);
+    ST (S_XPCL15,  SPR_PSBG, 7, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL16);
+    ST (S_XPCL16,  SPR_PSBG, 8, 2, (actionf_p1)A_PoisonBagDamage, S_XPCL17);
+    ST (S_XPCL17,  SPR_PSBG, 8, 1, (actionf_p1)A_PoisonBagDamage, S_XPCL18);
+    ST (S_XPCL18,  SPR_PSBG, 8, 1, (actionf_p1)A_PoisonBagCheck,  S_XPCL4);
+    ST (S_XPCL_X1, SPR_PSBG, 7, 7, NULL,                       S_XPCL_X2);
+    ST (S_XPCL_X2, SPR_PSBG, 6, 7, NULL,                       S_XPCL_X3);
+    ST (S_XPCL_X3, SPR_PSBG, 5, 6, NULL,                       S_XPCL_X4);
+    ST (S_XPCL_X4, SPR_PSBG, 3, 6, NULL,                       S_NULL);
+
+    // MT_XPOISONCLOUD (crispy MT_POISONCLOUD): inert floating gas, huge mass so it's
+    // never shoved, passes through walls (MF_NOCLIP) and off the blockmap.  reactiontime
+    // is the lifetime in A_PoisonBagCheck cycles (~27 cycles ~= 20s, crispy 24 + rnd&7).
+    m = &mobjinfo[MT_XPOISONCLOUD];
+    m->doomednum = -1;        m->spawnstate  = S_XPCL1;   m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 27;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_NULL;      m->xdeathstate = S_NULL;  m->deathsound = sfx_x_psdth;	// A_Scream burst
+    m->speed = 0; m->radius = 20*FRACUNIT; m->height = 30*FRACUNIT; m->mass = 0x7fffffff;
+    m->damage = 0; m->activesound = sfx_None;
+    m->flags = MF_NOGRAVITY|MF_NOBLOCKMAP|MF_SHADOW|MF_NOCLIP|MF_DROPOFF; m->raisestate = S_NULL;
+
+    // ---- Flechette poison bag (crispy S_POISONBAG*/MT_POISONBAG): sits where it's
+    //      thrown for a short fuse (frames PSBG A/B fullbright, then C), then
+    //      A_PoisonBagInit pops the cloud above it and the bag vanishes (-> S_NULL). ----
+    ST (S_XPBAG1, SPR_PSBG, 32768, 18, NULL,                        S_XPBAG2);
+    ST (S_XPBAG2, SPR_PSBG, 32769,  4, NULL,                        S_XPBAG3);
+    ST (S_XPBAG3, SPR_PSBG, 2,      3, NULL,                        S_XPBAG4);
+    ST (S_XPBAG4, SPR_PSBG, 2,      1, (actionf_p1)A_PoisonBagInit, S_NULL);
+
+    m = &mobjinfo[MT_XPOISONBAG];
+    m->doomednum = -1;        m->spawnstate  = S_XPBAG1;  m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_NULL;      m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
+    m->speed = 0; m->radius = 5*FRACUNIT; m->height = 5*FRACUNIT; m->mass = 100;
+    m->damage = 0; m->activesound = sfx_None;
+    m->flags = MF_NOGRAVITY|MF_NOBLOCKMAP; m->raisestate = S_NULL;
+
+    // ---- Poison shroom (crispy S_ZPOISONSHROOM*/MT_ZPOISONSHROOM): a shootable plant
+    //      that idles with a slow pulse; when destroyed its death sequence pops a poison
+    //      cloud via A_PoisonBagInit.  Frames SHRM A(idle) B(pulse) C-E(burst) F(corpse). ----
+    ST (S_XSHRM1,   SPR_SHRM, 0,  5, (actionf_p1)A_PoisonShroom,  S_XSHRM_P2);
+    ST (S_XSHRM_P1, SPR_SHRM, 0,  6, NULL,                        S_XSHRM_P2);	// pain flinch
+    ST (S_XSHRM_P2, SPR_SHRM, 1,  8, (actionf_p1)A_Pain,          S_XSHRM1);
+    ST (S_XSHRM_X1, SPR_SHRM, 2,  5, NULL,                        S_XSHRM_X2);	// death burst
+    ST (S_XSHRM_X2, SPR_SHRM, 3,  5, NULL,                        S_XSHRM_X3);
+    ST (S_XSHRM_X3, SPR_SHRM, 4,  5, (actionf_p1)A_PoisonBagInit, S_XSHRM_X4);
+    ST (S_XSHRM_X4, SPR_SHRM, 5, -1, NULL,                        S_NULL);		// broken corpse
+
+    m = &mobjinfo[MT_XPOISONSHROOM];
+    m->doomednum = -1;        m->spawnstate  = S_XSHRM1;  m->spawnhealth = 30;	// crispy ednum 8104
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_XSHRM_P1; m->painchance = 255;
+    m->painsound = sfx_x_pspai;  m->meleestate = S_NULL;   m->missilestate = S_NULL;	// A_Pain pulse/flinch
+    m->deathstate = S_XSHRM_X1;  m->xdeathstate = S_NULL;  m->deathsound = sfx_x_psdth;	// burst via the spawned cloud
+    m->speed = 0; m->radius = 6*FRACUNIT; m->height = 20*FRACUNIT; m->mass = 0x7fffffff;
+    m->damage = 0; m->activesound = sfx_None;
+    m->flags = MF_SHOOTABLE|MF_SOLID|MF_NOBLOOD; m->raisestate = S_NULL;
 }
 
 // ---------------------------------------------------------------------------
@@ -806,6 +942,27 @@ int Hexen_TypeByName (const char* name)
     if (!strcmp (name, "stalkerboss") || !strcmp (name, "serpentleader")) return MT_XSTALKERBOSS;
     if (!strcmp (name, "stalker")) return MT_XSTALKER;
     if (!strcmp (name, "wyvern") || !strcmp (name, "dragon") || !strcmp (name, "deathwyvern")) return MT_XDRAGON;
+    return -1;
+}
+
+// The poison feature's art (PSBG/SHRM) ships separately from the hexenstuff monster
+// sprites (e.g. in FRANK.wad), so its spawnables resolve on their OWN sprites -- not the
+// SPR_XETT gate in Hexen_Available -- else `summon poisoncloud`/`poisonshroom` would be
+// blocked whenever the monster pack isn't loaded.  Returns -1 if the name or art is absent.
+int Hexen_PoisonTypeByName (const char* name)
+{
+    int have_psbg = numsprites > SPR_PSBG && sprites[SPR_PSBG].numframes > 0;
+    int have_shrm = numsprites > SPR_SHRM && sprites[SPR_SHRM].numframes > 0;
+
+    if (!name || !name[0])
+	return -1;
+    if (have_psbg && (!strcmp (name, "poisoncloud") || !strcmp (name, "poison")))
+	return MT_XPOISONCLOUD;
+    if (have_psbg && (!strcmp (name, "poisonbag") || !strcmp (name, "flechettebag")))
+	return MT_XPOISONBAG;
+    if (have_shrm && (!strcmp (name, "poisonshroom") || !strcmp (name, "shroom")
+		      || !strcmp (name, "mushroom")))
+	return MT_XPOISONSHROOM;
     return -1;
 }
 

@@ -246,6 +246,10 @@ P_RadiusAttack
   mobj_t*	source,
   int		damage );
 
+// (X) Hexen poison cloud (files/hexen.c): radius attack with an independent radius,
+// routed to the poison path in P_DamageMobj.
+void P_PoisonRadiusAttack ( mobj_t* spot, mobj_t* source );
+
 
 
 //
@@ -279,6 +283,11 @@ P_DamageMobj
   mobj_t*	inflictor,
   mobj_t*	source,
   int		damage );
+
+// (X) Hexen poison (files/hexen.c cloud, drained by P_PlayerThink).
+void P_PoisonPlayer ( player_t* player, mobj_t* poisoner, int poison );
+void P_PoisonDamage ( player_t* player, mobj_t* source, int damage,
+		      boolean playPainSound );
 
 
 //

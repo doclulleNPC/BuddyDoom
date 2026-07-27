@@ -94,9 +94,10 @@ void P_UnArchivePlayers (void)
 	save_p += sizeof(player_t);
 	
 	// will be set when unarc thinker
-	players[i].mo = NULL;	
+	players[i].mo = NULL;
 	players[i].message = NULL;
 	players[i].attacker = NULL;
+	players[i].poisoner = NULL;	// (X) raw mobj_t* -- can't be swizzled, drop the poison source
 
 	for (j=0 ; j<NUMPSPRITES ; j++)
 	{

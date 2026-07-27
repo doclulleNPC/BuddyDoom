@@ -65,6 +65,38 @@ The additive artifact inventory is usable from the current inventory/console pat
 
 Each current ranged actor has an appended projectile. Multi-stage rituals, teleport/summon behavior and full Hexen `special1/2` semantics are simplified or omitted. Heresiarch/Korax are not full boss implementations, and the Hexen weapon/player system is not ported.
 
+### Poison cloud + poison damage-over-time
+
+`MT_XPOISONCLOUD` (`files/hexen.c`, ported from crispy `hexen/a_action.c`/`p_inter.c`) is the
+lingering gas the Cleric's Flechette leaves behind. Unlike a normal hit it deals **delayed
+poison damage**: a short-radius attack (`P_PoisonRadiusAttack`, `files/p_map.c`) feeds the
+victim's poison counter, and `P_PlayerThink` then bleeds 1 HP every 16 tics until it decays
+(`P_PoisonPlayer`/`P_PoisonDamage`, `files/p_inter.c`; poison ignores armor and can kill).
+This adds two `player_t` fields (`poisoncount`, `poisoner`) — appended at the end, nulled on
+save load like `attacker`. The cloud reuses `mobj_t.reactiontime`/`movecount` as its lifetime
+and bob phase, so `mobj_t` is unchanged. Summon the cloud directly for testing via the console:
+`summon poisoncloud`.
+
+The **Flechette artifact** is wired up as a Heretic-style inventory item
+(`h_arti_flechette`): using it throws a poison bag (`MT_XPOISONBAG`) that settles briefly, then
+`A_PoisonBagInit` pops the cloud above it (crispy's Cleric behavior). Effect in
+`ApplyHereticArtifact` (`files/p_inv_heretic.c`), bag actor/states + `A_PoisonBagInit` in
+`files/hexen.c`; get one with `givearti flechette`.
+
+The **poison shroom** (`MT_XPOISONSHROOM`, crispy `MT_ZPOISONSHROOM`) is also wired: a
+shootable/solid plant (30 HP) that idles with a slow pulse and, when destroyed, bursts into a
+poison cloud through the same `A_PoisonBagInit`. Summon it with `summon poisonshroom` (or
+`shroom`).
+
+**Art + summon gating:** the poison art (`PSBG` bag/cloud, `SHRM` shroom) ships separately from
+the hexenstuff monster sprites — e.g. dropped into a buddy WAD like `FRANK.wad` (autoloaded via
+`BUDDYDEF`). So the poison spawnables resolve on their *own* sprites via
+`Hexen_PoisonTypeByName` (`files/hexen.c`), not the `SPR_XETT` gate in `Hexen_Available`; that's
+why `summon poisoncloud`/`poisonbag`/`poisonshroom` work even without the monster pack. The
+cloud is intentionally `MF_SHADOW` (fuzzy, faithful to Hexen); the bag, shroom and Flechette
+inventory icon render with their real `PSBG`/`SHRM` pixels (remap them to the DOOM `PLAYPAL` if
+the greens look off).
+
 The current rule director selects Hexen trash from `MT_XETTIN` through `MT_XSTALKERBOSS` when `SPR_XETT` is available; it can select `MT_XDRAGON` as a rare objective guard. The asset probe is sprite-based, not a launcher-state API.
 
 ## 4. Asset extraction

@@ -241,6 +241,41 @@ typedef enum
     SPR_SHT1,		// Security Drone laser shot (SHT1*)
     SPR_POW1,		// Security Drone laser impact (POW1*)
     SPR_XSSD,		// Hexen Serpent dive/submerge frames (XSSD*) -- from hexenstuff.wad
+    SPR_PSBG,		// Hexen poison bag / poison cloud (PSBG*) -- from hexenstuff.wad (files/hexen.c)
+    SPR_SHRM,		// Hexen poison shroom (SHRM*) -- destructible gas plant (files/hexen.c)
+    // (H) Map-placeable Heretic item/pickup sprites (files/heretic_items.c).
+    // Native 4-char Heretic codes registered directly in sprnames_builtin[]
+    // (info.c) -- render straight out of heretic.wad in heretic_mode.
+    SPR_HAKY,		// green key   (AKYY)
+    SPR_HBKY,		// blue key    (BKYY)
+    SPR_HCKY,		// yellow key  (CKYY)
+    SPR_HAG1,		// gold wand ammo, wimpy (AMG1)
+    SPR_HAG2,		// gold wand ammo, hefty (AMG2)
+    SPR_HAM1,		// mace ammo, wimpy      (AMM1)
+    SPR_HAM2,		// mace ammo, hefty      (AMM2)
+    SPR_HAC1,		// crossbow ammo, wimpy  (AMC1)
+    SPR_HAC2,		// crossbow ammo, hefty  (AMC2)
+    SPR_HAS1,		// hellstaff ammo, wimpy (AMS1)
+    SPR_HAS2,		// hellstaff ammo, hefty (AMS2)
+    SPR_HAP1,		// phoenix ammo, wimpy   (AMP1)
+    SPR_HAP2,		// phoenix ammo, hefty   (AMP2)
+    SPR_HAB1,		// dragon-claw ammo, wimpy (AMB1)
+    SPR_HAB2,		// dragon-claw ammo, hefty (AMB2)
+    SPR_HWMC,		// firemace weapon       (WMCE)
+    SPR_HWSK,		// hellstaff weapon      (WSKL)
+    SPR_HWPH,		// phoenix rod weapon    (WPHX)
+    SPR_HWBW,		// ethereal crossbow weapon (WBOW)
+    SPR_HWGN,		// gauntlets weapon      (WGNT)
+    SPR_HWBL,		// dragon claw weapon    (WBLS)
+    SPR_HSHL,		// silver shield         (SHLD)
+    SPR_HSH2,		// enchanted shield      (SHD2)
+    // (H) Heretic decoration/scenery sprites (files/heretic_deco.c; H*->native remap)
+    SPR_HPOD, SPR_HAMG, SPR_HSK1, SPR_HSK2, SPR_HSK3, SPR_HSK4, SPR_HCHD, SPR_HSRT,
+    SPR_HSMP, SPR_HSGS, SPR_HSGL, SPR_HSCS, SPR_HSCL, SPR_HKFR, SPR_HBAR, SPR_HBRP,
+    SPR_HMS1, SPR_HMS2, SPR_HWTR, SPR_HHCO, SPR_HKG1, SPR_HKGB, SPR_HKGG, SPR_HKGY,
+    SPR_HVLC, SPR_HVFB, SPR_HVTF, SPR_HXPL, SPR_HSFF, SPR_HTGL, SPR_HTLE,
+    // (H) Heretic monster-variant sprites (files/heretic_mvar.c; H*->native remap)
+    SPR_HMUF, SPR_HKRX, SPR_HIMB, SPR_HSR1, SPR_HS1B,
     NUMSPRITES
 
 } spritenum_t;
@@ -1450,6 +1485,77 @@ typedef enum
     S_SECDRSHOT1, S_SECDRSHOT2,
     S_SECDRSHOT_X1, S_SECDRSHOT_X2, S_SECDRSHOT_X3, S_SECDRSHOT_X4, S_SECDRSHOT_X5,
     S_SECDR_CHG1, S_SECDR_CHG2,		// lost-soul-style ram (files/p_secdrone.c)
+    // (X) Hexen poison cloud (files/hexen.c): the lingering gas from the Cleric's
+    // Flechette.  18 damage-tick frames looping via A_PoisonBagCheck, then a 4-frame
+    // fade-out.  Reuses mobj_t.reactiontime as the lifetime counter (crispy special1).
+    S_XPCL1,  S_XPCL2,  S_XPCL3,  S_XPCL4,  S_XPCL5,  S_XPCL6,
+    S_XPCL7,  S_XPCL8,  S_XPCL9,  S_XPCL10, S_XPCL11, S_XPCL12,
+    S_XPCL13, S_XPCL14, S_XPCL15, S_XPCL16, S_XPCL17, S_XPCL18,
+    S_XPCL_X1, S_XPCL_X2, S_XPCL_X3, S_XPCL_X4,
+    // (X) Flechette's thrown poison bag (files/hexen.c): a brief fuse, then
+    // A_PoisonBagInit pops the cloud above it and the bag vanishes.
+    S_XPBAG1, S_XPBAG2, S_XPBAG3, S_XPBAG4,
+    // (X) Flechette pickup spinning icon (files/p_inv_heretic.c).
+    S_HARTI_FLECHETTE,
+    // (X) Poison shroom (files/hexen.c): a destructible plant that bursts into a
+    // poison cloud when killed.  Idle pulse loop, pain flinch, death -> A_PoisonBagInit.
+    S_XSHRM1, S_XSHRM_P1, S_XSHRM_P2,
+    S_XSHRM_X1, S_XSHRM_X2, S_XSHRM_X3, S_XSHRM_X4,
+    // (H) Map-placeable Heretic item/pickup spinning-icon states (one looping
+    // spawnstate each; filled by Heretic_Items_Init in files/heretic_items.c).
+    S_HKEY_GREEN, S_HKEY_BLUE, S_HKEY_YELLOW,
+    S_HAM_GWNDW, S_HAM_GWNDH, S_HAM_MACEW, S_HAM_MACEH,
+    S_HAM_CBOWW, S_HAM_CBOWH, S_HAM_SKRDW, S_HAM_SKRDH,
+    S_HAM_PHRDW, S_HAM_PHRDH, S_HAM_BLSRW, S_HAM_BLSRH,
+    S_HWEP_MACE, S_HWEP_SKULLROD, S_HWEP_PHOENIXROD,
+    S_HWEP_CROSSBOW, S_HWEP_GAUNTLETS, S_HWEP_BLASTER,
+    S_HITEM_SHIELD1, S_HITEM_SHIELD2, S_HITEM_VIAL,
+    // ---- Heretic decoration / scenery (files/heretic_deco.c) ----
+    S_HPOD_WAIT1, S_HPOD_PAIN1,
+    S_HPOD_DIE1, S_HPOD_DIE2, S_HPOD_DIE3, S_HPOD_DIE4,
+    S_HPOD_GROW1, S_HPOD_GROW2, S_HPOD_GROW3, S_HPOD_GROW4,
+    S_HPOD_GROW5, S_HPOD_GROW6, S_HPOD_GROW7, S_HPOD_GROW8,
+    S_HPODGOO1, S_HPODGOO2, S_HPODGOOX,
+    S_HPODGEN,
+    S_HSND_WIND, S_HSND_WATERFALL,
+    S_HSKH70, S_HSKH60, S_HSKH45, S_HSKH35,
+    S_HCHDL1, S_HCHDL2, S_HCHDL3,
+    S_HSRTC1, S_HSRTC2, S_HSRTC3,
+    S_HSMALLPILLAR,
+    S_HSTGS, S_HSTGL, S_HSTCS, S_HSTCL,
+    S_HFBR1, S_HFBR2, S_HFBR3, S_HFBR4, S_HFBR5, S_HFBR6, S_HFBR7, S_HFBR8,
+    S_HBARREL,
+    S_HBRPILLAR,
+    S_HMOSS1, S_HMOSS2,
+    S_HWTRCH1, S_HWTRCH2, S_HWTRCH3,
+    S_HHANGCORPSE,
+    S_HKGZ1, S_HKGZ2, S_HKGZ3,
+    S_HKGZ_START, S_HKGZ_BLUE, S_HKGZ_GREEN, S_HKGZ_YELLOW,
+    S_HVOLC1, S_HVOLC2, S_HVOLC3, S_HVOLC4, S_HVOLC5, S_HVOLC6, S_HVOLC7, S_HVOLC8, S_HVOLC9,
+    S_HVOLCBALL1, S_HVOLCBALL2,
+    S_HVOLCBALLX1, S_HVOLCBALLX2, S_HVOLCBALLX3, S_HVOLCBALLX4, S_HVOLCBALLX5, S_HVOLCBALLX6,
+    S_HVOLCTBALL1, S_HVOLCTBALL2,
+    S_HVOLCTBALLX1, S_HVOLCTBALLX2, S_HVOLCTBALLX3, S_HVOLCTBALLX4, S_HVOLCTBALLX5, S_HVOLCTBALLX6, S_HVOLCTBALLX7,
+    S_HTGLITGEN1, S_HTGLITGEN2,
+    S_HTGLITTER1_1, S_HTGLITTER1_2, S_HTGLITTER1_3, S_HTGLITTER1_4, S_HTGLITTER1_5,
+    S_HTGLITTER2_1, S_HTGLITTER2_2, S_HTGLITTER2_3, S_HTGLITTER2_4, S_HTGLITTER2_5,
+    S_HTFOG1, S_HTFOG2, S_HTFOG3, S_HTFOG4, S_HTFOG5, S_HTFOG6, S_HTFOG7,
+    S_HTFOG8, S_HTFOG9, S_HTFOG10, S_HTFOG11, S_HTFOG12, S_HTFOG13,
+    // ---- Heretic monster variants / bosses (files/heretic_mvar.c) ----
+    S_HMUML_ATK1, S_HMUML_ATK2, S_HMUML_ATK3, S_HMUML_ATK4, S_HMUML_ATK5, S_HMUML_ATK6,
+    S_HMUMV_DIE1, S_HMUMV_DIE2, S_HMUMV_DIE3, S_HMUMV_DIE4, S_HMUMV_DIE5, S_HMUMV_DIE6, S_HMUMV_DIE7, S_HMUMV_DIE8,
+    S_HMUM_SOUL1, S_HMUM_SOUL2, S_HMUM_SOUL3, S_HMUM_SOUL4, S_HMUM_SOUL5, S_HMUM_SOUL6, S_HMUM_SOUL7,
+    S_HMUMFX1_1, S_HMUMFX1_2, S_HMUMFX1_3, S_HMUMFX1_4,
+    S_HMUMFXI1_1, S_HMUMFXI1_2, S_HMUMFXI1_3, S_HMUMFXI1_4,
+    S_HKNIG_ATK1, S_HKNIG_ATK2, S_HKNIG_ATK3, S_HKNIG_ATK4, S_HKNIG_ATK5, S_HKNIG_ATK6,
+    S_HREDAXE1, S_HREDAXE2, S_HREDAXEX1, S_HREDAXEX2, S_HREDAXEX3,
+    S_HIMPL_MSATK1, S_HIMPL_MSATK2, S_HIMPL_MSATK3,
+    S_HIMB1, S_HIMB2, S_HIMB3, S_HIMBX1, S_HIMBX2, S_HIMBX3, S_HIMBX4,
+    S_HSR1_LOOK1, S_HSR1_LOOK2, S_HSR1_WALK1, S_HSR1_WALK2, S_HSR1_WALK3, S_HSR1_WALK4,
+    S_HSR1_PAIN1, S_HSR1_ATK1, S_HSR1_ATK2, S_HSR1_ATK3,
+    S_HSR1_DIE1, S_HSR1_DIE2, S_HSR1_DIE3, S_HSR1_DIE4, S_HSR1_DIE5, S_HSR1_DIE6, S_HSR1_DIE7, S_HSR1_DIE8, S_HSR1_DIE9,
+    S_HS1FX1_1, S_HS1FX1_2, S_HS1FX1_3,
+    S_HS1FXI1_1, S_HS1FXI1_2, S_HS1FXI1_3, S_HS1FXI1_4, S_HS1FXI1_5,
     NUMSTATES
 } statenum_t;
 
@@ -1698,6 +1804,53 @@ typedef enum {
     MT_TURRET,		// deployable auto-firing sentry turret (files/p_turret.c)
     MT_SECDRONE,	// Security Drone: buddy-spawned flying friendly laser drone (files/p_secdrone.c)
     MT_SECDRONESHOT,	// its laser projectile
+    MT_XPOISONCLOUD,	// (X) Hexen poison cloud -- delayed POISON damage-over-time (files/hexen.c)
+    MT_XPOISONBAG,	// (X) Flechette's thrown poison bag -- pops the cloud (files/hexen.c)
+    MT_HARTI_FLECHETTE,	// (X) Flechette inventory pickup (files/p_inv_heretic.c)
+    MT_XPOISONSHROOM,	// (X) Hexen poison shroom -- shootable gas plant (files/hexen.c)
+    // (H) Map-placeable Heretic item/pickup actors (files/heretic_items.c) --
+    // real Heretic doomednums; EFFECTS out of scope (touch handled minimally).
+    MT_HAKYY,		// green key   (crispy MT_AKYY, ednum 73)
+    MT_HBKYY,		// blue key    (crispy MT_BKYY, ednum 79)
+    MT_HCKYY,		// yellow key  (crispy MT_CKEY, ednum 80)
+    MT_HAMGWNDWIMPY,	// gold wand ammo, wimpy  (wand crystal, ednum 10)
+    MT_HAMGWNDHEFTY,	// gold wand ammo, hefty  (crystal geode, ednum 12)
+    MT_HAMMACEWIMPY,	// mace ammo, wimpy       (ednum 13)
+    MT_HAMMACEHEFTY,	// mace ammo, hefty       (ednum 16)
+    MT_HAMCBOWWIMPY,	// crossbow ammo, wimpy   (ednum 18)
+    MT_HAMCBOWHEFTY,	// crossbow ammo, hefty   (ednum 19)
+    MT_HAMSKRDWIMPY,	// hellstaff ammo, wimpy  (ednum 20)
+    MT_HAMSKRDHEFTY,	// hellstaff ammo, hefty  (ednum 21)
+    MT_HAMPHRDWIMPY,	// phoenix ammo, wimpy    (ednum 22)
+    MT_HAMPHRDHEFTY,	// phoenix ammo, hefty    (ednum 23)
+    MT_HAMBLSRWIMPY,	// dragon-claw ammo, wimpy (ednum 54)
+    MT_HAMBLSRHEFTY,	// dragon-claw ammo, hefty (ednum 55)
+    MT_HWMACE,		// firemace weapon        (crispy MT_WMACE, ednum 2002)
+    MT_HWSKULLROD,	// hellstaff weapon       (crispy MT_WSKULLROD, ednum 2004)
+    MT_HWPHOENIXROD,	// phoenix rod weapon     (crispy MT_WPHOENIXROD, ednum 2003)
+    MT_HWCROSSBOW,	// ethereal crossbow weapon (crispy MT_MISC15, ednum 2001)
+    MT_HWGAUNTLETS,	// gauntlets weapon       (crispy MT_MISC13, ednum 2005)
+    MT_HWBLASTER,	// dragon claw weapon     (crispy MT_MISC14, ednum 53)
+    MT_HITEMSHIELD1,	// silver shield          (crispy MT_ITEMSHIELD1, ednum 85)
+    MT_HITEMSHIELD2,	// enchanted shield       (crispy MT_ITEMSHIELD2, ednum 31)
+    MT_HCRYSTALVIAL,	// crystal vial / +10 HP  (crispy MT_MISC0, ednum 81)
+    // (H) Heretic decoration / scenery actors (files/heretic_deco.c)
+    MT_HPOD, MT_HPODGOO, MT_HPODGEN,
+    MT_HSOUNDWIND, MT_HSOUNDWATERFALL,
+    MT_HSKULLHANG70, MT_HSKULLHANG60, MT_HSKULLHANG45, MT_HSKULLHANG35,
+    MT_HCHANDELIER, MT_HSERPTORCH, MT_HSMALLPILLAR,
+    MT_HSTALAGMITESMALL, MT_HSTALAGMITELARGE, MT_HSTALACTITESMALL, MT_HSTALACTITELARGE,
+    MT_HFIREBRAZIER, MT_HBARREL, MT_HBRPILLAR, MT_HMOSS1, MT_HMOSS2,
+    MT_HWALLTORCH, MT_HHANGINGCORPSE,
+    MT_HKEYGIZMOBLUE, MT_HKEYGIZMOGREEN, MT_HKEYGIZMOYELLOW, MT_HKEYGIZMOFLOAT,
+    MT_HVOLCANO, MT_HVOLCANOBLAST, MT_HVOLCANOTBLAST,
+    MT_HTELEGLITGEN, MT_HTELEGLITGEN2, MT_HTELEGLITTER, MT_HTELEGLITTER2,
+    MT_HTFOG,
+    // (H) Heretic monster variants / bosses (files/heretic_mvar.c)
+    MT_HMUMMYLEADER, MT_HMUMMYGHOST, MT_HMUMMYLEADERGHOST, MT_HMUMMYSOUL, MT_HMUMMYFX1,
+    MT_HKNIGHTGHOST, MT_HREDAXE,
+    MT_HIMPLEADER, MT_HIMPBALL,
+    MT_HSORC1, MT_HSRCRFX1,
     NUMMOBJTYPES
 
 } mobjtype_t;

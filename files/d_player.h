@@ -90,6 +90,8 @@ typedef enum
     h_arti_chaos,		// Chaos Device  (teleport to player start)
     h_arti_wings,		// Wings of Wrath (generic flight: pw_flight)
     h_arti_egg,			// Morph Ovum     (fires egg missiles -> morph to chicken)
+    // (X) Hexen artifact -- effect in files/p_inv_heretic.c, actors in files/hexen.c.
+    h_arti_flechette,		// Flechette      (throws a poison bag -> poison cloud)
     NUMARTIFACTS
 
 } artitype_t;
@@ -219,6 +221,12 @@ typedef struct player_s
     // currently-selected slot (an artitype_t; arti_none = nothing selected).
     int			inventory[NUMARTIFACTS];
     int			invslot;
+
+    // (X) Hexen poison (files/hexen.c poison cloud, p_inter.c P_Poison*): a decaying
+    // counter drained by P_PlayerThink -- while >0 the player takes 1 HP every 16 tics
+    // from `poisoner`.  poisoner is a raw mobj_t* (nulled on savegame load, like attacker).
+    int			poisoncount;
+    mobj_t*		poisoner;
 
 } player_t;
 

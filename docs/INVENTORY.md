@@ -60,7 +60,17 @@ This is additive content support, not a promise that BuddyDoom is a complete Her
 
 ## 3. Hexen artifacts
 
-The Hexen artifact set—Flechette, Porkalator, Disc of Repulsion and related class-specific behavior—is planned. The generic flight/morph building blocks exist, but the complete Hexen item and player system is not implemented.
+The **Flechette** (`h_arti_flechette`) is implemented: using it lobs a poison bag
+(`MT_XPOISONBAG`, `files/hexen.c`) just ahead of the player that settles for a short fuse,
+then bursts into a lingering **poison cloud** (`MT_XPOISONCLOUD`) dealing delayed poison
+damage-over-time (see `docs/HERETIC_HEXEN.md` for the mechanic). Effect lives in
+`ApplyHereticArtifact` (`files/p_inv_heretic.c`); pickup/drop/HUD follow the Heretic-artifact
+pattern; get one for testing with the console `givearti flechette`. Its icon falls back to the
+`FLCH` text tag until the `PSBG` sprite is extracted.
+
+The rest of the Hexen artifact set—Porkalator, Disc of Repulsion and class-specific
+behavior—is still planned. The generic flight/morph building blocks exist, but the complete
+Hexen item and player system is not implemented.
 
 ## Console and HUD
 

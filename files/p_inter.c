@@ -48,6 +48,7 @@ rcsid[] = "$Id: p_inter.c,v 1.4 1997/02/03 22:45:11 b1 Exp $";
 #include "p_ai_director.h"	// L4D stress director (-director)
 #include "p_invent.h"		// (J) artifact inventory pickups/use
 #include "p_inv_heretic.h"	// (H) Heretic artifact pickups
+#include "heretic_items.h"	// (H) map-placeable Heretic item pickups
 
 #include "s_sound.h"
 
@@ -436,6 +437,21 @@ P_TouchSpecialThing
     // Done by mobjtype before the sprite switch -- these reuse Heretic sprites
     // with no DOOM-sprite case, so they'd otherwise hit the I_Error default.
     if (P_TouchHereticArtifact (player, special))
+    {
+	if (special->flags & MF_COUNTITEM)
+	    player->itemcount++;
+	P_RemoveMobj (special);
+	player->bonuscount += BONUSADD;
+	if (player == &players[consoleplayer])
+	    S_StartSound (NULL, sound);
+	return;
+    }
+
+    // (H) Map-placeable Heretic item (MT_H* keys/ammo/weapons/shields/vial):
+    // handled by mobjtype before the sprite switch -- these reuse Heretic
+    // sprites with no DOOM-sprite case, so they'd otherwise hit the I_Error
+    // default.  EFFECTS are out of scope (see files/heretic_items.c).
+    if (P_TouchHereticItem (player, special))
     {
 	if (special->flags & MF_COUNTITEM)
 	    player->itemcount++;
@@ -884,6 +900,64 @@ P_KillMobj
 }
 
 
+//
+// (X) HEXEN POISON  (ported from crispy-doom src/hexen/p_inter.c)
+//
+// The Cleric's Flechette leaves a poison cloud (files/hexen.c, MT_XPOISONCLOUD).
+// Instead of hitting once, it feeds the victim's `poisoncount`; P_PlayerThink then
+// bleeds 1 HP off every 16 tics until the counter decays.  Poison ignores armor.
+//
+
+//
+// P_PoisonPlayer - accrue poison on a player (crispy P_PoisonPlayer).
+//
+void P_PoisonPlayer (player_t* player, mobj_t* poisoner, int poison)
+{
+    if ((player->cheats & CF_GODMODE) || player->powers[pw_invulnerability])
+	return;
+    player->poisoncount += poison;
+    player->poisoner = poisoner;
+    if (player->poisoncount > 100)
+	player->poisoncount = 100;
+}
+
+//
+// P_PoisonDamage - apply poison damage directly to a player (crispy P_PoisonDamage).
+// Bypasses armor (unlike P_DamageMobj); `source` is the poisoner (may be NULL after a
+// savegame load).  Kills via P_KillMobj if it drains the last hit point.
+//
+void P_PoisonDamage (player_t* player, mobj_t* source, int damage,
+		     boolean playPainSound)
+{
+    mobj_t*	target = player->mo;
+
+    if (!target || target->health <= 0)
+	return;
+    if (gameskill == sk_baby)
+	damage >>= 1;		// half damage in trainer mode
+    if (damage < 1000
+	&& ((player->cheats & CF_GODMODE) || player->powers[pw_invulnerability]))
+	return;
+
+    player->health -= damage;	// mirror mobj health for the status bar
+    if (player->health < 0)
+	player->health = 0;
+    player->attacker = source;
+
+    target->health -= damage;
+    if (target->health <= 0)
+    {
+	P_KillMobj (source, target);
+	return;
+    }
+
+    // red screen flash + pain groan (throttled so a long soak isn't a siren)
+    if (playPainSound && !(leveltime & 15))
+	S_StartSound (target, sfx_plpain);
+    player->damagecount += damage;
+    if (player->damagecount > 100)
+	player->damagecount = 100;
+}
 
 
 //
@@ -924,6 +998,27 @@ P_DamageMobj
     {
 	P_MorphMonster (target, MT_CHICKEN, CHICKENTICS);
 	return;
+    }
+
+    // (X) Hexen poison cloud: the gas does DELAYED poison damage, not an instant hit
+    // (crispy P_DamageMobj MT_POISONCLOUD case).  A player accrues poisoncount (and
+    // takes one up-front bite) while the counter is low; only monsters/players are
+    // affected -- inert things ignore the cloud.  No thrust, no retaliation: return.
+    if (inflictor && inflictor->type == MT_XPOISONCLOUD)
+    {
+	if (target->player)
+	{
+	    if (target->player->poisoncount < 4)
+	    {
+		P_PoisonDamage (target->player, source, 15 + (P_Random () & 15), false);
+		P_PoisonPlayer (target->player, source, 50);
+		S_StartSound (target, sfx_plpain);	// poison cough
+	    }
+	    return;
+	}
+	else if (!(target->flags & MF_COUNTKILL))
+	    return;	// only monsters + players breathe the poison
+	// monsters fall through and take the small direct `damage`
     }
 
     // Player-side helpers -- a deployed sentry turret (MT_TURRET) or any FRIENDLY actor

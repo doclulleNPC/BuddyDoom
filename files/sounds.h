@@ -91,6 +91,12 @@ extern sfxinfo_t	*S_sfx;
 extern sfxinfo_t	S_sfx_builtin[];
 extern int	num_sfx;
 
+// Per-game SFX tables: fill the sfx_h_* / sfx_x_* slots of S_sfx_builtin with each
+// game's native lump names at startup (files/sounds_heretic.c, files/sounds_hexen.c).
+// Call before I_InitSound precaches (D_DoomMain, alongside Heretic_Init/Hexen_Init).
+void Sounds_Heretic_Init (void);
+void Sounds_Hexen_Init (void);
+
 // the complete set of music
 extern musicinfo_t	S_music[];
 
@@ -287,7 +293,7 @@ typedef enum
     sfx_skesit,
     sfx_skeatk,
     sfx_radio,
-    // ---- Heretic monster sounds (DS* lumps from hereticstuff.wad) ----
+    // ---- Heretic monster sounds -- native Heretic lump names (files/sounds_heretic.c) ----
     sfx_h_bstact,
     sfx_h_bstatk,
     sfx_h_bstdth,
@@ -343,7 +349,7 @@ typedef enum
     sfx_h_wizdth,
     sfx_h_wizpai,
     sfx_h_wizsit,
-    // ---- Hexen monster sounds (DS* lumps from hexenstuff.wad) ----
+    // ---- Hexen monster sounds -- native Hexen lump names (files/sounds_hexen.c) ----
     sfx_x_etsit,
     sfx_x_etpai,
     sfx_x_etatk,
@@ -388,6 +394,11 @@ typedef enum
     sfx_x_dratk,
     sfx_x_drdth,
     sfx_x_drhit,
+    // Hexen poison shroom / cloud (files/hexen.c) -- native Hexen lump names, no rename:
+    // copy STRETCH3 / PUFF1 straight from hexen.wad into a loaded WAD (I_SfxLumpFor
+    // resolves the bare name when no ds-prefixed lump exists).
+    sfx_x_pspai,	// PoisonShroomPain  -> STRETCH3 (shroom pulse/pain flinch)
+    sfx_x_psdth,	// PoisonShroomDeath -> PUFF1    (cloud burst via A_Scream; shroom death)
     // Security Drone (files/p_secdrone.c) -- lumps DSSECDR1..4 in buddydoom.wad.
     sfx_secdr_sight,	// SECDRON1
     sfx_secdr_active,	// SECDRON2

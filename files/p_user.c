@@ -328,7 +328,17 @@ void P_PlayerThink (player_t* player)
 
     if (player->mo->subsector->sector->special)
 	P_PlayerInSpecialSector (player);
-    
+
+    // (X) Hexen poison: while poisoned, decay the counter and bleed 1 HP every 16 tics
+    // (crispy P_PlayerThink).  P_PoisonDamage bypasses armor and can kill.
+    if (player->poisoncount && !(leveltime & 15))
+    {
+	player->poisoncount -= 5;
+	if (player->poisoncount < 0)
+	    player->poisoncount = 0;
+	P_PoisonDamage (player, player->poisoner, 1, true);
+    }
+
     // Check for weapon change.
 
     // A special event has no other buttons.

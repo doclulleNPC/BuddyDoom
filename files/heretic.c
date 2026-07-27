@@ -278,6 +278,16 @@ void Heretic_RemapNativeSprites (void)
 	{"HWIB","FX11"},{"HSNK","SNKE"},{"HSNB","SNFX"},{"HIRO","HEAD"},{"HIRB","FX05"},
 	{"HIRW","FX06"},{"HIRX","FX07"},{"HMIN","MNTR"},{"HMNA","FX12"},{"HMNB","FX13"},
 	{"HMNC","FX14"},{"HSR1","SRCR"},{"HSR2","SOR2"},{"HSRB","FX16"},{"HCHK","CHKN"},
+	// (H) decoration / scenery (files/heretic_deco.c)
+	{"HPOD","PPOD"},{"HAMG","AMG1"},{"HSK1","SKH1"},{"HSK2","SKH2"},{"HSK3","SKH3"},
+	{"HSK4","SKH4"},{"HCHD","CHDL"},{"HSRT","SRTC"},{"HSMP","SMPL"},{"HSGS","STGS"},
+	{"HSGL","STGL"},{"HSCS","STCS"},{"HSCL","STCL"},{"HKFR","KFR1"},{"HBAR","BARL"},
+	{"HBRP","BRPL"},{"HMS1","MOS1"},{"HMS2","MOS2"},{"HWTR","WTRH"},{"HHCO","HCOR"},
+	{"HKG1","KGZ1"},{"HKGB","KGZB"},{"HKGG","KGZG"},{"HKGY","KGZY"},{"HVLC","VLCO"},
+	{"HVFB","VFBL"},{"HVTF","VTFB"},{"HXPL","XPL1"},{"HSFF","SFFI"},{"HTGL","TGLT"},
+	{"HTLE","TELE"},
+	// (H) monster variants (files/heretic_mvar.c) -- HMUF/HKRX/HSR1 already above
+	{"HIMB","FX10"},{"HS1B","FX14"},
     };
     int s, k, n = (int)(sizeof(map)/sizeof(map[0]));
     if (!heretic_mode)
@@ -854,14 +864,18 @@ int P_HereticThingType (int doomednum)
 	case 68: return MT_HMUMMY;	// Mummy / Golem
 	case 90: return MT_HCLINK;	// Sabreclaw
 	case 66: return MT_HIMP;	// Gargoyle (gold)
-	case  5: return MT_HIMP;	// Gargoyle leader -> same gargoyle
+	case  5: return MT_HIMPLEADER;	// Gargoyle leader (fires fireballs -- files/heretic_mvar.c)
 	case 64: return MT_HKNIGHT;	// Undead Warrior (Knight)
+	case 65: return MT_HKNIGHTGHOST;	// Undead Warrior ghost (files/heretic_mvar.c)
 	case 70: return MT_HBEAST;	// Weredragon
 	case 15: return MT_HWIZARD;	// Disciple of D'Sparil
 	case 92: return MT_HSNAKE;	// Ophidian
 	case  9: return MT_HMINOTAUR;	// Maulotaur
 	case  6: return MT_HIRONLICH;	// Iron Lich
-	case  7: return MT_HDSPARIL;	// D'Sparil (final boss, phase-2 sorcerer)
+	case  7: return MT_HSORC1;	// D'Sparil phase 1 (serpent-mount; rises to phase 2 -- files/heretic_mvar.c)
+	case 45: return MT_HMUMMYLEADER;	// Nitrogolem / Golem leader (files/heretic_mvar.c)
+	case 46: return MT_HMUMMYLEADERGHOST;	// Golem leader ghost
+	case 69: return MT_HMUMMYGHOST;	// Golem ghost
 
 	// ---- the 10 artifacts (crispy heretic doomednums) ----
 	case 82: return MT_HARTI_FLASK;		// Quartz Flask
@@ -875,10 +889,64 @@ int P_HereticThingType (int doomednum)
 	case 83: return MT_HARTI_WINGS;		// Wings of Wrath
 	case 30: return MT_HARTI_EGG;		// Morph Ovum
 
-	// ---- trivial DOOM pickup substitutions (obvious only) ----
-	case 81: return MT_MISC10;	// Crystal Vial (health) -> DOOM stimpack
-	case 10: return MT_CLIP;	// Wand Crystal (gold-wand ammo, wimpy) -> DOOM clip
-	case 12: return MT_CLIP;	// Crystal Geode (gold-wand ammo, hefty)  -> DOOM clip
+	// ---- (H) map-placeable Heretic items/pickups (files/heretic_items.c) ----
+	// Faithful sprites + doomednums; EFFECTS out of scope (touch handled
+	// minimally in P_TouchHereticItem).  These supersede the old trivial
+	// DOOM substitutions for 81/10/12.
+	case 73: return MT_HAKYY;	// green key
+	case 79: return MT_HBKYY;	// blue key
+	case 80: return MT_HCKYY;	// yellow key
+	case 10: return MT_HAMGWNDWIMPY;	// wand crystal (gold-wand ammo, wimpy)
+	case 12: return MT_HAMGWNDHEFTY;	// crystal geode (gold-wand ammo, hefty)
+	case 13: return MT_HAMMACEWIMPY;	// mace spheres (wimpy)
+	case 16: return MT_HAMMACEHEFTY;	// mace spheres (hefty)
+	case 18: return MT_HAMCBOWWIMPY;	// ethereal arrows (wimpy)
+	case 19: return MT_HAMCBOWHEFTY;	// quiver of ethereal arrows (hefty)
+	case 20: return MT_HAMSKRDWIMPY;	// lesser runes (wimpy)
+	case 21: return MT_HAMSKRDHEFTY;	// greater runes (hefty)
+	case 22: return MT_HAMPHRDWIMPY;	// flame orb (wimpy)
+	case 23: return MT_HAMPHRDHEFTY;	// inferno orb (hefty)
+	case 54: return MT_HAMBLSRWIMPY;	// claw orb (wimpy)
+	case 55: return MT_HAMBLSRHEFTY;	// energy orb (hefty)
+	case 2002: return MT_HWMACE;		// Firemace
+	case 2004: return MT_HWSKULLROD;	// Hellstaff
+	case 2003: return MT_HWPHOENIXROD;	// Phoenix Rod
+	case 2001: return MT_HWCROSSBOW;	// Ethereal Crossbow
+	case 2005: return MT_HWGAUNTLETS;	// Gauntlets of the Necromancer
+	case 53: return MT_HWBLASTER;		// Dragon Claw
+	case 85: return MT_HITEMSHIELD1;	// Silver Shield
+	case 31: return MT_HITEMSHIELD2;	// Enchanted Shield
+	case 81: return MT_HCRYSTALVIAL;	// Crystal Vial (health)
+
+	// ---- (H) map-placeable Heretic decorations / scenery (files/heretic_deco.c) ----
+	case 2035: return MT_HPOD;		// Volcano pod (shootable) -- 2035 == DOOM barrel, heretic-mode only
+	case 43: return MT_HPODGEN;		// Pod generator
+	case 17: return MT_HSKULLHANG70;	// Hanging skull (70)
+	case 24: return MT_HSKULLHANG60;	// Hanging skull (60)
+	case 25: return MT_HSKULLHANG45;	// Hanging skull (45)
+	case 26: return MT_HSKULLHANG35;	// Hanging skull (35)
+	case 28: return MT_HCHANDELIER;		// Chandelier
+	case 27: return MT_HSERPTORCH;		// Serpent torch
+	case 29: return MT_HSMALLPILLAR;	// Small pillar
+	case 37: return MT_HSTALAGMITESMALL;	// Stalagmite (small)
+	case 38: return MT_HSTALAGMITELARGE;	// Stalagmite (large)
+	case 39: return MT_HSTALACTITESMALL;	// Stalactite (small)
+	case 40: return MT_HSTALACTITELARGE;	// Stalactite (large)
+	case 76: return MT_HFIREBRAZIER;	// Fire brazier
+	case 44: return MT_HBARREL;		// Barrel
+	case 47: return MT_HBRPILLAR;		// Brown pillar
+	case 48: return MT_HMOSS1;		// Hanging moss 1
+	case 49: return MT_HMOSS2;		// Hanging moss 2
+	case 50: return MT_HWALLTORCH;		// Wall torch
+	case 51: return MT_HHANGINGCORPSE;	// Hanging corpse
+	case 94: return MT_HKEYGIZMOBLUE;	// Blue key gizmo
+	case 95: return MT_HKEYGIZMOGREEN;	// Green key gizmo
+	case 96: return MT_HKEYGIZMOYELLOW;	// Yellow key gizmo
+	case 87: return MT_HVOLCANO;		// Volcano
+	case 74: return MT_HTELEGLITGEN;	// Teleport glitter generator
+	case 52: return MT_HTELEGLITGEN2;	// Teleport glitter generator 2
+	case 42: return MT_HSOUNDWIND;		// Ambient wind (silent marker)
+	case 41: return MT_HSOUNDWATERFALL;	// Ambient waterfall (silent marker)
 
 	default: return -1;		// unported Heretic thing -> skip
     }

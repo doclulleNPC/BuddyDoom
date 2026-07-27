@@ -20,6 +20,10 @@ int  Hexen_Available (void);
 // Map a name ("ettin"/...) to a Hexen mobjtype, or -1 if unknown.
 int  Hexen_TypeByName (const char* name);
 
+// Map a poison-feature name ("poisoncloud"/"poisonbag"/"poisonshroom") to its mobjtype,
+// gated on the poison art (PSBG/SHRM) rather than the monster sprites.  -1 if unknown/absent.
+int  Hexen_PoisonTypeByName (const char* name);
+
 // Spawn a Hexen monster at (x,y) on the floor; NULL if unavailable or type<0.
 struct mobj_s* Hexen_Spawn (int type, fixed_t x, fixed_t y);
 

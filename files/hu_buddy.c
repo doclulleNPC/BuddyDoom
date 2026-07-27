@@ -35,6 +35,8 @@
 
 #include "hu_buddy.h"
 #include "p_ai_coop.h"
+#include "p_mobj.h"                 // mobj_t (the BUDDYDEF companion is an mobj, not a player)
+#include "p_buddydef.h"             // P_Buddy_Mobj / _ActiveName / _MaxHealth / _Held / _Recalled
 
 // The small Doom HUD font (STCFN033..STCFN095), loaded by HU_Init in hu_stuff.c.
 extern patch_t* hu_font[HU_FONTSIZE];
@@ -302,7 +304,7 @@ static const char* const buddy_arti_icon[NUMARTIFACTS] =
     [h_arti_flask]    = "PTN1A0", [h_arti_urn]     = "SPHLA0", [h_arti_tome]      = "PWBKA0",
     [h_arti_torch]    = "TRCHA0", [h_arti_bomb]    = "FBMBA0", [h_arti_ring]      = "INVUA0",
     [h_arti_shadow]   = "INVSA0", [h_arti_chaos]   = "ATLPA0", [h_arti_wings]     = "SOARA0",
-    [h_arti_egg]      = "EGGCA0",
+    [h_arti_egg]      = "EGGCA0", [h_arti_flechette]= "PSBGA0",
 };
 static const char* const buddy_arti_tag[NUMARTIFACTS] =
 {
@@ -311,7 +313,7 @@ static const char* const buddy_arti_tag[NUMARTIFACTS] =
     [h_arti_flask]    = "FLSK", [h_arti_urn]     = "URN",  [h_arti_tome]      = "BSRK",
     [h_arti_torch]    = "TRCH", [h_arti_bomb]    = "BOMB", [h_arti_ring]      = "INVU",
     [h_arti_shadow]   = "SHDW", [h_arti_chaos]   = "CHAO", [h_arti_wings]     = "WING",
-    [h_arti_egg]      = "EGG",
+    [h_arti_egg]      = "EGG",  [h_arti_flechette]= "FLCH",
 };
 
 // The buddy's OWN artifact inventory, drawn right-to-left from the right margin on a
@@ -448,6 +450,54 @@ static void HU_Buddy_DrawStrip (player_t* bot)
 }
 
 
+// ---------------------------------------------------------------------------
+//  The BUDDYDEF mobj companion (Buddy menu slot > 0).  It is an mobj, not a
+//  player, so there is no armor/weapon/ammo/inventory and no marine mugshot --
+//  the strip is its NAME, its HP (out of the buddy's own spawnhealth, coloured by
+//  percentage) and what it is currently doing.
+// ---------------------------------------------------------------------------
+static void HU_Buddy_DrawMobjStrip (mobj_t* mo)
+{
+    const char*	name = P_Buddy_ActiveName ();
+    int		max  = P_Buddy_MaxHealth ();
+    int		hp   = mo->health < 0 ? 0 : mo->health;
+    int		pct  = (max > 0) ? (hp * 100) / max : hp;
+    int		wb   = SCREENWIDTH / hires;	// wide base width = the V_ coordinate space
+    const char*	what;
+    char	l1[48], l2[48];
+    int		textw, tx;
+
+    if (hp <= 0)		what = "DOWN";
+    else if (P_Buddy_Held ())	what = "HOLDING";
+    else if (P_Buddy_Recalled ())	what = "COMING";
+    else if (mo->target)	what = "FIGHTING";
+    else			what = "FOLLOWING";
+
+    snprintf (l1, sizeof l1, "%s", name && name[0] ? name : "BUDDY");
+    if (max > 0) snprintf (l2, sizeof l2, "HP %d/%d  %s", hp, max, what);
+    else         snprintf (l2, sizeof l2, "HP %d  %s", hp, what);
+
+    textw = HU_Buddy_TextW (l1);
+    { int w2 = HU_Buddy_TextW (l2); if (w2 > textw) textw = w2; }
+    tx = wb - 4 - textw;
+    if (tx < 0) tx = 0;
+
+    HU_Buddy_Text (tx, 2, l1);
+
+    // HP number coloured by percentage of the buddy's own max, like the marine's.
+    {
+	char hpn[24], suf[32];
+	int  x0 = tx;
+	snprintf (hpn, sizeof hpn, "%d", hp);
+	if (max > 0) snprintf (suf, sizeof suf, "/%d  %s", max, what);
+	else         snprintf (suf, sizeof suf, "  %s", what);
+	HU_Buddy_TextT (x0, 12, "HP ", NULL);              x0 += HU_Buddy_TextW ("HP ");
+	HU_Buddy_TextT (x0, 12, hpn, V_HealthTrans (pct)); x0 += HU_Buddy_TextW (hpn);
+	HU_Buddy_TextT (x0, 12, suf, NULL);
+    }
+}
+
+
 // ===========================================================================
 //  Drawer (called from HU_Drawer in hu_stuff.c)
 // ===========================================================================
@@ -458,18 +508,25 @@ void HU_Buddy_Drawer (void)
     int       slot;
 
     if (!show_buddy_hud) return;
-    slot = P_AICoop_Slot ();
-    if (slot < 0 || !playeringame[slot]) return;
-    bot = &players[slot];
-    if (!bot->mo) return;
-    // Draw while alive OR while DOWN (PST_DEAD = incapacitated, revivable) -- the
-    // down view shows a medkit so the player can find him.
-    if (bot->playerstate != PST_LIVE && bot->playerstate != PST_DEAD) return;
     if (menuactive || paused) return;
     {
 	extern gamestate_t wipegamestate;
 	if (wipegamestate != GS_LEVEL) return;
     }
+
+    slot = P_AICoop_Slot ();
+    if (slot < 0 || !playeringame[slot])
+    {
+	// No marine in the co-op slot -- but a BUDDYDEF buddy may be walking with us.
+	mobj_t* mo = P_Buddy_Mobj ();
+	if (mo) HU_Buddy_DrawMobjStrip (mo);
+	return;
+    }
+    bot = &players[slot];
+    if (!bot->mo) return;
+    // Draw while alive OR while DOWN (PST_DEAD = incapacitated, revivable) -- the
+    // down view shows a medkit so the player can find him.
+    if (bot->playerstate != PST_LIVE && bot->playerstate != PST_DEAD) return;
 
     HU_Buddy_DrawStrip (bot);
 }

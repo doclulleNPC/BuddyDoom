@@ -73,7 +73,24 @@ char *sprnames_builtin[NUMSPRITES] = {
     "TNT1",				// invisible placeholder (mbf/dsdhacked): no lumps -> renders nothing
     "MTUR",				// deployable sentry turret (SPR_MTUR) -- MTUR* patch lumps in run/ID0/buddydoom.wad
     "MNDR","SHT1","POW1",		// Security Drone body / laser shot / laser impact (buddydoom.wad)
-    "XSSD"				// Hexen Serpent dive/submerge frames (SPR_XSSD, hexenstuff.wad)
+    "XSSD",				// Hexen Serpent dive/submerge frames (SPR_XSSD, hexenstuff.wad)
+    "PSBG",				// Hexen poison bag / poison cloud (SPR_PSBG, hexenstuff.wad)
+    "SHRM",				// Hexen poison shroom (SPR_SHRM, hexenstuff.wad)
+    // (H) Map-placeable Heretic item/pickup sprites -- lock-step with spritenum_t
+    // (info.h).  Native 4-char Heretic codes (render from heretic.wad).
+    "AKYY","BKYY","CKYY",		// green / blue / yellow keys
+    "AMG1","AMG2","AMM1","AMM2","AMC1","AMC2",	// gold-wand / mace / crossbow ammo (wimpy,hefty)
+    "AMS1","AMS2","AMP1","AMP2","AMB1","AMB2",	// hellstaff / phoenix / dragon-claw ammo
+    "WMCE","WSKL","WPHX","WBOW","WGNT","WBLS",	// firemace/hellstaff/phoenix/crossbow/gauntlets/dragon-claw
+    "SHLD","SHD2",			// silver shield / enchanted shield
+    // (H) Heretic decoration/scenery sprites (files/heretic_deco.c) -- H* codes remapped
+    // to native heretic.wad art by Heretic_RemapNativeSprites (lock-step with info.h).
+    "HPOD","HAMG","HSK1","HSK2","HSK3","HSK4","HCHD","HSRT",
+    "HSMP","HSGS","HSGL","HSCS","HSCL","HKFR","HBAR","HBRP",
+    "HMS1","HMS2","HWTR","HHCO","HKG1","HKGB","HKGG","HKGY",
+    "HVLC","HVFB","HVTF","HXPL","HSFF","HTGL","HTLE",
+    // (H) Heretic monster-variant sprites (files/heretic_mvar.c) -- H* codes remapped
+    "HMUF","HKRX","HIMB","HSR1","HS1B"
 };
 
 

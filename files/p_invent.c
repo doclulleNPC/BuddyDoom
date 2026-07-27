@@ -79,6 +79,7 @@ const char* P_ArtifactName (artitype_t a)
       case h_arti_chaos:	return "Chaos Device";
       case h_arti_wings:	return "Wings of Wrath";
       case h_arti_egg:		return "Morph Ovum";
+      case h_arti_flechette:	return "Flechette";
       default:			return "";
     }
 }
@@ -314,7 +315,9 @@ boolean P_DropArtifact (player_t* player)
 	return false;
     }
 
-    if (a >= h_arti_flask)		// Heretic artifacts map 1:1 to MT_HARTI_*
+    if (a == h_arti_flechette)		// (X) non-contiguous MT slot -> map explicitly
+	t = MT_HARTI_FLECHETTE;
+    else if (a >= h_arti_flask)		// Heretic artifacts map 1:1 to MT_HARTI_*
 	t = (mobjtype_t)(MT_HARTI_FLASK + (a - h_arti_flask));
     else switch (a)			// DOOM overflow items -> their stock pickups
     {

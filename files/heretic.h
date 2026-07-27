@@ -13,6 +13,12 @@ struct mobj_s;
 // (after the info tables exist, before any Heretic monster spawns).
 void Heretic_Init (void);
 
+// Additive Heretic decoration/scenery (files/heretic_deco.c) and monster variants /
+// bosses (files/heretic_mvar.c).  Call after Heretic_Init (they reuse its base states),
+// before R_Init.
+void Heretic_Deco_Init (void);
+void Heretic_MVar_Init (void);
+
 // (heretic_mode) Remap the H* Heretic sprite codes to heretic.wad's native codes so the
 // monsters render from the real Heretic art.  Call BEFORE R_Init.
 void Heretic_RemapNativeSprites (void);

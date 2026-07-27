@@ -43,6 +43,7 @@
 
 #include "c_console.h"
 #include "p_ai_coop.h"		// companion commands (where/come/wait/attack/report)
+#include "p_buddydef.h"		// ...same commands for a BUDDYDEF mobj companion
 #include "p_invent.h"		// (J) givearti console command
 #include "p_ai_llm.h"		// director on/off toggle
 
@@ -269,6 +270,13 @@ static int C_MobjByName (const char* s)
 	int f = Freedoom_TypeByName (s);
 	if (f >= 0) return f;
     }
+    // Hexen poison feature (cloud/bag/shroom) -- its art (PSBG/SHRM) ships separately
+    // (e.g. FRANK.wad), so resolve these on their own sprites, before the monster gate.
+    if (s[0])
+    {
+	int x = Hexen_PoisonTypeByName (s);
+	if (x >= 0) return x;
+    }
     // Hexen monsters (ettin/...) -- only when hexenstuff.wad is loaded.
     if (s[0] && Hexen_Available ())
     {
@@ -332,7 +340,7 @@ static void C_Execute (char* line)
 	C_Printf ("cheats: god  noclip  notarget  allmap  kill  health <n>  armor <n>");
 	C_Printf ("give:   all|weapons|ammo|keys|armor|health|<weapon>|<key>");
 	C_Printf ("arti:   givearti stimpack|medikit|healthbonus|armorbonus|greenarmor|bluearmor|bullets|shells|rockets|cells");
-	C_Printf ("heretic arti: givearti flask|urn|tome|torch|bomb|ring|shadow|chaos|wings|egg");
+	C_Printf ("heretic arti: givearti flask|urn|tome|torch|bomb|ring|shadow|chaos|wings|egg|flechette");
 	C_Printf ("world:  spawn <thing>  skill <1-5>  map <e> <m> / warp <m>");
 	C_Printf ("view:   crosshair 0..3  screenblocks <3-11>");
 	C_Printf ("keys:   bind <key> <command> | unbind <key> | bind (list)");
@@ -424,8 +432,9 @@ static void C_Execute (char* line)
 	else if (!strcmp(args,"chaos"))     a = h_arti_chaos;
 	else if (!strcmp(args,"wings"))     a = h_arti_wings;
 	else if (!strcmp(args,"egg"))       a = h_arti_egg;
+	else if (!strcmp(args,"flechette")) a = h_arti_flechette;
 	if (a == arti_none)
-	    C_Printf ("usage: givearti stimpack|medikit|healthbonus|armorbonus|greenarmor|bluearmor|bullets|shells|rockets|cells|flask|urn|tome|torch|bomb|ring|shadow|chaos|wings|egg");
+	    C_Printf ("usage: givearti stimpack|medikit|healthbonus|armorbonus|greenarmor|bluearmor|bullets|shells|rockets|cells|flask|urn|tome|torch|bomb|ring|shadow|chaos|wings|egg|flechette");
 	else
 	{
 	    P_StoreOverflow (pl, a, amt);
@@ -728,6 +737,31 @@ static void C_Execute (char* line)
 	if (Heretic_Available ())
 	    C_Printf ("Heretic: mummy clink gargoyle knight");
 	C_Printf ("spawn with: summon | summonfriend | summonfoe <name>");
+    }
+    // A BUDDYDEF mobj companion (Buddy menu slot > 0) replaces the player-2 marine,
+    // so every P_AICoop_* order below would report "no companion".  When one is out
+    // there, the same commands drive it through the p_buddydef.c equivalents.
+    else if (P_Buddy_Mobj ()
+	     && (!strcmp(cmd,"where") || !strcmp(cmd,"buddy") || !strcmp(cmd,"comp")
+	      || !strcmp(cmd,"come")  || !strcmp(cmd,"follow")
+	      || !strcmp(cmd,"wait")  || !strcmp(cmd,"stay")
+	      || !strcmp(cmd,"attack")
+	      || !strcmp(cmd,"report")|| !strcmp(cmd,"status")
+	      || !strcmp(cmd,"buddyhome") || !strcmp(cmd,"buddytp")
+	      || !strcmp(cmd,"buddygod")  || !strcmp(cmd,"buddyheal")
+	      || !strcmp(cmd,"buddyhp")   || !strcmp(cmd,"buddyarm")
+	      || !strcmp(cmd,"buddygive")))
+    {
+	if      (!strcmp(cmd,"come")  || !strcmp(cmd,"follow"))	C_Printf ("%s", P_Buddy_Summon ());
+	else if (!strcmp(cmd,"wait")  || !strcmp(cmd,"stay"))	C_Printf ("%s", P_Buddy_Wait ());
+	else if (!strcmp(cmd,"attack"))				C_Printf ("%s", P_Buddy_Attack ());
+	else if (!strcmp(cmd,"report")|| !strcmp(cmd,"status"))	C_Printf ("%s", P_Buddy_StatusReport ());
+	else if (!strcmp(cmd,"buddyhome") || !strcmp(cmd,"buddytp"))
+								C_Printf ("%s", P_Buddy_Warp ());
+	else if (!strcmp(cmd,"where") || !strcmp(cmd,"buddy") || !strcmp(cmd,"comp"))
+								C_Printf ("%s", P_Buddy_Report ());
+	else	// god / heal / arm are marine-player powers; a mobj buddy has none
+	    C_Printf ("[Buddy] (%s only works for the Marine buddy)", cmd);
     }
     else if (!strcmp(cmd, "where") || !strcmp(cmd, "buddy") || !strcmp(cmd, "comp"))
     {

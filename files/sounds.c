@@ -111,7 +111,7 @@ musicinfo_t S_music[] =
 // Information about all the sfx
 //
 
-sfxinfo_t S_sfx_builtin[] =
+sfxinfo_t S_sfx_builtin[NUMSFX] =
 {
   // S_sfx[0] needs to be a dummy for odd reasons.
   { "none", false,  0, 0, -1, -1, 0 },
@@ -224,112 +224,19 @@ sfxinfo_t S_sfx_builtin[] =
   { "skesit", false, 70, 0, -1, -1, 0 },
   { "skeatk", false, 70, 0, -1, -1, 0 },
   { "radio", false, 60, 0, -1, -1, 0 },
-  // ---- Heretic monster sounds ----
-  { "bstact", false, 120, 0, -1, -1, 0 },
-  { "bstatk", false, 70, 0, -1, -1, 0 },
-  { "bstdth", false, 70, 0, -1, -1, 0 },
-  { "bstpai", false, 96, 0, -1, -1, 0 },
-  { "bstsit", false, 98, 0, -1, -1, 0 },
-  { "clkact", false, 120, 0, -1, -1, 0 },
-  { "clkatk", false, 70, 0, -1, -1, 0 },
-  { "clkdth", false, 70, 0, -1, -1, 0 },
-  { "clkpai", false, 96, 0, -1, -1, 0 },
-  { "clksit", false, 98, 0, -1, -1, 0 },
-  { "hedact", false, 120, 0, -1, -1, 0 },
-  { "hedat1", false, 70, 0, -1, -1, 0 },
-  { "hedat2", false, 70, 0, -1, -1, 0 },
-  { "hedat3", false, 70, 0, -1, -1, 0 },
-  { "heddth", false, 70, 0, -1, -1, 0 },
-  { "hedpai", false, 96, 0, -1, -1, 0 },
-  { "hedsit", false, 98, 0, -1, -1, 0 },
-  { "impat1", false, 70, 0, -1, -1, 0 },
-  { "impat2", false, 70, 0, -1, -1, 0 },
-  { "impdth", false, 70, 0, -1, -1, 0 },
-  { "imppai", false, 96, 0, -1, -1, 0 },
-  { "impsit", false, 98, 0, -1, -1, 0 },
-  { "kgtat2", false, 70, 0, -1, -1, 0 },
-  { "kgtatk", false, 70, 0, -1, -1, 0 },
-  { "kgtdth", false, 70, 0, -1, -1, 0 },
-  { "kgtpai", false, 96, 0, -1, -1, 0 },
-  { "kgtsit", false, 98, 0, -1, -1, 0 },
-  { "minact", false, 120, 0, -1, -1, 0 },
-  { "minat1", false, 70, 0, -1, -1, 0 },
-  { "minat2", false, 70, 0, -1, -1, 0 },
-  { "minat3", false, 70, 0, -1, -1, 0 },
-  { "mindth", false, 70, 0, -1, -1, 0 },
-  { "minpai", false, 96, 0, -1, -1, 0 },
-  { "minsit", false, 98, 0, -1, -1, 0 },
-  { "mumat1", false, 70, 0, -1, -1, 0 },
-  { "mumat2", false, 70, 0, -1, -1, 0 },
-  { "mumdth", false, 70, 0, -1, -1, 0 },
-  { "mumhed", false, 70, 0, -1, -1, 0 },
-  { "mumpai", false, 96, 0, -1, -1, 0 },
-  { "mumsit", false, 98, 0, -1, -1, 0 },
-  { "snkact", false, 120, 0, -1, -1, 0 },
-  { "snkatk", false, 70, 0, -1, -1, 0 },
-  { "snkdth", false, 70, 0, -1, -1, 0 },
-  { "snkpai", false, 96, 0, -1, -1, 0 },
-  { "snksit", false, 98, 0, -1, -1, 0 },
-  { "sorzap", false, 70, 0, -1, -1, 0 },
-  { "sorsit", false, 98, 0, -1, -1, 0 },
-  { "soratk", false, 70, 0, -1, -1, 0 },
-  { "sorpai", false, 96, 0, -1, -1, 0 },
-  { "soract", false, 120, 0, -1, -1, 0 },
-  { "wizact", false, 120, 0, -1, -1, 0 },
-  { "wizatk", false, 70, 0, -1, -1, 0 },
-  { "wizdth", false, 70, 0, -1, -1, 0 },
-  { "wizpai", false, 96, 0, -1, -1, 0 },
-  { "wizsit", false, 98, 0, -1, -1, 0 },
-  // ---- Hexen monster sounds (lump = DS + name, in hexenstuff.wad) ----
-  { "xetsit", false, 98, 0, -1, -1, 0 },
-  { "xetpai", false, 96, 0, -1, -1, 0 },
-  { "xetatk", false, 70, 0, -1, -1, 0 },
-  { "xetdth", false, 70, 0, -1, -1, 0 },
-  { "xcesit", false, 98, 0, -1, -1, 0 },
-  { "xceact", false, 120, 0, -1, -1, 0 },
-  { "xcepai", false, 96, 0, -1, -1, 0 },
-  { "xceatk", false, 70, 0, -1, -1, 0 },
-  { "xcedth", false, 70, 0, -1, -1, 0 },
-  { "xslatk", false, 70, 0, -1, -1, 0 },
-  { "xdesit", false, 98, 0, -1, -1, 0 },
-  { "xdepai", false, 96, 0, -1, -1, 0 },
-  { "xdeatk", false, 70, 0, -1, -1, 0 },
-  { "xdedth", false, 70, 0, -1, -1, 0 },
-  { "xfdact", false, 120, 0, -1, -1, 0 },
-  { "xfdpai", false, 96, 0, -1, -1, 0 },
-  { "xfdatk", false, 70, 0, -1, -1, 0 },
-  { "xfddth", false, 70, 0, -1, -1, 0 },
-  { "xfdhit", false, 70, 0, -1, -1, 0 },
-  { "xwrsit", false, 98, 0, -1, -1, 0 },
-  { "xwract", false, 120, 0, -1, -1, 0 },
-  { "xwrpai", false, 96, 0, -1, -1, 0 },
-  { "xwratk", false, 70, 0, -1, -1, 0 },
-  { "xwrdth", false, 70, 0, -1, -1, 0 },
-  { "xbisit", false, 98, 0, -1, -1, 0 },
-  { "xbiact", false, 120, 0, -1, -1, 0 },
-  { "xbipai", false, 96, 0, -1, -1, 0 },
-  { "xbiatk", false, 70, 0, -1, -1, 0 },
-  { "xbidth", false, 70, 0, -1, -1, 0 },
-  { "xbihit", false, 70, 0, -1, -1, 0 },
-  { "xicsit", false, 98, 0, -1, -1, 0 },
-  { "xicatk", false, 70, 0, -1, -1, 0 },
-  { "xichit", false, 70, 0, -1, -1, 0 },
-  { "xstsit", false, 98, 0, -1, -1, 0 },
-  { "xstact", false, 120, 0, -1, -1, 0 },
-  { "xstpai", false, 96, 0, -1, -1, 0 },
-  { "xstatk", false, 70, 0, -1, -1, 0 },
-  { "xstdth", false, 70, 0, -1, -1, 0 },
-  { "xsthit", false, 70, 0, -1, -1, 0 },
-  { "xdrsit", false, 98, 0, -1, -1, 0 },
-  { "xdrpai", false, 96, 0, -1, -1, 0 },
-  { "xdratk", false, 70, 0, -1, -1, 0 },
-  { "xdrdth", false, 70, 0, -1, -1, 0 },
-  { "xdrhit", false, 70, 0, -1, -1, 0 },
-  // Security Drone (files/p_secdrone.c) -- lump = "ds"+name -> DSSECDR1..4.
-  { "secdr1", false, 98, 0, -1, -1, 0 },	// sight
-  { "secdr2", false, 78, 0, -1, -1, 0 },	// active
-  { "secdr3", false, 98, 0, -1, -1, 0 },	// detect/attack
-  { "secdr4", false, 98, 0, -1, -1, 0 },	// death
+  // ---- Per-game SFX (sfx_h_* Heretic, sfx_x_* Hexen + poison) are NOT listed here ----
+  // They're written into their enum slots at startup by Sounds_Heretic_Init
+  // (files/sounds_heretic.c) and Sounds_Hexen_Init (files/sounds_hexen.c), using each
+  // game's NATIVE lump names.  Those slots stay zero in this initializer (getsfx hands
+  // back silence for a NULL name), so a game whose Init hasn't run is simply mute.
+  // The enum order lives in sounds.h -- keep the per-game tables in that same order.
+
+  // ---- Security Drone (files/p_secdrone.c) -- lump "ds"+name -> DSSECDR1..4 ----
+  // Designated so it lands in its own slots regardless of the gap above.
+  [sfx_secdr_sight]  = { "secdr1", false, 98, 0, -1, -1, 0 },	// sight
+  [sfx_secdr_active] = { "secdr2", false, 78, 0, -1, -1, 0 },	// active
+  [sfx_secdr_detect] = { "secdr3", false, 98, 0, -1, -1, 0 },	// detect/attack
+  [sfx_secdr_death]  = { "secdr4", false, 98, 0, -1, -1, 0 },	// death
 };
 
 // DSDHacked (M5): the sound table is growable (see dsdhacked.c dsdh_EnsureSFXCapacity).

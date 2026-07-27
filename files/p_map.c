@@ -564,7 +564,25 @@ P_CheckPosition
 
     if ( tmflags & MF_NOCLIP )
 	return true;
-    
+
+    // Keep actors inside the BLOCKMAP.  The blockmap spans the whole map, so a
+    // legitimate actor's centre is always within the grid; a valid move never
+    // trips this.  But if a move would carry the centre off the grid, reject it:
+    // P_BlockLinesIterator silently checks *no* cells for out-of-range blocks, so
+    // once a thing's bbox leaves the blockmap the boundary walls stop being
+    // enforced and it tunnels into the void (observed with the AI buddy shoved
+    // through a custom arena's south wall, which sits flush with the blockmap
+    // edge -- after that, collision is off out there and it drifts free).
+    // Treating an off-grid destination as a solid wall stops the leak for every
+    // actor (monsters included), not just the buddy.  NOCLIP things already
+    // returned above, so idclip/no-clip movement is unaffected.
+    {
+	int	cx = (x - bmaporgx) >> MAPBLOCKSHIFT;
+	int	cy = (y - bmaporgy) >> MAPBLOCKSHIFT;
+	if (cx < 0 || cx >= bmapwidth || cy < 0 || cy >= bmapheight)
+	    return false;		// would leave the blockmap -> block like a wall
+    }
+
     // Check things first, possibly picking things up.
     // The bounding box is extended by MAXRADIUS
     // because mobj_ts are grouped into mapblocks
@@ -1414,6 +1432,68 @@ P_RadiusAttack
     for (y=yl ; y<=yh ; y++)
 	for (x=xl ; x<=xh ; x++)
 	    P_BlockThingsIterator (x, y, PIT_RadiusAttack );
+}
+
+
+//
+// (X) P_PoisonRadiusAttack  (Hexen poison cloud, files/hexen.c)
+//
+// Like P_RadiusAttack, but the blast RADIUS and the per-hit DAMAGE are independent
+// (crispy's A_Explode passed distance=40, damage=4 for MT_POISONCLOUD), and every hit
+// is dealt with the cloud as `inflictor` so P_DamageMobj routes it to the poison path
+// (players accrue poisoncount; monsters take the small direct damage).
+//
+#define POISONCLOUD_RADIUS	40	// map units (crispy MT_POISONCLOUD distance)
+#define POISONCLOUD_DAMAGE	4	// crispy A_Explode damage for the cloud
+
+static mobj_t*	poisonspot;
+static mobj_t*	poisonsource;
+
+boolean PIT_PoisonAttack (mobj_t* thing)
+{
+    fixed_t	dx;
+    fixed_t	dy;
+    fixed_t	dist;
+
+    if (!(thing->flags & MF_SHOOTABLE))
+	return true;
+
+    dx = abs (thing->x - poisonspot->x);
+    dy = abs (thing->y - poisonspot->y);
+    dist = dx > dy ? dx : dy;
+    dist = (dist - thing->radius) >> FRACBITS;
+    if (dist < 0)
+	dist = 0;
+    if (dist >= POISONCLOUD_RADIUS)
+	return true;			// out of the gas
+
+    if (P_CheckSight (thing, poisonspot))
+	P_DamageMobj (thing, poisonspot, poisonsource, POISONCLOUD_DAMAGE - dist);
+
+    return true;
+}
+
+void P_PoisonRadiusAttack (mobj_t* spot, mobj_t* source)
+{
+    int		x;
+    int		y;
+    int		xl;
+    int		xh;
+    int		yl;
+    int		yh;
+    fixed_t	dist;
+
+    dist = (POISONCLOUD_RADIUS + MAXRADIUS) << FRACBITS;
+    yh = (spot->y + dist - bmaporgy) >> MAPBLOCKSHIFT;
+    yl = (spot->y - dist - bmaporgy) >> MAPBLOCKSHIFT;
+    xh = (spot->x + dist - bmaporgx) >> MAPBLOCKSHIFT;
+    xl = (spot->x - dist - bmaporgx) >> MAPBLOCKSHIFT;
+    poisonspot = spot;
+    poisonsource = source;
+
+    for (y=yl ; y<=yh ; y++)
+	for (x=xl ; x<=xh ; x++)
+	    P_BlockThingsIterator (x, y, PIT_PoisonAttack );
 }
 
 

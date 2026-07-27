@@ -170,6 +170,24 @@ boolean ApplyHereticArtifact (player_t* player, artitype_t a)
 	player->message = "USED MORPH OVUM";
 	return true;
 
+      case h_arti_flechette:
+      {
+	// (X) Flechette: lob a poison bag just ahead of the player (crispy's Cleric
+	// arti_poisonbag).  The bag (files/hexen.c MT_XPOISONBAG) settles for a short
+	// fuse, then bursts into a lingering poison cloud; ->target is the player so the
+	// poison kills attribute to them.
+	mobj_t*	  bag;
+	unsigned  an;
+	if (!mo) { player->message = "CANNOT USE FLECHETTE"; return false; }
+	an  = mo->angle >> ANGLETOFINESHIFT;
+	bag = P_SpawnMobj (mo->x + 16*finecosine[an], mo->y + 24*finesine[an],
+			   mo->z + 8*FRACUNIT, MT_XPOISONBAG);
+	if (bag)
+	    bag->target = mo;
+	player->message = "USED FLECHETTE";
+	return true;
+      }
+
       default:
 	return false;
     }
@@ -221,6 +239,7 @@ void HereticInv_Init (void)
     ST (S_HARTI_CHAOS,  SPR_ATLP, BRIGHT|0, 6, NULL, S_HARTI_CHAOS);
     ST (S_HARTI_WINGS,  SPR_SOAR, BRIGHT|0, 6, NULL, S_HARTI_WINGS);
     ST (S_HARTI_EGG,    SPR_EGGC, BRIGHT|0, 6, NULL, S_HARTI_EGG);
+    ST (S_HARTI_FLECHETTE, SPR_PSBG, BRIGHT|0, 6, NULL, S_HARTI_FLECHETTE);	// (X) Flechette
 
     PickupItem (MT_HARTI_FLASK,  S_HARTI_FLASK);
     PickupItem (MT_HARTI_URN,    S_HARTI_URN);
@@ -232,6 +251,7 @@ void HereticInv_Init (void)
     PickupItem (MT_HARTI_CHAOS,  S_HARTI_CHAOS);
     PickupItem (MT_HARTI_WINGS,  S_HARTI_WINGS);
     PickupItem (MT_HARTI_EGG,    S_HARTI_EGG);
+    PickupItem (MT_HARTI_FLECHETTE, S_HARTI_FLECHETTE);		// (X) Flechette pickup
 
     // ---- Time Bomb of the Ancients actor (crispy MT_FIREBOMB) ----
     // A few FBMB fuse frames (A_Scream just before the boom), then A_Explode
@@ -311,6 +331,7 @@ boolean P_TouchHereticArtifact (player_t* player, mobj_t* special)
       case MT_HARTI_CHAOS:  a = h_arti_chaos;  player->message = "PICKED UP A CHAOS DEVICE";  break;
       case MT_HARTI_WINGS:  a = h_arti_wings;  player->message = "PICKED UP THE WINGS OF WRATH"; break;
       case MT_HARTI_EGG:    a = h_arti_egg;    player->message = "PICKED UP A MORPH OVUM";    break;
+      case MT_HARTI_FLECHETTE: a = h_arti_flechette; player->message = "PICKED UP A FLECHETTE"; break;
       default:
 	return false;				// not ours
     }
