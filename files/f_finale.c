@@ -336,21 +336,29 @@ void F_TextWrite (void)
     int		cx;
     int		cy;
     
-    // erase the entire screen to a tiled background
-    src = W_CacheLumpName ( finaleflat , PU_CACHE);
-    dest = screens[0];
-	
-    for (y=0 ; y<SCREENHEIGHT ; y++)
+    // erase the entire screen to a tiled background.  In heretic_mode the DOOM
+    // finale flat may be absent -> fall back to a black screen (the text still draws).
     {
-	for (x=0 ; x<SCREENWIDTH/64 ; x++)
+	int fl = (finaleflat && finaleflat[0]) ? W_CheckNumForName (finaleflat) : -1;
+	if (fl < 0)
+	    memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
+	else
 	{
-	    memcpy (dest, src+((y&63)<<6), 64);
-	    dest += 64;
-	}
-	if (SCREENWIDTH&63)
-	{
-	    memcpy (dest, src+((y&63)<<6), SCREENWIDTH&63);
-	    dest += (SCREENWIDTH&63);
+	    src = W_CacheLumpNum (fl, PU_CACHE);
+	    dest = screens[0];
+	    for (y=0 ; y<SCREENHEIGHT ; y++)
+	    {
+		for (x=0 ; x<SCREENWIDTH/64 ; x++)
+		{
+		    memcpy (dest, src+((y&63)<<6), 64);
+		    dest += 64;
+		}
+		if (SCREENWIDTH&63)
+		{
+		    memcpy (dest, src+((y&63)<<6), SCREENWIDTH&63);
+		    dest += (SCREENWIDTH&63);
+		}
+	    }
 	}
     }
 
@@ -650,8 +658,11 @@ void F_CastDrawer (void)
     boolean		flip;
     patch_t*		patch;
     
-    // erase the entire screen to a background
-    V_DrawPatch (0,0,0, W_CacheLumpName ("BOSSBACK", PU_CACHE));
+    // erase the entire screen to a background (absent in Heretic -> black)
+    if (W_CheckNumForName ("BOSSBACK") >= 0)
+	V_DrawPatch (0,0,0, W_CacheLumpName ("BOSSBACK", PU_CACHE));
+    else
+	memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
 
     F_CastPrint (castorder[castnum].name);
     

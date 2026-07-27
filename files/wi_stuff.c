@@ -1557,12 +1557,61 @@ void WI_Ticker(void)
 
 }
 
+// ---------------------------------------------------------------------------
+// heretic_mode: the DOOM intermission uses lumps (WIMAP*, WILV*, WINUM*, ...)
+// heretic.wad doesn't have, and Heretic's own intermission is a later port.  So
+// skip loading the DOOM art and draw a simple hu_font TEXT screen instead -- same
+// spirit as the menu's text fallback.  The Ticker still advances to the next map.
+// ---------------------------------------------------------------------------
+#include "hu_stuff.h"			// HU_FONTSTART / HU_FONTSIZE
+extern patch_t* hu_font[HU_FONTSIZE];
+extern int	heretic_mode;
+
+static int WI_TextWidth (const char* s)
+{
+    int w = 0, c;
+    while (*s)
+    {
+	c = toupper ((unsigned char)*s++) - HU_FONTSTART;
+	w += (c < 0 || c >= HU_FONTSIZE) ? 4 : SHORT (hu_font[c]->width);
+    }
+    return w;
+}
+
+static void WI_TextCentered (int y, const char* s)
+{
+    int x = (BASE_WIDTH - WI_TextWidth (s)) / 2, c;
+    while (*s)
+    {
+	c = toupper ((unsigned char)*s++) - HU_FONTSTART;
+	if (c < 0 || c >= HU_FONTSIZE) { x += 4; continue; }
+	V_DrawPatch (x, y, 0, hu_font[c]);
+	x += SHORT (hu_font[c]->width);
+    }
+}
+
+static void WI_drawHereticText (void)
+{
+    char line[48];
+    memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
+    sprintf (line, "E%dM%d COMPLETE", wbs->epsd + 1, wbs->last + 1);
+    WI_TextCentered (70, line);
+    if (state != StatCount)
+    {
+	sprintf (line, "ENTERING E%dM%d", wbs->epsd + 1, wbs->next + 1);
+	WI_TextCentered (100, line);
+    }
+}
+
 void WI_loadData(void)
 {
     int		i;
     int		j;
     char	name[9];
     anim_t*	a;
+
+    if (heretic_mode)
+	return;			// no DOOM intermission art in Heretic -> text screen
 
     if (gamemode == commercial)
 	strcpy(name, "INTERPIC");
@@ -1806,6 +1855,12 @@ void WI_unloadData(void)
 
 void WI_Drawer (void)
 {
+    if (heretic_mode)			// text intermission (DOOM stat art absent in Heretic)
+    {
+	WI_drawHereticText ();
+	return;
+    }
+
     switch (state)
     {
       case StatCount:
