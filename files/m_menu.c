@@ -605,6 +605,52 @@ void M_ReadSaveStrings(void)
 }
 
 
+// ---------------------------------------------------------------------------
+// Heretic / art-less IWAD menu fallback.
+//
+// Heretic (and other non-DOOM IWADs) ship none of DOOM's menu graphics
+// (M_NGAME, M_SKILL, M_LOADG, ...).  Where a menu patch lump is missing we
+// render a readable text label instead of fatally caching a nonexistent lump.
+// Decorative lumps (slot borders, volume thermo) map to "" and are simply
+// skipped.  In an ordinary DOOM IWAD every lump exists, so nothing changes.
+// ---------------------------------------------------------------------------
+static const char* M_MenuFallbackText (const char* lump)
+{
+    static const struct { const char* l; const char* t; } tbl[] = {
+	{ "M_NGAME","New Game" },  { "M_OPTION","Options" }, { "M_LOADG","Load Game" },
+	{ "M_SAVEG","Save Game" }, { "M_RDTHIS","Read This!" }, { "M_QUITG","Quit Game" },
+	{ "M_NEWG","New Game" },    { "M_SKILL","Choose Skill Level:" },
+	{ "M_EPISOD","Which Episode?" }, { "M_OPTTTL","Options" }, { "M_SVOL","Sound Volume" },
+	// Heretic skill + episode names (shown when the DOOM graphics are absent).
+	{ "M_JKILL","Thou needeth a wet-nurse" }, { "M_ROUGH","Yellowbellies-r-us" },
+	{ "M_HURT","Bringest them oneth" },        { "M_ULTRA","Thou art a smite-meister" },
+	{ "M_NMARE","Black plague possesses thee" },
+	{ "M_EPI1","City of the Damned" }, { "M_EPI2","Hell's Maw" },
+	{ "M_EPI3","The Dome of D'Sparil" }, { "M_EPI4","The Ossuary" },
+	// Decorative -> skip.
+	{ "M_LSLEFT","" }, { "M_LSCNTR","" }, { "M_LSRGHT","" },
+	{ "M_THERML","" }, { "M_THERMM","" }, { "M_THERMR","" }, { "M_THERMO","" },
+	{ "M_CELL1","" },  { "M_CELL2","" },
+    };
+    int i;
+    if (!lump || !lump[0]) return "";
+    for (i = 0; i < (int)(sizeof tbl / sizeof tbl[0]); i++)
+	if (!strcasecmp (lump, tbl[i].l)) return tbl[i].t;
+    return lump;			// unknown -> at least show the lump name
+}
+
+// Draw a menu graphic, or its text fallback (possibly empty) if the lump is absent.
+static void M_DrawMenuGraphic (int x, int y, const char* lump)
+{
+    if (W_CheckNumForName (lump) >= 0)
+	V_DrawPatchDirect (x, y, 0, W_CacheLumpName (lump, PU_CACHE));
+    else
+    {
+	const char* t = M_MenuFallbackText (lump);
+	if (t[0]) M_WriteText (x, y, t);
+    }
+}
+
 //
 // M_LoadGame & Cie.
 //
@@ -612,7 +658,7 @@ void M_DrawLoad(void)
 {
     int             i;
 	
-    V_DrawPatchDirect (72,28,0,W_CacheLumpName("M_LOADG",PU_CACHE));
+    M_DrawMenuGraphic (72,28,"M_LOADG");
     for (i = 0;i < load_end; i++)
     {
 	M_DrawSaveLoadBorder(LoadDef.x,LoadDef.y+LINEHEIGHT*i);
@@ -629,15 +675,15 @@ void M_DrawSaveLoadBorder(int x,int y)
 {
     int             i;
 	
-    V_DrawPatchDirect (x-8,y+7,0,W_CacheLumpName("M_LSLEFT",PU_CACHE));
+    M_DrawMenuGraphic (x-8,y+7,"M_LSLEFT");
 	
     for (i = 0;i < 24;i++)
     {
-	V_DrawPatchDirect (x,y+7,0,W_CacheLumpName("M_LSCNTR",PU_CACHE));
+	M_DrawMenuGraphic (x,y+7,"M_LSCNTR");
 	x += 8;
     }
 
-    V_DrawPatchDirect (x,y+7,0,W_CacheLumpName("M_LSRGHT",PU_CACHE));
+    M_DrawMenuGraphic (x,y+7,"M_LSRGHT");
 }
 
 
@@ -677,7 +723,7 @@ void M_DrawSave(void)
 {
     int             i;
 	
-    V_DrawPatchDirect (72,28,0,W_CacheLumpName("M_SAVEG",PU_CACHE));
+    M_DrawMenuGraphic (72,28,"M_SAVEG");
     for (i = 0;i < load_end; i++)
     {
 	M_DrawSaveLoadBorder(LoadDef.x,LoadDef.y+LINEHEIGHT*i);
@@ -865,7 +911,7 @@ void M_DrawReadThis2(void)
 //
 void M_DrawSound(void)
 {
-    V_DrawPatchDirect (60,38,0,W_CacheLumpName("M_SVOL",PU_CACHE));
+    M_DrawMenuGraphic (60,38,"M_SVOL");
 
     M_DrawThermo(SoundDef.x,SoundDef.y+LINEHEIGHT*(sfx_vol+1),
 		 16,snd_SfxVolume);
@@ -921,7 +967,13 @@ void M_MusicVol(int choice)
 //
 void M_DrawMainMenu(void)
 {
-    V_DrawPatchDirect (94,2,0,W_CacheLumpName("M_DOOM",PU_CACHE));
+    // Heretic has no "M_DOOM" logo -- use its "M_HTIC" title; guard so a wad with
+    // neither doesn't crash the main menu.
+    {
+	const char* logo = (heretic_mode && W_CheckNumForName ("M_HTIC") >= 0) ? "M_HTIC" : "M_DOOM";
+	if (W_CheckNumForName (logo) >= 0)
+	    V_DrawPatchDirect (heretic_mode ? 88 : 94, 2, 0, W_CacheLumpName (logo, PU_CACHE));
+    }
 }
 
 
@@ -932,8 +984,8 @@ void M_DrawMainMenu(void)
 //
 void M_DrawNewGame(void)
 {
-    V_DrawPatchDirect (96,14,0,W_CacheLumpName("M_NEWG",PU_CACHE));
-    V_DrawPatchDirect (54,38,0,W_CacheLumpName("M_SKILL",PU_CACHE));
+    M_DrawMenuGraphic (96,14,"M_NEWG");
+    M_DrawMenuGraphic (54,38,"M_SKILL");
 }
 
 void M_NewGame(int choice)
@@ -1058,7 +1110,7 @@ void M_DrawOptions(void)
     int	x = OptionsDef.x;
     int	y = OptionsDef.y;
 
-    V_DrawPatchDirect (108,15,0,W_CacheLumpName("M_OPTTTL",PU_CACHE));
+    M_DrawMenuGraphic (108,15,"M_OPTTTL");
 
     // All items drawn at the small hu_font size (same as the Video submenu).
     M_WriteText (x, y+LINEHEIGHT*messages, "Messages");
@@ -1126,7 +1178,7 @@ void M_DrawVideo(void)
 {
     char res[24];
 
-    V_DrawPatchDirect (108,15,0,W_CacheLumpName("M_OPTTTL",PU_CACHE));
+    M_DrawMenuGraphic (108,15,"M_OPTTTL");
 
     sprintf (res, "%dx%d", SCREENWIDTH, SCREENHEIGHT);	// actual render size
     M_WriteText(VideoDef.x, VideoDef.y + LINEHEIGHT*vid_res, "Resolution");
@@ -1770,17 +1822,16 @@ M_DrawThermo
     int		i;
 
     xx = x;
-    V_DrawPatchDirect (xx,y,0,W_CacheLumpName("M_THERML",PU_CACHE));
+    M_DrawMenuGraphic (xx,y,"M_THERML");
     xx += 8;
     for (i=0;i<thermWidth;i++)
     {
-	V_DrawPatchDirect (xx,y,0,W_CacheLumpName("M_THERMM",PU_CACHE));
+	M_DrawMenuGraphic (xx,y,"M_THERMM");
 	xx += 8;
     }
-    V_DrawPatchDirect (xx,y,0,W_CacheLumpName("M_THERMR",PU_CACHE));
+    M_DrawMenuGraphic (xx,y,"M_THERMR");
 
-    V_DrawPatchDirect ((x+8) + thermDot*8,y,
-		       0,W_CacheLumpName("M_THERMO",PU_CACHE));
+    M_DrawMenuGraphic ((x+8) + thermDot*8, y, "M_THERMO");
 }
 
 
@@ -1790,8 +1841,7 @@ M_DrawEmptyCell
 ( menu_t*	menu,
   int		item )
 {
-    V_DrawPatchDirect (menu->x - 10,        menu->y+item*LINEHEIGHT - 1, 0,
-		       W_CacheLumpName("M_CELL1",PU_CACHE));
+    M_DrawMenuGraphic (menu->x - 10, menu->y+item*LINEHEIGHT - 1, "M_CELL1");
 }
 
 void
@@ -1799,8 +1849,7 @@ M_DrawSelCell
 ( menu_t*	menu,
   int		item )
 {
-    V_DrawPatchDirect (menu->x - 10,        menu->y+item*LINEHEIGHT - 1, 0,
-		       W_CacheLumpName("M_CELL2",PU_CACHE));
+    M_DrawMenuGraphic (menu->x - 10, menu->y+item*LINEHEIGHT - 1, "M_CELL2");
 }
 
 
@@ -2419,15 +2468,22 @@ void M_Drawer (void)
     for (i=0;i<max;i++)
     {
 	if (currentMenu->menuitems[i].name[0])
-	    V_DrawPatchDirect (x,y,0,
-			       W_CacheLumpName(currentMenu->menuitems[i].name ,PU_CACHE));
+	    M_DrawMenuGraphic (x, y, currentMenu->menuitems[i].name);
 	y += LINEHEIGHT;
     }
 
     
-    // DRAW SKULL
-    V_DrawPatchDirect(x + SKULLXOFF,currentMenu->y - 5 + itemOn*LINEHEIGHT, 0,
-		      W_CacheLumpName(skullName[whichSkull],PU_CACHE));
+    // DRAW SKULL -- DOOM's M_SKULL*, or Heretic's M_SLCTR* selector, else a text caret.
+    {
+	int cy = currentMenu->y - 5 + itemOn*LINEHEIGHT;
+	const char* cur = skullName[whichSkull];
+	if (W_CheckNumForName ((char*)cur) < 0)
+	    cur = whichSkull ? "M_SLCTR2" : "M_SLCTR1";	// Heretic menu cursor
+	if (W_CheckNumForName ((char*)cur) >= 0)
+	    V_DrawPatchDirect (x + SKULLXOFF, cy, 0, W_CacheLumpName ((char*)cur, PU_CACHE));
+	else
+	    M_WriteText (x + SKULLXOFF + 20, cy + 6, ">");	// last-resort text cursor
+    }
 
 }
 

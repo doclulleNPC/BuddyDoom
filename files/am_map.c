@@ -527,8 +527,10 @@ void AM_loadPics(void)
   
     for (i=0;i<10;i++)
     {
+	int l;
 	sprintf(namebuf, "AMMNUM%d", i);
-	marknums[i] = W_CacheLumpName(namebuf, PU_STATIC);
+	l = W_CheckNumForName(namebuf);		// absent in Heretic etc. -> no mark numbers
+	marknums[i] = (l >= 0) ? W_CacheLumpNum(l, PU_STATIC) : NULL;
     }
 
 }
@@ -538,7 +540,8 @@ void AM_unloadPics(void)
     int i;
   
     for (i=0;i<10;i++)
-	Z_ChangeTag(marknums[i], PU_CACHE);
+	if (marknums[i])
+	    Z_ChangeTag(marknums[i], PU_CACHE);
 
 }
 
@@ -1455,7 +1458,7 @@ void AM_drawMarks(void)
 	    h = 6; // because something's wrong with the wad, i guess
 	    fx = CXMTOF(markpoints[i].x);
 	    fy = CYMTOF(markpoints[i].y);
-	    if (fx >= f_x && fx <= f_w - w && fy >= f_y && fy <= f_h - h)
+	    if (marknums[i] && fx >= f_x && fx <= f_w - w && fy >= f_y && fy <= f_h - h)
 		V_DrawPatch(fx, fy, FB, marknums[i]);
 	}
     }

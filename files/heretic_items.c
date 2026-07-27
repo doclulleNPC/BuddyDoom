@@ -160,6 +160,8 @@ void Heretic_Items_Init (void)
 // the item is not one of ours.  See the EFFECTS note in the file header:
 // health/armor get the clean DOOM equivalent; everything else is a no-op pocket.
 // ---------------------------------------------------------------------------
+extern void P_GiveCard (player_t* player, card_t card);
+
 boolean P_TouchHereticItem (player_t* player, mobj_t* special)
 {
     if (!player)
@@ -167,10 +169,12 @@ boolean P_TouchHereticItem (player_t* player, mobj_t* special)
 
     switch (special->type)
     {
-      // ---- keys (no Heretic locked-door system here -> cosmetic pickup) ----
-      case MT_HAKYY: player->message = "PICKED UP A GREEN KEY";  return true;
-      case MT_HBKYY: player->message = "PICKED UP A BLUE KEY";   return true;
-      case MT_HCKYY: player->message = "PICKED UP A YELLOW KEY"; return true;
+      // ---- keys: Heretic maps load with DOOM-numbered locked doors (26/27/28 =
+      // blue/yellow/"red"), so grant the matching DOOM card slot -- Heretic's green
+      // key drives the third ("red") lock.  Now the map's yellow/blue/green doors open.
+      case MT_HAKYY: P_GiveCard (player, it_redcard);    player->message = "PICKED UP A GREEN KEY";  return true;
+      case MT_HBKYY: P_GiveCard (player, it_bluecard);   player->message = "PICKED UP A BLUE KEY";   return true;
+      case MT_HCKYY: P_GiveCard (player, it_yellowcard); player->message = "PICKED UP A YELLOW KEY"; return true;
 
       // ---- ammo (no Heretic ammo system -> cosmetic pickup) ----
       case MT_HAMGWNDWIMPY:

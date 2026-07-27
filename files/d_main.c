@@ -616,11 +616,17 @@ void D_PageTicker (void)
 //
 void D_PageDrawer (void)
 {
+    int lump = (pagename && *pagename) ? W_CheckNumForName (pagename) : -1;
+    if (lump < 0)			// missing page lump (e.g. DOOM's TITLEPIC in a Heretic IWAD)
+	lump = W_CheckNumForName (heretic_mode ? "TITLE" : "TITLEPIC");
+    if (lump < 0)
+	return;				// nothing drawable -- don't crash on a missing lump
+
     // The page graphics (TITLEPIC / CREDIT / HELP) are 4:3 (320 wide).  In widescreen, black the
     // pillarbox sides and centre the page so it isn't left-aligned (WIDESCREENDELTA is 0 in 4:3).
     if (WIDESCREENDELTA)
 	memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
-    V_DrawPatch (WIDESCREENDELTA, 0, 0, W_CacheLumpName(pagename, PU_CACHE));
+    V_DrawPatch (WIDESCREENDELTA, 0, 0, W_CacheLumpNum (lump, PU_CACHE));
 }
 
 
@@ -665,11 +671,30 @@ void D_AdvanceDemo (void)
 	return;
     }
 
+    // Heretic: its title/credit lumps differ from DOOM's (TITLE, not TITLEPIC) and
+    // the stock DOOM demos are cross-incompatible with this additive-actor playsim,
+    // so cycle just the title + credit pages instead of the DOOM demo loop.
+    if (heretic_mode)
+    {
+	demosequence = (demosequence + 1) % 2;
+	gamestate = GS_DEMOSCREEN;
+	if (demosequence == 0)
+	{
+	    pagename = "TITLE";  pagetic = 170;
+	    S_ChangeMusicByName ("MUS_TITL", false);	// Heretic title music (silent if absent)
+	}
+	else
+	{
+	    pagename = "CREDIT"; pagetic = 200;
+	}
+	return;
+    }
+
     if ( gamemode == retail )
       demosequence = (demosequence+1)%7;
     else
       demosequence = (demosequence+1)%6;
-    
+
     switch (demosequence)
     {
       case 0:

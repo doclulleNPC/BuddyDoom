@@ -603,17 +603,43 @@ int W_NumLumps (void)
 // Returns -1 if name not found.
 //
 
+extern int heretic_mode;
+
+// Heretic (and Blasphemer) ship the SHARED UI art under different lump names than
+// DOOM.  heretic_mode is known for certain, so translate the DOOM UI names to their
+// Heretic equivalents centrally here -- the shared title/menu/cursor code then finds
+// the right art with NO per-call-site "if missing" switch.  Only unambiguous 1:1
+// full-image lumps are mapped; composite screens (status bar, intermission) differ in
+// LAYOUT, not just name, so they are deliberately NOT listed (their own code handles
+// them).  Callers pass fixed upper-case literals, so a plain compare suffices.
+static char* W_HereticLumpAlias (char* name)
+{
+    static const struct { const char* doom; const char* htic; } a[] = {
+	{ "TITLEPIC", "TITLE"    },	// title screen
+	{ "M_DOOM",   "M_HTIC"   },	// main-menu logo
+	{ "M_SKULL1", "M_SLCTR1" },	// menu cursor (frame 1)
+	{ "M_SKULL2", "M_SLCTR2" },	// menu cursor (frame 2)
+    };
+    int i;
+    for (i = 0; i < (int)(sizeof a / sizeof a[0]); i++)
+	if (!strncmp (name, a[i].doom, 8)) return (char*) a[i].htic;
+    return name;
+}
+
 int W_CheckNumForName (char* name)
 {
     union {
 	char	s[9];
 	int	x[2];
-	
+
     } name8;
-    
+
     int		v1;
     int		v2;
     lumpinfo_t*	lump_p;
+
+    if (heretic_mode)
+	name = W_HereticLumpAlias (name);
 
     // make the name into two integers for easy compares
     strncpy (name8.s,name,8);
