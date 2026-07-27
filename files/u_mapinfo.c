@@ -24,6 +24,11 @@
 static umap_t*	maps;
 static int	nummaps;
 
+// UMAPINFO episode-menu entries (the "episode" key).  See u_mapinfo.h.
+u_episode_t*	u_episodes;
+int		u_num_episodes;
+boolean		u_episodes_defined;
+
 // Set by G_DoCompleted when UMAPINFO redirects the exit; consumed by G_DoWorldDone
 // so the next map can cross episodes (which wminfo.next alone can't express).
 int	u_next_episode = 0;	// 1-based target episode (0 = not overridden)
@@ -255,6 +260,39 @@ static void ParseProperty (scan_t* s, umap_t* mape)
     {
 	if (s->type == TK_IDENT && !strcasecmp (s->str, "clear")) mape->intertextsecret_clear = true;
 	else { mape->intertextsecret_clear = false; free (mape->intertextsecret); mape->intertextsecret = ParseMultiString (s); }
+    }
+    else if (!strcasecmp (key, "episode"))
+    {
+	if (s->type == TK_IDENT && !strcasecmp (s->str, "clear"))
+	{
+	    // Wipe the episode menu (a mod defining its own episodes clears first).
+	    int j;
+	    for (j = 0; j < u_num_episodes; j++) free (u_episodes[j].name);
+	    free (u_episodes); u_episodes = NULL; u_num_episodes = 0;
+	    u_episodes_defined = true;
+	}
+	else if (s->type == TK_STRING)
+	{
+	    // episode = "patch" [, "name" [, "key"]]
+	    u_episode_t ep; memset (&ep, 0, sizeof ep);
+	    const char* save; int saveln;
+	    CopyLumpName (ep.patch, s->str);
+	    save = s->p; saveln = s->line;
+	    if (Next (s) && s->type == TK_PUNCT && s->str[0] == ',' && Next (s) && s->type == TK_STRING)
+	    {
+		ep.name = Dup (s->str);
+		save = s->p; saveln = s->line;
+		if (Next (s) && s->type == TK_PUNCT && s->str[0] == ',' && Next (s) && s->type == TK_STRING)
+		    { ep.key = (char) tolower ((unsigned char) s->str[0]); save = s->p; saveln = s->line; }
+		else { s->p = save; s->line = saveln; }
+	    }
+	    else { s->p = save; s->line = saveln; }
+	    // The episode starts on the MAP entry that carries this key.
+	    U_ValidateMapName (mape->mapname, &ep.episode, &ep.map);
+	    u_episodes_defined = true;
+	    u_episodes = realloc (u_episodes, (u_num_episodes + 1) * sizeof *u_episodes);
+	    u_episodes[u_num_episodes++] = ep;
+	}
     }
     else if (!strcasecmp (key, "bossaction"))
     {

@@ -52,6 +52,7 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "s_sound.h"
 
 #include "doomstat.h"
+#include "u_mapinfo.h"	// UMAPINFO "episode" menu entries
 
 extern int key_buddy_stay;	// '-' defers to this buddy bind (G_Responder) instead of screen-size
 
@@ -312,6 +313,12 @@ menu_t  EpiDef =
     48,63,              // x,y
     ep1			// lastOn
 };
+
+// UMAPINFO can replace the hardcoded episode menu with its own entries (the
+// "episode" key).  When u_episodes_defined, EpiDef is repointed at this array by
+// M_UMapinfoBuildEpisodes() (called at the end of M_Init).  Max 8 per the spec.
+#define UMAPINFO_MAX_EPISODES 8
+menuitem_t UMapinfoEpisodeMenu[UMAPINFO_MAX_EPISODES];
 
 //
 // NEW GAME
@@ -937,7 +944,9 @@ void M_NewGame(int choice)
 	return;
     }
 	
-    if ( gamemode == commercial )
+    // UMAPINFO episodes get their own menu even in Doom 2 (which normally skips
+    // straight to the skill menu).
+    if ( gamemode == commercial && !(u_episodes_defined && u_num_episodes > 0) )
 	M_SetupNextMenu(&NewDef);
     else
 	M_SetupNextMenu(&EpiDef);
@@ -951,15 +960,43 @@ int     epi;
 
 void M_DrawEpisode(void)
 {
-    V_DrawPatchDirect (54,38,0,W_CacheLumpName("M_EPISOD",PU_CACHE));
+    // M_EPISOD ("Which Episode?") isn't present in every IWAD (Doom 2 has no
+    // episode menu); UMAPINFO can now bring this screen up under Doom 2, so fall
+    // back to a text title rather than fatally caching a missing lump.
+    if (W_CheckNumForName ("M_EPISOD") >= 0)
+	V_DrawPatchDirect (54,38,0,W_CacheLumpName("M_EPISOD",PU_CACHE));
+    else
+	M_WriteText (54, 38, "Which Episode?");
+
+    // UMAPINFO episodes with no menu graphic are drawn as HUD-font text (the
+    // generic item loop skips items whose name lump is empty).
+    if (u_episodes_defined && u_num_episodes > 0)
+    {
+	int i;
+	for (i = 0; i < EpiDef.numitems; i++)
+	    if (!UMapinfoEpisodeMenu[i].name[0])
+		M_WriteText (EpiDef.x, EpiDef.y + i*LINEHEIGHT,
+			     u_episodes[i].name ? u_episodes[i].name : "?");
+    }
+}
+
+// Start the game at the selected episode.  With UMAPINFO episodes the chosen
+// entry names its own start map (which may be a MAPxx even in Doom 1); otherwise
+// the classic "episode epi+1, map 1".
+static void M_StartChosenEpisode (int skill)
+{
+    if (u_episodes_defined && u_num_episodes > 0 && epi < u_num_episodes)
+	G_DeferedInitNew (skill, u_episodes[epi].episode, u_episodes[epi].map);
+    else
+	G_DeferedInitNew (skill, epi+1, 1);
 }
 
 void M_VerifyNightmare(int ch)
 {
     if (ch != 'y')
 	return;
-		
-    G_DeferedInitNew(nightmare,epi+1,1);
+
+    M_StartChosenEpisode (nightmare);
     M_ClearMenus ();
 }
 
@@ -970,13 +1007,22 @@ void M_ChooseSkill(int choice)
 	M_StartMessage(NIGHTMARE,M_VerifyNightmare,true);
 	return;
     }
-	
-    G_DeferedInitNew(choice,epi+1,1);
+
+    M_StartChosenEpisode (choice);
     M_ClearMenus ();
 }
 
 void M_Episode(int choice)
 {
+    // UMAPINFO episodes replace the IWAD's set, so the shareware/registered
+    // gating below (which is about the stock episodes) does not apply.
+    if (u_episodes_defined && u_num_episodes > 0)
+    {
+	epi = choice;
+	M_SetupNextMenu(&NewDef);
+	return;
+    }
+
     if ( (gamemode == shareware)
 	 && choice)
     {
@@ -993,7 +1039,7 @@ void M_Episode(int choice)
 	       "M_Episode: 4th episode requires UltimateDOOM\n");
       choice = 0;
     }
-	 
+
     epi = choice;
     M_SetupNextMenu(&NewDef);
 }
@@ -2425,6 +2471,40 @@ void M_Ticker (void)
 //
 // M_Init
 //
+// If UMAPINFO defined an episode menu, replace the hardcoded EpisodeMenu with it.
+// Entries with a valid menu graphic use it; the rest are drawn as text by
+// M_DrawEpisode.  Called at the end of M_Init (after the gamemode fixups, so it
+// wins over the shareware/registered episode-count tweaks).
+static void M_UMapinfoBuildEpisodes (void)
+{
+    int i, n;
+
+    if (!u_episodes_defined || u_num_episodes <= 0)
+	return;					// keep the classic episode menu
+
+    n = u_num_episodes;
+    if (n > UMAPINFO_MAX_EPISODES) n = UMAPINFO_MAX_EPISODES;
+
+    for (i = 0; i < n; i++)
+    {
+	UMapinfoEpisodeMenu[i].status = 1;
+	if (u_episodes[i].patch[0] && W_CheckNumForName (u_episodes[i].patch) >= 0)
+	{
+	    strncpy (UMapinfoEpisodeMenu[i].name, u_episodes[i].patch, 8);
+	    UMapinfoEpisodeMenu[i].name[8] = 0;
+	}
+	else
+	    UMapinfoEpisodeMenu[i].name[0] = 0;	// no graphic -> M_DrawEpisode draws text
+	UMapinfoEpisodeMenu[i].routine  = M_Episode;
+	UMapinfoEpisodeMenu[i].alphaKey = u_episodes[i].key;
+    }
+
+    EpiDef.menuitems = UMapinfoEpisodeMenu;
+    EpiDef.numitems  = n;
+    EpiDef.lastOn    = 0;
+    NewDef.prevMenu  = &EpiDef;			// so Doom 2 "back" returns to the episode menu
+}
+
 void M_Init (void)
 {
     currentMenu = &MainDef;
@@ -2468,6 +2548,7 @@ void M_Init (void)
       default:
 	break;
     }
-    
+
+    M_UMapinfoBuildEpisodes ();		// UMAPINFO "episode" menu (overrides the above)
 }
 

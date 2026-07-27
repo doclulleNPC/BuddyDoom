@@ -66,6 +66,23 @@ typedef struct umap_s
     int		numbossactions;
 } umap_t;
 
+// One UMAPINFO "episode" menu entry (episode = "patch","name","key").
+typedef struct
+{
+    char	patch[9];	// menu graphic lump ("" = none -> draw name as text)
+    char*	name;		// alt text (malloc'd) or NULL
+    char	key;		// lower-case shortcut key, or 0
+    int		episode;	// start episode (1-based), from the MAP entry's name
+    int		map;		// start map (1-based)
+} u_episode_t;
+
+// UMAPINFO episode menu (built by the "episode" key).  u_episodes_defined is set
+// once ANY episode directive (add or clear) is seen, which tells the menu to use
+// this list instead of the hardcoded EpisodeMenu.
+extern u_episode_t*	u_episodes;
+extern int		u_num_episodes;
+extern boolean		u_episodes_defined;
+
 // Cross-episode next-map carry (see u_mapinfo.c).  G_DoCompleted sets them from a
 // UMAPINFO next/nextsecret; G_DoWorldDone applies + clears them.
 extern int	u_next_episode;
