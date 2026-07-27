@@ -352,7 +352,16 @@ void D_Display (void)
     {
 	extern int setblocks;
 	extern int statusbar_style;
-	if (statusbar_style == 1)	{ ST_DrawScaled (); fullscreen = true; }
+	if (heretic_mode)
+	{
+	    // Heretic: the scaled / alt-HUD DOOM bar styles don't apply -- their art
+	    // (STBAR/STTNUM/STF...) isn't in heretic.wad, so they'd render as a black bar
+	    // full of FONTA01 '!' (ST_CachePatch's missing-lump fallback).  Always draw
+	    // Heretic's own bar via ST_Drawer (st_statusbaron true = bar shown).
+	    ST_Drawer (false, redrawsbar);
+	    fullscreen = false;
+	}
+	else if (statusbar_style == 1)	{ ST_DrawScaled (); fullscreen = true; }
 	else if (statusbar_style == 2)	{ ST_DrawAltHUD (); fullscreen = true; }
 	else
 	{
