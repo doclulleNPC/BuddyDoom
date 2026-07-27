@@ -9,19 +9,19 @@
 set -eu
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-: "${CC:=x86_64-w64-mingw32-gcc}"
+: "${CXX:=x86_64-w64-mingw32-g++}"
 : "${SDL3:?Set SDL3 to your MinGW SDL3 dir (contains include/ lib/ bin/)}"
 
-command -v "$CC" >/dev/null 2>&1 || { echo "[build] $CC not found" >&2; exit 1; }
+command -v "$CXX" >/dev/null 2>&1 || { echo "[build] $CXX not found" >&2; exit 1; }
 [ -f "$SDL3/include/SDL3/SDL.h" ] || { echo "[build] SDL3 headers not at $SDL3/include" >&2; exit 1; }
 [ -f "$here/font_atlas.h" ] || python3 "$here/bake_font.py"
 
 # -mwindows: GUI subsystem (no console window). SDL_MAIN_HANDLED: we own main().
 # File dialogs are SDL3's native SDL_ShowOpen/SaveFileDialog -- no comdlg32 needed.
-"$CC" -O2 -DSDL_MAIN_HANDLED -I"$here" -I"$here/.." -I"$SDL3/include" \
-    "$here/mybuddy.c" \
-    "$here/buddydef_wad.c" \
-    "$here/buddydef_parse.c" \
+"$CXX" -O2 -DSDL_MAIN_HANDLED -I"$here" -I"$here/.." -I"$SDL3/include" \
+    "$here/mybuddy.cpp" \
+    "$here/buddydef_wad.cpp" \
+    "$here/buddydef_parse.cpp" \
     -L"$SDL3/lib" -lSDL3 -mwindows -static-libgcc \
     -o "$here/mybuddy.exe"
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Build the SDL3 BUDDYDEF editor (mybuddy).
+# Build the SDL3 buddy editor (MyBuddy).  C++17 -- see tools/mybuddy.cpp.
 set -eu
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$here/font_atlas.h" ] || python3 "$here/bake_font.py"
-gcc -O2 -DSDL_MAIN_HANDLED -o "$here/mybuddy" \
-    "$here/mybuddy.c" \
-    "$here/buddydef_wad.c" \
-    "$here/buddydef_parse.c" \
+g++ -std=c++17 -O2 -DSDL_MAIN_HANDLED -o "$here/mybuddy" \
+    "$here/mybuddy.cpp" \
+    "$here/buddydef_wad.cpp" \
+    "$here/buddydef_parse.cpp" \
     -I"$here" -I"$here/.." $(pkg-config --cflags --libs sdl3)
 # place the binary next to the game in run/ (matches the other tools)
 mkdir -p "$here/../run"

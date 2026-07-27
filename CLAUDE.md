@@ -43,6 +43,12 @@ target and `tools/build_*_{win,}.sh` script. They share `run/buddydoom.cfg` and 
 staged into `run/`; see `run/README.md` for what each one does and how the
 launchers wire the game to the AI director.
 
+The engine (`files/`) is **C** and stays C — it is the 1993 id source. The tools are
+free to be C++: **`mybuddy`** (the buddy editor, `tools/mybuddy.cpp` +
+`buddydef_wad.cpp` + `buddydef_parse.cpp`) is **C++17** and builds with `g++` /
+`cl /std:c++17`; the other tools are still C. `tools/buddydef_parse.cpp` mirrors the
+engine's `files/p_buddydef.c` parser and must be changed with it.
+
 `build.sh` is just this (and a `cp` to `run/`):
 
 ```sh
