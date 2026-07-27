@@ -119,6 +119,10 @@ static void SC_Next (void)
 
 static boolean SC_Bool (const char* v) { return (boolean)(!strcasecmp (v, "true")); }
 
+// Parse a UDMF integer.  base 0 -> honours the spec's decimal, octal (0NNN) and
+// hex (0xNN) forms (udmf11.txt grammar); plain atoi() would stop at the 'x'.
+static int SC_Int (const char* v) { return (int) strtol (v, NULL, 0); }
+
 // Copy a UDMF texture/flat name (<=8 chars) into an upper-cased, NUL-terminated buffer.
 static void SC_Name (char* dst, const char* src)
 {
@@ -192,13 +196,13 @@ static void UDMF_ParseSector (void)
     s.light = 160; strcpy (s.tfloor, "-"); strcpy (s.tceil, "-");
     while (UDMF_Field (k, val, &vt))
     {
-	if      (!strcasecmp (k, "heightfloor"))    s.hfloor  = atoi (val);
-	else if (!strcasecmp (k, "heightceiling"))  s.hceil   = atoi (val);
+	if      (!strcasecmp (k, "heightfloor"))    s.hfloor  = SC_Int (val);
+	else if (!strcasecmp (k, "heightceiling"))  s.hceil   = SC_Int (val);
 	else if (!strcasecmp (k, "texturefloor"))   SC_Name (s.tfloor, val);
 	else if (!strcasecmp (k, "textureceiling")) SC_Name (s.tceil, val);
-	else if (!strcasecmp (k, "lightlevel"))     s.light   = atoi (val);
-	else if (!strcasecmp (k, "special"))        s.special = atoi (val);
-	else if (!strcasecmp (k, "id"))             s.id      = atoi (val);
+	else if (!strcasecmp (k, "lightlevel"))     s.light   = SC_Int (val);
+	else if (!strcasecmp (k, "special"))        s.special = SC_Int (val);
+	else if (!strcasecmp (k, "id"))             s.id      = SC_Int (val);
     }
     GROW (us, us_cap, us_n); us[us_n++] = s;
 }
@@ -211,12 +215,12 @@ static void UDMF_ParseSide (void)
     strcpy (s.ttop, "-"); strcpy (s.tmid, "-"); strcpy (s.tbot, "-");
     while (UDMF_Field (k, val, &vt))
     {
-	if      (!strcasecmp (k, "offsetx"))        s.offx = atoi (val);
-	else if (!strcasecmp (k, "offsety"))        s.offy = atoi (val);
+	if      (!strcasecmp (k, "offsetx"))        s.offx = SC_Int (val);
+	else if (!strcasecmp (k, "offsety"))        s.offy = SC_Int (val);
 	else if (!strcasecmp (k, "texturetop"))     SC_Name (s.ttop, val);
 	else if (!strcasecmp (k, "texturemiddle"))  SC_Name (s.tmid, val);
 	else if (!strcasecmp (k, "texturebottom"))  SC_Name (s.tbot, val);
-	else if (!strcasecmp (k, "sector"))         s.sector = atoi (val);
+	else if (!strcasecmp (k, "sector"))         s.sector = SC_Int (val);
     }
     GROW (usd, usd_cap, usd_n); usd[usd_n++] = s;
 }
@@ -229,12 +233,12 @@ static void UDMF_ParseLine (void)
     l.sback = -1;					// one-sided by default
     while (UDMF_Field (k, val, &vt))
     {
-	if      (!strcasecmp (k, "v1"))         l.v1     = atoi (val);
-	else if (!strcasecmp (k, "v2"))         l.v2     = atoi (val);
-	else if (!strcasecmp (k, "sidefront"))  l.sfront = atoi (val);
-	else if (!strcasecmp (k, "sideback"))   l.sback  = atoi (val);
-	else if (!strcasecmp (k, "special"))    l.special = atoi (val);
-	else if (!strcasecmp (k, "id"))         l.id     = atoi (val);
+	if      (!strcasecmp (k, "v1"))         l.v1     = SC_Int (val);
+	else if (!strcasecmp (k, "v2"))         l.v2     = SC_Int (val);
+	else if (!strcasecmp (k, "sidefront"))  l.sfront = SC_Int (val);
+	else if (!strcasecmp (k, "sideback"))   l.sback  = SC_Int (val);
+	else if (!strcasecmp (k, "special"))    l.special = SC_Int (val);
+	else if (!strcasecmp (k, "id"))         l.id     = SC_Int (val);
 	// flags -> ML_* (same bit values as this engine's doomdata.h)
 	else if (SC_Bool (val))
 	{
@@ -266,8 +270,8 @@ static void UDMF_ParseThing (void)
     {
 	if      (!strcasecmp (k, "x"))      x = atof (val);
 	else if (!strcasecmp (k, "y"))      y = atof (val);
-	else if (!strcasecmp (k, "angle"))  angle = atoi (val);
-	else if (!strcasecmp (k, "type"))   type = atoi (val);
+	else if (!strcasecmp (k, "angle"))  angle = SC_Int (val);
+	else if (!strcasecmp (k, "type"))   type = SC_Int (val);
 	else if (!strcasecmp (k, "skill1") || !strcasecmp (k, "skill2")) { if (SC_Bool (val)) sk12 = 1; }
 	else if (!strcasecmp (k, "skill3"))                              { if (SC_Bool (val)) sk3  = 1; }
 	else if (!strcasecmp (k, "skill4") || !strcasecmp (k, "skill5")) { if (SC_Bool (val)) sk45 = 1; }

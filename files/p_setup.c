@@ -371,7 +371,10 @@ boolean P_LoadNodes_Extended (int lump)
 	    unsigned v1 = RD32(), v2 = RD32();
 	    int ld = RD16();
 	    int side = *p++;
-	    line_t* ldef = &lines[ld];
+	    line_t* ldef;
+	    if (v1 >= (unsigned)numvertexes || v2 >= (unsigned)numvertexes || ld < 0 || ld >= numlines)
+		I_Error ("P_LoadNodes: %s seg %u out of range (v1=%u v2=%u line=%d)", fmtname, i, v1, v2, ld);
+	    ldef = &lines[ld];
 	    li->v1 = &vertexes[v1];
 	    li->v2 = &vertexes[v2];
 	    li->linedef = ldef;
@@ -402,6 +405,8 @@ boolean P_LoadNodes_Extended (int lump)
 		(void) RD32();					// partner seg -- unused
 		unsigned ld = wide_ld ? RD32() : RD16();
 		int      side = *p++;
+		if (v1 >= (unsigned)numvertexes)
+		    I_Error ("P_LoadNodes: %s seg %d vertex %u out of range", fmtname, first + j, v1);
 		li->v1 = &vertexes[v1];
 		segs[first + (j == 0 ? cnt - 1 : j - 1)].v2 = li->v1;	// back-patch prev v2
 		if (ld == sentinel)
@@ -412,7 +417,10 @@ boolean P_LoadNodes_Extended (int lump)
 		}
 		else
 		{
-		    line_t* ldef = &lines[ld];
+		    line_t* ldef;
+		    if (ld >= (unsigned)numlines)
+			I_Error ("P_LoadNodes: %s seg %d line %u out of range", fmtname, first + j, ld);
+		    ldef = &lines[ld];
 		    int sn  = ldef->sidenum[side];
 		    int sn2 = ldef->sidenum[side ^ 1];
 		    li->linedef = ldef;
