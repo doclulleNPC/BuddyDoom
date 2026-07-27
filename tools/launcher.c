@@ -179,8 +179,11 @@ static SDL_Renderer* ren;
 static SDL_Texture*  font;
 static SDL_Texture*  hero_tex;		// embedded hero banner image
 
-// IWAD list (max 16, more than enough for anyone's Steam lib).
-#define MAX_IWADS 16
+// IWAD list.  The dropdown scrolls, so the cap only has to be bigger than a real
+// collection: ID0/ + ~/.doom + ~/wads + Steam already reaches ~15 entries here, and the
+// content scan (step 3) runs LAST -- a tight cap silently drops exactly the renamed /
+// unlisted IWADs that scan exists to find.
+#define MAX_IWADS 48
 static iwad_t  iwads[MAX_IWADS];
 static int     iwad_count;
 static int     iwad_sel;			// index into iwads[]
@@ -348,6 +351,7 @@ static const known_iwad_t KNOWN_IWADS[] = {
     { "heretic.wad",   "Heretic"                           },
     { "heretic1.wad",  "Heretic: Shareware"                },
     { "blasphemer.wad","Blasphemer (free Heretic)"         },
+    { "blasphem.wad",  "Blasphemer (free Heretic)"         },	// the 8.3 name it ships under
     // Games BuddyDoom does not fully run yet -- still listed so they show up and can
     // be launched to see how far they get ("even when they don't work yet").
     { "hexen.wad",     "Hexen (experimental)"              },

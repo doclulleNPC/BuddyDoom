@@ -6,7 +6,7 @@ This is the forward-looking plan for turning the current additive Heretic actor/
 
 ### Implemented foundation
 
-- `files/d_main.c` detects an IWAD whose basename contains `heretic` **or `blasphemer`** (the free Heretic IWAD) and sets `heretic_mode`; both are in `known_iwads[]`, the filename gamemode guesser and the launcher IWAD picker, and a renamed copy is still content-identified as Heretic (`M_HTIC`/`MUS_E1M1`, `files/w_iwadid.h`).
+- `files/d_main.c` sets `heretic_mode`/`GT_HERETIC` from the IWAD's **content id** (`IWID_HERETIC` / `IWID_BLASPHEMER`, `files/w_iwadid.h`), falling back to a basename containing `heretic`/`blasphem` only when the file can't be identified — so a Heretic-family IWAD boots in Heretic mode under any name. Heretic and Blasphemer (both `blasphemer.wad` and the shipped 8.3 `blasphem.wad`) are in `known_iwads[]`, the filename gamemode guesser and the launcher IWAD picker.
 - Heretic map thing numbers are resolved through `P_HereticThingType` in `files/heretic.c`; unsupported things are skipped instead of aborting.
 - `Heretic_Init` appends the base Heretic monster actors; `HereticInv_Init` appends the artifact pickup actors/effects.
 - **Wave-2 additive content (2026-07-27)** appends the rest of the bestiary/scenery/items from crispy-doom, wired in `D_DoomMain`:

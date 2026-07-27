@@ -25,7 +25,8 @@ typedef enum {
     IWID_DOOM_SW, IWID_DOOM_REG, IWID_DOOM_ULTIMATE,
     IWID_DOOM2, IWID_PLUTONIA, IWID_TNT,
     IWID_FREEDOOM1, IWID_FREEDOOM2, IWID_FREEDM,
-    IWID_HERETIC, IWID_HEXEN, IWID_STRIFE, IWID_CHEX3
+    IWID_HERETIC, IWID_HEXEN, IWID_STRIFE, IWID_CHEX3,
+    IWID_BLASPHEMER		// free Heretic-compatible IWAD (plays as Heretic)
 } iwid_t;
 
 // ---------------------------------------------------------------------------
@@ -224,6 +225,23 @@ static int iwid_dir_has (const unsigned char* dir, unsigned n, const char* name)
     return 0;
 }
 
+// Does the file's basename contain this (lowercase) needle, ignoring case?  Used only
+// where the lumps can't split two games apart (Blasphemer vs Heretic, plutonia vs tnt).
+static int iwid_name_has (const char* path, const char* lowneedle)
+{
+    const char*	b = path;
+    const char*	s;
+    char	low[80];
+    int		i, c;
+
+    if ((s = strrchr (b, '/')))  b = s+1;
+    if ((s = strrchr (b, '\\'))) b = s+1;
+    for (i = 0; b[i] && i < 79; i++)
+    { c = (unsigned char)b[i]; if (c >= 'A' && c <= 'Z') c += 32; low[i] = (char)c; }
+    low[i] = 0;
+    return strstr (low, lowneedle) != NULL;
+}
+
 static iwid_t IWID_Identify (const char* path, char* out, int cap, int* by_md5)
 {
     FILE*		f;
@@ -263,10 +281,21 @@ static iwid_t IWID_Identify (const char* path, char* out, int cap, int* by_md5)
 	dir = (unsigned char*) malloc ((size_t)numl * 16);
 	if (dir && !fseek (f, (long)diroff, SEEK_SET) && fread (dir, 16, numl, f) == numl)
 	{
-	    if      (iwid_dir_has (dir, numl, "M_HTIC")   || iwid_dir_has (dir, numl, "MUS_E1M1"))
-		{ id = IWID_HERETIC;  label = "Heretic"; }
-	    else if (iwid_dir_has (dir, numl, "MAP01") && iwid_dir_has (dir, numl, "SNDCURVE"))
+	    // The Heretic family is tested from the most specific down: hexen.wad carries
+	    // Heretic's M_HTIC menu art, and Blasphemer carries Heretic's M_HTIC *and*
+	    // MUS_E1M1 -- test either of them after the plain Heretic sig and they both read
+	    // as "Heretic" (which, since the engine derives heretic_mode from this id, would
+	    // boot Hexen as Heretic).  Hexen is the only one with MAP01; Blasphemer's own
+	    // marker lump is BLASPHEM, with the name check as the fallback for a build that
+	    // lacks it.
+	    if      (iwid_dir_has (dir, numl, "MAP01") && iwid_dir_has (dir, numl, "SNDCURVE"))
 		{ id = IWID_HEXEN;    label = "Hexen"; }
+	    else if (iwid_dir_has (dir, numl, "BLASPHEM")
+		     || ((iwid_dir_has (dir, numl, "M_HTIC") || iwid_dir_has (dir, numl, "MUS_E1M1"))
+			 && iwid_name_has (path, "blasphem")))
+		{ id = IWID_BLASPHEMER; label = "Blasphemer"; }
+	    else if (iwid_dir_has (dir, numl, "M_HTIC")   || iwid_dir_has (dir, numl, "MUS_E1M1"))
+		{ id = IWID_HERETIC;  label = "Heretic"; }
 	    else if (iwid_dir_has (dir, numl, "MAP01"))
 	    {
 		// Doom II family -- lumps can't split doom2/plutonia/tnt (only MD5 can),

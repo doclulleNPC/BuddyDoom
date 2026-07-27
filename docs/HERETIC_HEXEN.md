@@ -56,7 +56,11 @@ A larger additive port from crispy-doom's `heretic/info.c` + `heretic/p_enemy.c`
 
 ### Blasphemer (free Heretic IWAD)
 
-`blasphemer.wad` is recognised as a Heretic-family IWAD: added to `known_iwads[]` and the filename gamemode guesser (retail / ExMy episodes) and, like `heretic.wad`, sets `heretic_mode` (`files/d_main.c`). A renamed Blasphemer is still content-identified as Heretic via the `M_HTIC`/`MUS_E1M1` signature (`files/w_iwadid.h`). It is also listed (with `heretic.wad`) in the launcher's IWAD picker (`tools/launcher.c`).
+Blasphemer is recognised as a Heretic-family IWAD under **both** its names — the project's `blasphemer.wad` and `blasphem.wad`, the 8.3 name the release actually ships under — in `known_iwads[]`, the filename gamemode guesser (retail / ExMy episodes) and the launcher's IWAD picker (`tools/launcher.c`).
+
+It also has its **own content id**, `IWID_BLASPHEMER` (`files/w_iwadid.h`), keyed on its `BLASPHEM` marker lump (with a basename check as the fallback for a build that lacks it), so a renamed copy is identified as *Blasphemer* rather than as Heretic. `heretic_mode`/`GT_HERETIC` is set from that **content id** (`IWID_HERETIC` or `IWID_BLASPHEMER`) and only falls back to the basename test when the file can't be identified — so any Heretic-family IWAD boots in Heretic mode whatever it is called.
+
+Signature order matters in `IWID_Identify`: `hexen.wad` carries Heretic's `M_HTIC` menu art and Blasphemer carries both `M_HTIC` and `MUS_E1M1`, so Hexen (the only one with `MAP01`) is tested first, then Blasphemer, then plain Heretic. Testing them the other way round identified Hexen as Heretic, which — now that `heretic_mode` follows the content id — would boot Hexen as Heretic.
 
 ## 3. Hexen additive pack
 
