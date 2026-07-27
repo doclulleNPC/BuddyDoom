@@ -1,6 +1,6 @@
 # Heretic / Hexen content in BuddyDoom — current status
 
-**Source audit:** 2026-07-22. This document describes the additive content pack in the current DOOM engine. It is not a claim that BuddyDoom is a complete Heretic or Hexen game-mode port.
+**Source audit:** 2026-07-22, updated 2026-07-27 (wave-2 Heretic content + Blasphemer IWAD detection). This document describes the additive content pack in the current DOOM engine. It is not a claim that BuddyDoom is a complete Heretic or Hexen game-mode port.
 
 ## 1. Architecture
 
@@ -44,7 +44,19 @@ Heretic sounds are resolved through the native Heretic names in `heretic_mode` w
 
 The artifact module currently has ten pickup actors/states, but the original source comment still says “eight”; the runtime enum/initializer includes flask, urn, tome, torch, bomb, ring, shadow, chaos, wings and egg. The effects include healing, berserk/tome behavior, infrared, invulnerability, invisibility, teleport, time bomb, flight support and morph-egg/chicken behavior where the generic subsystem is active.
 
-The additive artifact inventory is usable from the current inventory/console paths. The pickup actors intentionally use `doomednum=-1`, so the items are not map-placed in ordinary DOOM/Heretic maps yet; full mode-specific map placement and always-on Heretic UI remain part of the plan.
+The additive artifact inventory is usable from the current inventory/console paths. The *artifact* pickup actors (`files/p_inv_heretic.c`) still intentionally use `doomednum=-1`; always-on Heretic artifact UI remains part of the plan. Ordinary map items, however, ARE now placed — see wave-2 below.
+
+### Wave-2 expansion (files/heretic_deco.c, heretic_items.c, heretic_mvar.c)
+
+A larger additive port from crispy-doom's `heretic/info.c` + `heretic/p_enemy.c`, wired in `D_DoomMain` next to `Heretic_Init` (`Heretic_Deco_Init` / `Heretic_MVar_Init` / `Heretic_Items_Init`):
+
+- **`heretic_deco.c`** — Heretic decoration/scenery actors (ported frame tables + mobjinfo). Invented `H*` sprite codes are remapped to native `heretic.wad` 4-char codes by `Heretic_RemapNativeSprites`.
+- **`heretic_items.c`** — **map-placeable** Heretic items at their real doomednums: keys, ammo, ground weapons, shields and the health vial. This means these now **appear on Heretic maps with the correct art**, instead of being skipped by `P_HereticThingType`. (Distinct from the `-1` artifacts above.)
+- **`heretic_mvar.c`** — monster variants / extra bosses beyond the base 10: the Nitrogolem leader (ednum 45, seeking skull), the ghost mummy variants (`MF_SHADOW`), the mummy soul released on death, and related actors.
+
+### Blasphemer (free Heretic IWAD)
+
+`blasphemer.wad` is recognised as a Heretic-family IWAD: added to `known_iwads[]` and the filename gamemode guesser (retail / ExMy episodes) and, like `heretic.wad`, sets `heretic_mode` (`files/d_main.c`). A renamed Blasphemer is still content-identified as Heretic via the `M_HTIC`/`MUS_E1M1` signature (`files/w_iwadid.h`). It is also listed (with `heretic.wad`) in the launcher's IWAD picker (`tools/launcher.c`).
 
 ## 3. Hexen additive pack
 

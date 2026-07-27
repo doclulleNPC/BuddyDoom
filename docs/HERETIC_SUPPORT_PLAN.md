@@ -6,12 +6,16 @@ This is the forward-looking plan for turning the current additive Heretic actor/
 
 ### Implemented foundation
 
-- `files/d_main.c` detects an IWAD whose basename contains `heretic` and sets `heretic_mode`.
+- `files/d_main.c` detects an IWAD whose basename contains `heretic` **or `blasphemer`** (the free Heretic IWAD) and sets `heretic_mode`; both are in `known_iwads[]`, the filename gamemode guesser and the launcher IWAD picker, and a renamed copy is still content-identified as Heretic (`M_HTIC`/`MUS_E1M1`, `files/w_iwadid.h`).
 - Heretic map thing numbers are resolved through `P_HereticThingType` in `files/heretic.c`; unsupported things are skipped instead of aborting.
-- `Heretic_Init` appends the current Heretic actors; `HereticInv_Init` appends the artifact pickup actors/effects.
+- `Heretic_Init` appends the base Heretic monster actors; `HereticInv_Init` appends the artifact pickup actors/effects.
+- **Wave-2 additive content (2026-07-27)** appends the rest of the bestiary/scenery/items from crispy-doom, wired in `D_DoomMain`:
+  - `Heretic_Deco_Init` (`files/heretic_deco.c`) — decoration/scenery actors;
+  - `Heretic_MVar_Init` (`files/heretic_mvar.c`) — monster variants / extra bosses (Nitrogolem leader, ghost mummies, mummy soul, …);
+  - `Heretic_Items_Init` (`files/heretic_items.c`) — **map-placeable** keys/ammo/ground-weapons/shields/health-vial at their real doomednums, so they now appear on Heretic maps instead of being skipped.
 - Native Heretic sprite names are remapped before `R_Init` builds sprite frames.
 - Missing DOOM-only sound lumps fall back to silence; missing weapon/status/switch art is guarded to avoid startup crashes.
-- The current artifact module appends ten pickup actors/effects (`files/p_inv_heretic.c`); full Heretic map placement and the always-on native inventory UI remain planned.
+- The artifact module appends ten pickup actors/effects (`files/p_inv_heretic.c`); the always-on native artifact inventory UI (and map placement of the *artifacts*, which still use `doomednum=-1`) remains planned.
 ### Explicit boundary
 
 `heretic_mode` is not yet a complete mission/game-mode switch. The current engine still uses the DOOM player, weapons, status bar, menu, specials and progression paths in places where Heretic-specific behavior is required. Some Heretic map content is therefore skipped or falls back safely.
@@ -41,9 +45,9 @@ Required decisions:
 
 Port the Heretic player fields, ammo types, weapon ownership/switching, eight weapons, Tome of Power modes and projectiles from the C reference source. The current artifact system must become the always-on Heretic inventory path rather than a console-only additive convenience.
 
-### 4. Artifact/map integration
+### 4. Artifact/map integration — partially present
 
-Assign the real Heretic doomed numbers to map-placeable artifacts in Heretic mode, while retaining collision-safe additive numbers in ordinary DOOM mode. Wire inventory selection/use/drop, Wings, Morph Ovum and mode-specific HUD behavior to the active mission.
+Ordinary map items (keys/ammo/ground-weapons/shields/vial) already spawn at their real Heretic doomednums via `Heretic_Items_Init` (`files/heretic_items.c`). Still to do: give the map-placeable *artifacts* their real doomednums in Heretic mode (they currently use collision-safe `doomednum=-1`), and wire inventory selection/use/drop, Wings, Morph Ovum and mode-specific HUD behavior to the active mission.
 
 ### 5. Level specials and map semantics
 

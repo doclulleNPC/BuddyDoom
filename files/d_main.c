@@ -857,6 +857,7 @@ static const struct { const char* name; int mode; } known_iwads[] = {
     { "freedoom1.wad", retail     },
     { "freedm.wad",    commercial },
     { "chex3.wad",     retail     },	// Chex Quest 3 (Ultimate-Doom format)
+    { "blasphemer.wad",retail     },	// Blasphemer (free Heretic IWAD: ExMy episodes)
 };
 
 // Steam install locations (relative to steamapps/common) + game mode.
@@ -908,7 +909,7 @@ static int IWAD_ModeFromName (const char* path)
     if ((s = strrchr(b,'\\'))) b = s+1;
     for (i=0; b[i] && i<63; i++) { c = b[i]; if (c>='A'&&c<='Z') c+=32; low[i]=(char)c; }
     low[i] = 0;
-    if (strstr(low,"heretic")) return retail;		// Heretic (ExMy maps, multi-episode like retail)
+    if (strstr(low,"heretic") || strstr(low,"blasphemer")) return retail;	// Heretic / Blasphemer (ExMy, multi-episode)
     if (strstr(low,"chex")) return retail;		// Chex Quest (1/2/3): Ultimate-Doom format
     if (strstr(low,"doom2") || strstr(low,"plutonia") || strstr(low,"tnt")
 	|| strstr(low,"freedoom2") || strstr(low,"freedm")) return commercial;
@@ -1110,11 +1111,12 @@ void IdentifyVersion (void)
 	    if ((s = strrchr(b,'\\'))) b = s+1;
 	    for (i=0; b[i] && i<255; i++) { c=b[i]; if (c>='A'&&c<='Z') c+=32; low[i]=(char)c; }
 	    low[i] = 0;
-	    if (strstr(low, "heretic"))
+	    if (strstr(low, "heretic") || strstr(low, "blasphemer"))
 	    {
 		heretic_mode = 1;
 		mode = retail;
-		printf ("Heretic IWAD detected -- heretic mode\n");
+		printf ("%s IWAD detected -- heretic mode\n",
+			strstr(low, "blasphemer") ? "Blasphemer" : "Heretic");
 	    }
 	}
 	// Content-first: identify the IWAD by its lumps / MD5 (w_iwadid.h) and let that

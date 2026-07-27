@@ -341,6 +341,8 @@ static const known_iwad_t KNOWN_IWADS[] = {
     { "freedoom2.wad", "FreeDOOM2"                         },
     { "freedm.wad",    "FreeDM"                            },
     { "chex3.wad",     "Chex Quest 3"                      },
+    { "heretic.wad",   "Heretic"                           },
+    { "blasphemer.wad","Blasphemer (free Heretic)"         },
     { NULL, NULL }
 };
 
