@@ -123,6 +123,86 @@ static int I_WriteMinidump (EXCEPTION_POINTERS* ep)
     CloseHandle (hf);
     return ok ? 1 : 0;
 }
+// Walk the faulting thread's stack and print a symbolised backtrace to stderr
+// (uses buddydoom.pdb next to the exe).  Invaluable for post-mortems without a
+// debugger -- names the exact function/line that crashed.
+static void I_PrintStack (EXCEPTION_POINTERS* ep)
+{
+    HANDLE	proc = GetCurrentProcess ();
+    HANDLE	thread = GetCurrentThread ();
+    CONTEXT	ctx;
+    STACKFRAME64 sf;
+    char	sbuf[sizeof(SYMBOL_INFO) + 256];
+    SYMBOL_INFO* sym = (SYMBOL_INFO*)sbuf;
+    DWORD	machine;
+    int		n;
+
+    if (!ep || !ep->ContextRecord)
+	return;
+    SymSetOptions (SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
+    if (!SymInitialize (proc, NULL, TRUE))
+	{ fprintf (stderr, "  (SymInitialize failed, err=%lu)\n", GetLastError ()); fflush (stderr); return; }
+
+    // First, name the faulting instruction directly -- the single most useful line.
+    if (ep->ExceptionRecord)
+    {
+	DWORD64		fa = (DWORD64)(uintptr_t) ep->ExceptionRecord->ExceptionAddress, d = 0;
+	DWORD		ld = 0;
+	IMAGEHLP_LINE64	line; line.SizeOfStruct = sizeof line;
+	memset (sym, 0, sizeof sbuf);
+	sym->SizeOfStruct = sizeof(SYMBOL_INFO); sym->MaxNameLen = 255;
+	if (SymFromAddr (proc, fa, &d, sym))
+	{
+	    if (SymGetLineFromAddr64 (proc, fa, &ld, &line))
+		fprintf (stderr, "  fault in: %s  (%s:%lu)\n", sym->Name, line.FileName, line.LineNumber);
+	    else
+		fprintf (stderr, "  fault in: %s +0x%llx\n", sym->Name, (unsigned long long)d);
+	    fflush (stderr);
+	}
+    }
+    ctx = *ep->ContextRecord;
+    memset (&sf, 0, sizeof sf);
+#if defined(_M_X64) || defined(_M_AMD64)
+    machine = IMAGE_FILE_MACHINE_AMD64;
+    sf.AddrPC.Offset    = ctx.Rip;  sf.AddrPC.Mode    = AddrModeFlat;
+    sf.AddrFrame.Offset = ctx.Rbp;  sf.AddrFrame.Mode = AddrModeFlat;
+    sf.AddrStack.Offset = ctx.Rsp;  sf.AddrStack.Mode = AddrModeFlat;
+#elif defined(_M_IX86)
+    machine = IMAGE_FILE_MACHINE_I386;
+    sf.AddrPC.Offset    = ctx.Eip;  sf.AddrPC.Mode    = AddrModeFlat;
+    sf.AddrFrame.Offset = ctx.Ebp;  sf.AddrFrame.Mode = AddrModeFlat;
+    sf.AddrStack.Offset = ctx.Esp;  sf.AddrStack.Mode = AddrModeFlat;
+#else
+    machine = IMAGE_FILE_MACHINE_UNKNOWN;
+#endif
+    fprintf (stderr, "  backtrace (most recent first):\n");
+    for (n = 0; n < 24; n++)
+    {
+	DWORD64		disp = 0;
+	DWORD		ld = 0;
+	IMAGEHLP_LINE64	line;
+	if (!StackWalk64 (machine, proc, thread, &sf, &ctx, NULL,
+			  SymFunctionTableAccess64, SymGetModuleBase64, NULL)
+	    || !sf.AddrPC.Offset)
+	    break;
+	memset (sym, 0, sizeof sbuf);
+	sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+	sym->MaxNameLen   = 255;
+	line.SizeOfStruct = sizeof line;
+	if (SymFromAddr (proc, sf.AddrPC.Offset, &disp, sym))
+	{
+	    if (SymGetLineFromAddr64 (proc, sf.AddrPC.Offset, &ld, &line))
+		fprintf (stderr, "    #%02d %s  (%s:%lu)\n", n, sym->Name, line.FileName, line.LineNumber);
+	    else
+		fprintf (stderr, "    #%02d %s +0x%llx\n", n, sym->Name, (unsigned long long)disp);
+	}
+	else
+	    fprintf (stderr, "    #%02d 0x%08llx\n", n, (unsigned long long)sf.AddrPC.Offset);
+    }
+    SymCleanup (proc);
+    fflush (stderr);
+}
+
 static LONG WINAPI I_Win32CrashFilter (EXCEPTION_POINTERS* ep)
 {
     static char	msg[640];			// static: don't lean on the trashed stack
@@ -148,6 +228,7 @@ static LONG WINAPI I_Win32CrashFilter (EXCEPTION_POINTERS* ep)
     fprintf (stderr, "\n*** BuddyDoom CRASH: %s (0x%08lX) at 0x%p; minidump %s ***\n",
 	     name, (unsigned long)code, addr, dumped ? "buddydoom_crash.dmp" : "FAILED");
     fflush (stderr);
+    I_PrintStack (ep);				// symbolised backtrace to the log
     // SDL's message box is the native Win32 dialog underneath; safe with parent = NULL
     // even after a crash / with no game window.
     SDL_ShowSimpleMessageBox (SDL_MESSAGEBOX_ERROR, "BuddyDoom crashed", msg, NULL);

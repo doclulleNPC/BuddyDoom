@@ -44,6 +44,7 @@ rcsid[] = "$Id: p_enemy.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 #include "r_state.h"
 
 #include "p_ai_llm.h"
+#include "p_buddydef.h"	// P_Buddy_Recalled / P_Buddy_Held -- console orders for a mobj buddy
 
 // Data.
 #include "sounds.h"
@@ -391,8 +392,25 @@ void P_NewChaseDir (mobj_t*	actor)
     dirtype_t	turnaround;
 
     if (!actor->target)
-	I_Error ("P_NewChaseDir: called with no target");
-		
+    {
+	// Vanilla fatally I_Error'd here.  This fork drives A_Chase through several extra
+	// AI hooks (LLM director, pack-hunt, the co-op buddy, the security drone, revived
+	// marines) and one of them can momentarily reach the chase machinery with no target
+	// -- crashing the whole game over that is far worse than the monster just wandering
+	// for a tic (the next A_Chase re-acquires a target or idles at spawnstate).  Re-roll
+	// the walk direction ourselves and carry on; warn ONCE so it stays diagnosable.
+	static boolean warned;
+	if (!warned)
+	{
+	    fprintf (stderr, "P_NewChaseDir: called with no target (mobj type %d) -- "
+			     "wandering instead of crashing (warned once)\n", actor->type);
+	    warned = true;
+	}
+	actor->movedir   = P_Random () % 8;
+	actor->movecount = 15;
+	return;
+    }
+
     olddir = actor->movedir;
     turnaround=opposite[olddir];
 
@@ -515,7 +533,7 @@ void P_NewChaseDir (mobj_t*	actor)
 //
 // BuddyDoom: nearest live enemy monster to a FRIENDLY monster (summonfriend) -- a real
 // COUNTKILL monster, shootable, alive, and not itself friendly.  NULL if none.
-static mobj_t* P_FriendNearestEnemy (mobj_t* actor)
+mobj_t* P_FriendNearestEnemy (mobj_t* actor)
 {
     thinker_t*	th;
     mobj_t*	best = NULL;
@@ -981,8 +999,14 @@ static void A_BuddyFollow (mobj_t* self)
 
     if (!h || h->health <= 0)			// no human -> just wander
     {
+	// P_NewChaseDir I_Errors ("called with no target") when the actor has none, and
+	// here it never does: we only reach this when the buddy found no enemy AND the
+	// human is gone/dead.  Re-roll the walk direction ourselves instead of crashing.
 	if (--self->movecount < 0 || !P_Move (self))
-	    P_NewChaseDir (self);
+	{
+	    self->movedir   = P_Random () % 8;
+	    self->movecount = 15;
+	}
 	return;
     }
 
@@ -1004,6 +1028,16 @@ static void A_BuddyFollow (mobj_t* self)
 // logic; if there is none, follow the human.
 void A_BuddyChase (mobj_t* self)
 {
+    // Console orders (only ever set for the selected mobj buddy, see p_buddydef.c):
+    // "wait" pins it where it stands, "come" makes it break off and pad back to you.
+    if (self == P_Buddy_Mobj ())
+    {
+	if (P_Buddy_Held ())
+	    return;
+	if (P_Buddy_Recalled ())
+	    { self->target = NULL; A_BuddyFollow (self); return; }
+    }
+
     if (!self->target
 	|| self->target->health <= 0
 	|| !(self->target->flags & MF_SHOOTABLE)

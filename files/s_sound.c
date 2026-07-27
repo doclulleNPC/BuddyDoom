@@ -876,6 +876,25 @@ S_AdjustSoundParams
 // S_getChannel :
 //   If none available, return -1.  Otherwise channel #.
 //
+// Weapon-fire and item-pickup SFX.  These get a dedicated channel (see S_getChannel)
+// so a firefight full of monster/buddy sounds can never starve them -- the reported
+// "weapon sounds don't always play".  (All originate from the local player, so they're
+// naturally one-at-a-time, which is exactly what a single reserved channel serves.)
+static boolean S_IsReservedSound (int id)
+{
+    switch (id)
+    {
+      case sfx_pistol: case sfx_shotgn: case sfx_sgcock: case sfx_dshtgn:
+      case sfx_dbopn:  case sfx_dbcls:  case sfx_dbload: case sfx_plasma:
+      case sfx_bfg:    case sfx_sawup:  case sfx_sawidl: case sfx_sawful:
+      case sfx_sawhit: case sfx_rlaunc: case sfx_punch:		// weapon fire
+      case sfx_itemup: case sfx_wpnup:  case sfx_getpow:	// pickups
+	return true;
+      default:
+	return false;
+    }
+}
+
 int
 S_getChannel
 ( void*		origin,
@@ -883,11 +902,31 @@ S_getChannel
 {
     // channel number to use
     int		cnum;
-    
+    int		maxch;
+
     channel_t*	c;
 
+    // The LAST channel is reserved exclusively for weapon/pickup SFX.  A weapon or
+    // pickup sound always gets it (evicting a previous one -- they're one-at-a-time
+    // from the player anyway), and no other sound may ever occupy it, so those SFX
+    // can never be dropped no matter how many monster sounds are playing.
+    int		reserved_ch = (numChannels >= 2) ? numChannels - 1 : -1;
+    if (reserved_ch >= 0 && S_IsReservedSound ((int)(sfxinfo - S_sfx)))
+    {
+	c = &channels[reserved_ch];
+	if (c->sfxinfo)
+	    S_StopChannel (reserved_ch);
+	c->sfxinfo = sfxinfo;
+	c->origin  = origin;
+	return reserved_ch;
+    }
+
+    // Everything else competes only over the GENERAL channels [0 .. reserved_ch),
+    // never the reserved one.
+    maxch = (reserved_ch >= 0) ? reserved_ch : numChannels;
+
     // Find an open channel
-    for (cnum=0 ; cnum<numChannels ; cnum++)
+    for (cnum=0 ; cnum<maxch ; cnum++)
     {
 	if (!channels[cnum].sfxinfo)
 	    break;
@@ -899,15 +938,15 @@ S_getChannel
     }
 
     // None available
-    if (cnum == numChannels)
+    if (cnum == maxch)
     {
 	// Look for lower priority
-	for (cnum=0 ; cnum<numChannels ; cnum++)
+	for (cnum=0 ; cnum<maxch ; cnum++)
 	    if (channels[cnum].sfxinfo->priority >= sfxinfo->priority) break;
 
-	if (cnum == numChannels)
+	if (cnum == maxch)
 	{
-	    // FUCK!  No lower priority.  Sorry, Charlie.    
+	    // No lower priority.  Sorry, Charlie.
 	    return -1;
 	}
 	else

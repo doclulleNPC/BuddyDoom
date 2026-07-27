@@ -42,6 +42,13 @@ void AM_Drawer (void);
 // if the level is completed while it is up.
 void AM_Stop (void);
 
+// Automap rendering style (config `automap_style`, am_map.c).
+enum { AMS_VANILLA, AMS_BOOM, AMS_TEXTURED };
+extern int automap_style;
+
+// True while the automap should draw as a transparent overlay over the live 3D view
+// (Boom style) -- D_Display renders the view underneath and AM_Drawer skips the fill.
+boolean AM_Overlay (void);
 
 
 #endif

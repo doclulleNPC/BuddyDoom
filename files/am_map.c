@@ -35,6 +35,7 @@ static const char rcsid[] = "$Id: am_map.c,v 1.4 1997/02/03 21:24:33 b1 Exp $";
 
 #include "m_cheat.h"
 #include "i_system.h"
+#include "i_video.h"	// I_TrueColorDimView -- dim the 32-bit view under the map veil
 
 // Needs access to LFB.
 #include "v_video.h"
@@ -42,6 +43,7 @@ static const char rcsid[] = "$Id: am_map.c,v 1.4 1997/02/03 21:24:33 b1 Exp $";
 // State.
 #include "doomstat.h"
 #include "p_ai_coop.h"	// P_AICoop_Slot -- draw the buddy on the automap
+#include "p_buddydef.h"	// P_Buddy_Mobj -- ...and the BUDDYDEF mobj companion
 #include "r_state.h"
 
 // Data.
@@ -85,6 +87,12 @@ static const char rcsid[] = "$Id: am_map.c,v 1.4 1997/02/03 21:24:33 b1 Exp $";
 #define GRIDCOLORS	(GRAYS + GRAYSRANGE/2)
 #define GRIDRANGE	0
 #define XHAIRCOLORS	GRAYS
+
+// Boom-style automap extras (used when automap_style == AMS_BOOM)
+#define BLUEKEYCOLOR	BLUES			// keyed door: blue key
+#define REDKEYCOLOR	REDS			// keyed door: red key
+#define YELLOWKEYCOLOR	YELLOWS			// keyed door: yellow key
+#define SECRETSECTORCOLOR 251			// bright accent for lines bordering secret sectors
 
 // drawing stuff
 #define	FB		0
@@ -853,6 +861,62 @@ void AM_clearFB(int color)
 
 
 //
+// Textured-automap background: a 50% BLACK VEIL over the screen instead of either a
+// solid black fill (vanilla) or nothing at all (Boom overlay).  The game stays visible
+// underneath but dimmed, so the map reads clearly on top of it.
+//
+// Done by remapping every pixel through the MIDDLE row of the light colormap -- the
+// engine's own distance shading, so it is palette-correct and costs one table lookup
+// per pixel (no blending in 8-bit).
+//
+// Only pixels the 3D view REDRAWS EVERY FRAME may be dimmed in place: dimming a stale
+// pixel once per frame would walk it down the colormap and fade it to black in a second.
+// So inside the view rect we dim, and the rest of the automap window gets the plain
+// black fill it had before.  (With the default full-size view the two are the same rect,
+// i.e. the veil covers the whole screen above the status bar.)
+//
+#define AM_DIMLEVEL	(NUMCOLORMAPS/2)	// colormap row 16 of 32 ~= half brightness
+
+static void AM_dimFB (void)
+{
+    extern lighttable_t*	colormaps;
+    extern int			viewwindowx, viewwindowy, viewheight, scaledviewwidth;
+
+    const lighttable_t*	cm  = colormaps + AM_DIMLEVEL*256;
+    int			vy0 = viewwindowy, vy1 = viewwindowy + viewheight;
+    int			vx0 = viewwindowx, vx1 = viewwindowx + scaledviewwidth;
+    int			ybot = f_y + f_h;
+    int			x, y;
+
+    // Dim the true-color view buffer to match, or HD sprites/textures (which write
+    // screen32 and are preferred by the composite) would shine through the veil.
+    I_TrueColorDimView ();
+
+    // A full-height view (small/alt status bar styles) reaches below the map window --
+    // dim that strip too, so the veil doesn't stop short of the bottom of the screen.
+    if (vy1 > ybot)
+	ybot = vy1;
+
+    for (y = f_y; y < ybot; y++)
+    {
+	byte*	row    = fb + y*f_w;
+	int	inview = (y >= vy0 && y < vy1);
+
+	if (y < f_y + f_h)			// inside the automap window
+	{
+	    for (x = 0; x < f_w; x++)
+		row[x] = (inview && x >= vx0 && x < vx1) ? cm[row[x]] : BACKGROUND;
+	}
+	else if (inview)			// below it: dim only, never overwrite the bar
+	{
+	    for (x = vx0; x < vx1; x++)
+		row[x] = cm[row[x]];
+	}
+    }
+}
+
+
+//
 // Automap clipping of lines.
 //
 // Based on Cohen-Sutherland clipping algorithm but with a slightly
@@ -1130,10 +1194,33 @@ void AM_drawGrid(int color)
 // Determines visible lines, draws them.
 // This is LineDef based, not LineSeg based.
 //
+// Boom automap colouring helpers ------------------------------------------------
+
+// Colour for a keyed-door line, by the key its special requires (-1 = not a key door).
+// Covers the DR (26-28), D1 (32-34) and SR/S1 (99,133-137) locked-door specials.
+static int AM_KeyDoorColor (int special)
+{
+    switch (special)
+    {
+      case 26: case 32: case 99:  case 133:	return BLUEKEYCOLOR;
+      case 28: case 33: case 134: case 135:	return REDKEYCOLOR;
+      case 27: case 34: case 136: case 137:	return YELLOWKEYCOLOR;
+      default:					return -1;
+    }
+}
+
+// True if either sector bounding the line is flagged secret (sector special 9).
+static boolean AM_LineSecret (line_t* ld)
+{
+    return (ld->frontsector && ld->frontsector->special == 9)
+	|| (ld->backsector  && ld->backsector->special  == 9);
+}
+
 void AM_drawWalls(void)
 {
     int i;
     static mline_t l;
+    boolean boom = (automap_style == AMS_BOOM);
 
     for (i=0;i<numlines;i++)
     {
@@ -1145,6 +1232,15 @@ void AM_drawWalls(void)
 	{
 	    if ((lines[i].flags & LINE_NEVERSEE) && !cheating)
 		continue;
+
+	    // Boom colouring takes precedence: keyed doors by key, secret sectors highlighted.
+	    if (boom)
+	    {
+		int kc = AM_KeyDoorColor (lines[i].special);
+		if (kc >= 0)			{ AM_drawMline(&l, kc); continue; }
+		if (AM_LineSecret (&lines[i]))	{ AM_drawMline(&l, SECRETSECTORCOLOR); continue; }
+	    }
+
 	    if (!lines[i].backsector)
 	    {
 		AM_drawMline(&l, WALLCOLORS+lightlev);
@@ -1168,13 +1264,14 @@ void AM_drawWalls(void)
 			   != lines[i].frontsector->ceilingheight) {
 		    AM_drawMline(&l, CDWALLCOLORS+lightlev); // ceiling level change
 		}
-		else if (cheating) {
+		else if (cheating || boom) {	// Boom shows same-height 2-sided walls too
 		    AM_drawMline(&l, TSWALLCOLORS+lightlev);
 		}
 	    }
 	}
 	else if (plr->powers[pw_allmap])
 	{
+	    // Computer-map: revealed but not yet SEEN by the player -> dim grey (Boom look).
 	    if (!(lines[i].flags & LINE_NEVERSEE)) AM_drawMline(&l, GRAYS+3);
 	}
     }
@@ -1276,6 +1373,15 @@ void AM_drawPlayers(void)
 	// (incapacitated) so the player can still find him to revive.
 	{
 	    int bs = P_AICoop_Slot ();
+	    // BUDDYDEF mobj companion: it is not a player, so the marine slot is off --
+	    // mark it with the same yellow arrow (p_buddydef.c).
+	    {
+		mobj_t* bm = (bs < 0 || !playeringame[bs]) ? P_Buddy_Mobj () : NULL;
+		if (bm)
+		    AM_drawLineCharacter
+			(player_arrow, NUMPLYRLINES, 0, bm->angle,
+			 bm->health > 0 ? YELLOWS : GREENS, bm->x, bm->y);
+	    }
 	    if (bs >= 0 && playeringame[bs] && players[bs].mo)
 	    {
 		if (players[bs].playerstate == PST_LIVE)
@@ -1362,11 +1468,32 @@ void AM_drawCrosshair(int color)
 
 }
 
-// Textured automap (config `automap_textured`, default on): fill the map with each
-// sector's FLOOR FLAT, sampled per pixel through the BSP so it lines up with the 3D
-// view, and darkened by the sector's light level.  Cheap caching (the flat pointer +
-// light colormap only change when we cross into a differently-lit/floored sector).
-int automap_textured = 1;
+// Automap style (config `automap_style`):
+//   AMS_VANILLA (0) -- classic: solid black background, classic line colours.
+//   AMS_BOOM    (1) -- Boom/Woof: TRANSPARENT overlay drawn over the live 3D view,
+//                      with Boom colouring (keyed doors by key, secret sectors
+//                      highlighted, computer-map-revealed lines dimmed).
+//   AMS_TEXTURED(2) -- fill the map with each sector's floor flat (see AM_drawFlats)
+//                      over a 50% BLACK VEIL laid across the screen (AM_dimFB), so
+//                      everything AM_drawFlats leaves blank (the void outside the
+//                      level, unexplored sectors, sky floors) shows the game dimmed
+//                      to half brightness instead of a solid black fill.
+int automap_style = AMS_TEXTURED;		// default: the existing textured look
+
+// True while the automap draws OVER the live 3D view: D_Display renders the view
+// underneath first and AM_Drawer skips the black background fill.  Both the Boom
+// overlay and the textured map want that -- only AMS_VANILLA keeps the solid black
+// background.
+boolean AM_Overlay (void)
+{
+    return automapactive
+	&& (automap_style == AMS_BOOM || automap_style == AMS_TEXTURED);
+}
+
+// Textured automap: fill the map with each sector's FLOOR FLAT, sampled per pixel
+// through the BSP so it lines up with the 3D view, darkened by the sector's light
+// level.  Cheap caching (the flat pointer + light colormap only change when we cross
+// into a differently-lit/floored sector).
 
 // A subsector's floor is revealed once the player has SEEN one of its walls -- we read
 // the line ML_MAPPED flag directly in AM_drawFlats (the same fog-of-war the walls use),
@@ -1479,8 +1606,15 @@ void AM_Drawer (void)
 {
     if (!automapactive) return;
 
-    AM_clearFB(BACKGROUND);
-    if (automap_textured)
+    // Background, over the live 3D view D_Display already rendered into the framebuffer:
+    //   vanilla  -- solid black fill,
+    //   Boom     -- nothing at all (fully transparent overlay),
+    //   textured -- a 50% black veil across the screen, then the sector flats on top.
+    if (!AM_Overlay ())
+	AM_clearFB(BACKGROUND);
+    else if (automap_style == AMS_TEXTURED)
+	AM_dimFB();
+    if (automap_style == AMS_TEXTURED)
 	AM_drawFlats();
     if (grid)
 	AM_drawGrid(GRIDCOLORS);

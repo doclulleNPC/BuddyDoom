@@ -22,10 +22,15 @@ SDL 1.x and won't link SDL3. Use one of:
   (pkg-config) and **copies the `buddydoom` binary into `run/`** (so the launcher
   finds it there). Requires the SDL3 dev package.
 - **Windows:** `nmake /f files\Makefile.msvc` (VS 2019 + SDL3 SDK) → `buddydoom.exe`
-  + `SDL3.dll`, with the exe icon from `files/buddydoom.rc`. Or
-  **`build_all_win.bat`** (repo root) which finds VS via `vswhere`, sets up the
-  **x86** env, and builds the game **plus** the `tools/` apps (`buddydoom_config`,
-  `gpumon`, `launcher`), copying every exe + `SDL3.dll` into `run/`.
+  + `SDL3.dll`, with the exe icon from `files/buddydoom.rc`. Add `PLATFORM=x64`
+  (from an **x64** Native Tools prompt) or `PLATFORM=x86` to pick the arch — the
+  makefile links `SDL\lib\$(PLATFORM)`. Or **`build_all_win.bat`** (repo root) which
+  finds VS via `vswhere`, sets up the env, and builds the game **plus** the `tools/`
+  apps (`buddydoom_config`, `gpumon`, `launcher`), copying every exe + `SDL3.dll`
+  into `run/`. It defaults to **x64** now (`vcvars64` + `PLATFORM=x64`); run
+  `build_all_win.bat x86` for the old 32-bit build. (Windows x64 is **LLP64** —
+  `long` is 4 bytes — so it's stricter than 64-bit Linux's LP64; see the LLP64
+  section in `docs/LEGACY_FIXES.md` if a pointer-truncation crash reappears.)
 - **Any platform (CMake):** `cmake -B build && cmake --build build` —
   `CMakeLists.txt` builds the game and the `buddydoom_config`/`gpumon` tools, finds
   SDL3 via `find_package` (a sibling `../SDL3` SDK on Windows, else a system
@@ -277,7 +282,9 @@ portable game code that calls into them through the `I_*` interface.
   `i_video.c` (SDL_Surface framebuffer at the current resolution, `xlatekey`
   keymap, mouse grab, and `V_SetRes` runtime resolution switching — see below),
   `i_sound.c` (SDL_audio callback mixer — software SFX channels + OGG music +
-  the `i_mus.c` FM synth), `i_mus.c` (MUS music player),
+  the `i_mus.c` FM synth; **SFX lumps may be DMX *or* OGG** — `getsfx` sniffs the
+  `OggS` magic and decodes via `stb_vorbis` to the native 8-bit/11025 Hz mono SFX
+  format, so actor/`DS*` sounds can ship as OGG, not just DMX), `i_mus.c` (MUS music player),
   `i_system.c` (timing, zone base alloc, exit), `i_net.c` (sockets), `i_main.c`
   (`main()` → sets `myargc`/`myargv` → `D_DoomMain()`). To port or change OS/SDL
   behavior, you almost always touch only these files.
@@ -285,7 +292,12 @@ portable game code that calls into them through the `I_*` interface.
 - **Top level (`d_*`)** — `d_main.c` holds `D_DoomMain()` (startup: arg parsing,
   IWAD detection in `IdentifyVersion`, WAD init, subsystem init) and `D_DoomLoop()`
   (the game loop, never returns). `d_net.c` is the tic-synchronized netcode that
-  drives `TryRunTics`.
+  drives `TryRunTics`. IWADs are identified by **content** (`files/w_iwadid.h`,
+  shared with `tools/launcher.c`): the `IWAD` header magic + lump signatures
+  (`E4M1`→Ultimate, `MAP01`→Doom2-family, …) with an MD5→version table for the exact
+  release, so a renamed/custom IWAD is still recognised (filename is only a fallback).
+  `D_AutoloadBuddyWads` also scans `ID0/` for any `*.wad` with a `BUDDYDEF` lump and
+  loads it early (before `W_InitMultipleFiles`), so buddy packs appear with no `-file`.
 
 - **Game logic (`g_game.c`)** — ticcmd building from input, game state machine,
   save/load, demo record/playback, level transitions.

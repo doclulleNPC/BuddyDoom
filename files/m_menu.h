@@ -69,6 +69,10 @@ void	M_Buddy_Open (void);
 boolean	M_Buddy_Active (void);
 boolean	M_Buddy_Responder (event_t* ev);
 void	M_DrawBuddy (void);
+// Read-only accessors for the SDL/TTF Buddy overlay (i_video.c).
+int	M_Buddy_Sel (void);		// highlighted roster index
+int	M_Buddy_Row (void);		// selected cycler row: 0 = Buddy, 1 = Color
+int	M_Buddy_Color (void);		// selected colour index
 
 
 

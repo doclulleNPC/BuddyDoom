@@ -324,6 +324,20 @@ vissprite_t	vissprites[MAXVISSPRITES];
 vissprite_t*	vissprite_p;
 int		newvissprite;
 
+// Buddy colour: one companion actor may carry an arbitrary palette translation
+// (chosen in the Buddy menu / declared in BUDDYDEF), applied to its sprite each
+// frame without touching mobj_t (so savegames are unaffected).  The companion
+// driver sets this each tic via R_SetBuddyColor; R_ProjectSprite copies the
+// table onto the matching vissprite.  xlat==NULL means "no override".
+static mobj_t*		r_buddycolor_mo;
+static const byte*	r_buddycolor_xlat;
+
+void R_SetBuddyColor (mobj_t* mo, const byte* xlat)
+{
+    r_buddycolor_mo   = mo;
+    r_buddycolor_xlat = xlat;
+}
+
 
 
 //
@@ -587,6 +601,13 @@ R_DrawVisSprite
 	// NULL colormap = shadow draw
 	colfunc = fuzzcolfunc;
     }
+    else if (vis->translation)
+    {
+	// Explicit per-actor buddy-colour remap (arbitrary named colour) -- takes
+	// precedence over the MF_TRANSLATION player-number bits.
+	colfunc = R_DrawTranslatedColumn;
+	dc_translation = (byte*) vis->translation;
+    }
     else if (vis->mobjflags & MF_TRANSLATION)
     {
 	colfunc = R_DrawTranslatedColumn;
@@ -742,6 +763,7 @@ void R_ProjectSprite (mobj_t* thing)
     // store information in a vissprite
     vis = R_NewVisSprite ();
     vis->mobjflags = thing->flags;
+    vis->translation = (thing == r_buddycolor_mo) ? r_buddycolor_xlat : NULL;
     vis->floorz = thing->floorz;
     vis->scale = xscale<<detailshift;
     vis->gx = thing->x;
@@ -918,6 +940,7 @@ void R_DrawPSprite (pspdef_t* psp)
 	vis->startfrac += vis->xiscale*(vis->x1-x1);
 
     vis->patch = lump;
+    vis->translation = NULL;		// player weapon is never buddy-recoloured (avis is stack-local)
 
     if (viewplayer->powers[pw_invisibility] > 4*32
 	|| viewplayer->powers[pw_invisibility] & 8)

@@ -38,7 +38,9 @@
 #include "buddydoom_version.h"		// BUDDYDOOM_VERSION (auto-bumped by build.sh)
 #include "c_console.h"			// console overlay state (C_Active / C_GetLine)
 #include "m_controls.h"			// in-game key-bindings screen (overlay drawn here)
-#include "m_menu.h"			// M_Video_* -- the Video settings overlay (drawn here)
+#include "m_menu.h"			// M_Video_* / M_Buddy_* -- overlays drawn here
+#include "p_buddydef.h"			// P_Buddy_* + buddystats_t -- Buddy select overlay
+extern int	buddy_select;		// m_menu.c -- the currently-active buddy (for "(current)")
 #include "../tools/font_atlas.h"		// baked DejaVuSansMono atlas (TTF console font)
 
 
@@ -133,6 +135,26 @@ void I_TrueColorClearView (void)
     for (y = 0; y < viewheight; y++)
 	memset (screen32 + (viewwindowy+y)*SCREENWIDTH + viewwindowx, 0,
 		scaledviewwidth * sizeof(unsigned int));
+}
+
+// Halve every true-color view pixel.  The textured automap lays a 50% black veil over
+// the screen (am_map.c AM_dimFB), but that only remaps the 8-BIT buffer -- HD/true-color
+// drawers also write screen32, and the composite prefers screen32 wherever the 8-bit
+// pixel still matches the snapshot, so an HD sprite/texture would shine through the veil
+// at full brightness.  Dim both and they agree.  screen32 is cleared per frame
+// (I_TrueColorClearView), so this can't accumulate.
+void I_TrueColorDimView (void)
+{
+    int x, y;
+    if (!truecolor || !screen32)
+	return;
+    for (y = 0; y < viewheight; y++)
+    {
+	unsigned int* row = screen32 + (viewwindowy+y)*SCREENWIDTH + viewwindowx;
+	for (x = 0; x < scaledviewwidth; x++)
+	    if (row[x] & 0xff000000u)
+		row[x] = (row[x] & 0xff000000u) | ((row[x] >> 1) & 0x007f7f7fu);
+    }
 }
 
 // Snapshot the 8-bit view rect right after R_RenderPlayerView, BEFORE the crosshair
@@ -377,19 +399,24 @@ void I_GetEvent(SDL_Event *Event)
 
       case SDL_EVENT_MOUSE_BUTTON_DOWN:
       case SDL_EVENT_MOUSE_BUTTON_UP:
-	if (menuactive)
-	    break;
-	event.type = ev_mouse;
-	event.data1 = I_MouseButtons(SDL_GetMouseState(NULL, NULL));
-	event.data2 = event.data3 = 0;
-	D_PostEvent(&event);
-	// Also emit the specific button as a bindable key press, so the config
-	// tool / `bind` can map a mouse button to an action (jump, spy, ...).
+	// The gameplay mouse-button bitmask is suppressed while a menu is up.  But the
+	// specific button, as a bindable key press, must still reach the Controls
+	// screen while it is waiting to CAPTURE a binding -- otherwise mouse buttons
+	// can't be bound there.
+	if (!menuactive)
+	{
+	    event.type = ev_mouse;
+	    event.data1 = I_MouseButtons(SDL_GetMouseState(NULL, NULL));
+	    event.data2 = event.data3 = 0;
+	    D_PostEvent(&event);
+	}
+	// Emit the specific button as a bindable key press when playing, or when the
+	// key-bindings screen is capturing (so a mouse button can be mapped to an action).
 	{
 	    int mk = (Event->button.button == SDL_BUTTON_LEFT)   ? KEY_MOUSE1
 		   : (Event->button.button == SDL_BUTTON_RIGHT)  ? KEY_MOUSE2
 		   : (Event->button.button == SDL_BUTTON_MIDDLE) ? KEY_MOUSE3 : 0;
-	    if (mk)
+	    if (mk && (!menuactive || M_Controls_Capturing()))
 	    {
 		event.type  = (Event->type == SDL_EVENT_MOUSE_BUTTON_DOWN) ? ev_keydown : ev_keyup;
 		event.data1 = mk;
@@ -410,7 +437,7 @@ void I_GetEvent(SDL_Event *Event)
 	break;
 
       case SDL_EVENT_MOUSE_WHEEL:
-	if (menuactive)
+	if (menuactive && !M_Controls_Capturing())	// allow binding the wheel in Controls
 	    break;
 	// wheel up/down -> a one-shot key press (default: next/prev weapon)
 	if (Event->wheel.y != 0)
@@ -601,6 +628,61 @@ static void I_ConDrawText (float x, float y, const char* s, float cw, float ch)
 	SDL_RenderTexture (renderer, confont, &src, &dst);
 	x += cw;
     }
+}
+
+// Word-wrap `text` into lines no wider than `maxw` pixels and draw them from (x,y)
+// downward, stopping before `maxy` so a long BUDDYDEF blurb can never run into the
+// widgets below it.  The atlas font is monospace (advance == cw), so the fit test is
+// just a character count.  Returns the y just below the last line drawn.
+static float I_ConDrawWrapped (float x, float y, float maxw, float maxy, const char* text,
+			       float cw, float ch, float linegap)
+{
+    char	line[256];
+    int		cols = (cw > 0) ? (int)(maxw / cw) : 0;
+    int		li = 0;
+    const char*	p = text;
+
+    if (!text || !*text)
+	return y;
+    if (cols < 8) cols = 8;
+    if (cols > (int)sizeof line - 1) cols = (int)sizeof line - 1;
+
+    while (*p)
+    {
+	const char*	w;
+	int		wl;
+
+	while (*p == ' ' || *p == '\n') p++;		// skip separators
+	if (!*p) break;
+	for (w = p; *p && *p != ' ' && *p != '\n'; p++) ;
+	wl = (int)(p - w);
+	if (wl > cols) wl = cols;			// pathological long word: clip
+
+	if (li && li + 1 + wl > cols)			// doesn't fit -> flush
+	{
+	    if (y + linegap > maxy)			// out of room: stop, mark the cut
+	    {
+		if (li < cols - 3) { line[li] = 0; strcat (line, "..."); }
+		else strcpy (line + cols - 3, "...");
+		I_ConDrawText (x, y, line, cw, ch);
+		return y + linegap;
+	    }
+	    line[li] = 0;
+	    I_ConDrawText (x, y, line, cw, ch);
+	    y  += linegap;
+	    li  = 0;
+	}
+	if (li) line[li++] = ' ';
+	memcpy (line + li, w, wl);
+	li += wl;
+    }
+    if (li)
+    {
+	line[li] = 0;
+	I_ConDrawText (x, y, line, cw, ch);
+	y += linegap;
+    }
+    return y;
 }
 
 // Build the baked-atlas font texture once (shared by the console + the Controls screen).
@@ -801,6 +883,132 @@ static void I_DrawVideoOverlay (void)
 		   cw*0.85f, ch*0.85f);
 }
 
+// Options -> Buddy: the co-op companion + colour picker, same TTF-overlay style as
+// Controls/Video.  The animated, recoloured buddy sprite is drawn UNDERNEATH in the
+// paletted frame by M_DrawBuddy (m_menu.c); here we add the title, name, stats panel
+// and the two-row Buddy/Color cycler on top -- dimming only the right text panel so
+// the sprite on the left stays visible.
+static void I_DrawBuddySelectOverlay (void)
+{
+    float	W, H, ch, cw, y, tw, px;
+    int		sel, row, colidx, i;
+    char	buf[96];
+    buddystats_t st;
+    const char*	title = "CHOOSE YOUR BUDDY";
+    const char*	rowlab[2] = { "Buddy", "Color" };
+
+    if (!M_Buddy_Active())
+	return;
+
+    I_EnsureConFont ();
+
+    W = SCREENWIDTH; H = SCREENHEIGHT;
+    sel    = M_Buddy_Sel ();
+    row    = M_Buddy_Row ();
+    colidx = M_Buddy_Color ();
+
+    ch = H / 15.0f; if (ch < 7) ch = 7;
+    cw = FONT_CW * (ch / FONT_CH);
+    px = W * 0.44f;					// right text-panel left edge
+
+    // Dim the right panel; the buddy sprite lives in the UPPER-left quarter (drawn
+    // underneath by M_DrawBuddy) so it stays bright, while the LOWER-left quarter gets
+    // its own, lighter veil to carry the description text over the lava.
+    SDL_SetRenderDrawBlendMode (renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor (renderer, 12, 6, 6, 214);
+    { SDL_FRect p = { px - cw*0.6f, 0, W - (px - cw*0.6f), H }; SDL_RenderFillRect (renderer, &p); }
+    SDL_SetRenderDrawColor (renderer, 12, 6, 6, 190);
+    { SDL_FRect p = { 0, H*0.5f, px - cw*0.6f, H*0.5f }; SDL_RenderFillRect (renderer, &p); }
+
+    // title, centred over the right panel (guaranteed contrast)
+    tw = (float)strlen(title) * (cw*1.4f);
+    SDL_SetTextureColorMod (confont, 216, 44, 28);		// DOOM-red title
+    I_ConDrawText (px + ((W - px) - tw)*0.5f, H*0.04f, title, cw*1.4f, ch*1.4f);
+
+    // buddy name (bright) + position / current marker
+    SDL_SetTextureColorMod (confont, 255, 150, 96);
+    I_ConDrawText (px, H*0.15f, P_Buddy_Name (sel), cw*1.25f, ch*1.25f);
+    snprintf (buf, sizeof buf, "%d / %d%s", sel+1, P_Buddy_Count(),
+	      (sel == buddy_select) ? "   (current)" : "");
+    SDL_SetTextureColorMod (confont, 176, 96, 74);
+    I_ConDrawText (px, H*0.245f, buf, cw*0.8f, ch*0.8f);
+
+    // stats panel (all values come from the BUDDYDEF)
+    P_Buddy_GetStats (sel, &st);
+    SDL_SetTextureColorMod (confont, 214, 120, 84);
+    y = H * 0.285f;
+    snprintf (buf, sizeof buf, "HP %-6d SPD %d", st.health, st.speed);
+    I_ConDrawText (px, y, buf, cw*0.82f, ch*0.82f); y += ch*0.84f;
+    snprintf (buf, sizeof buf, "PAIN %-4d REACT %d", st.painchance, st.reactiontime);
+    I_ConDrawText (px, y, buf, cw*0.82f, ch*0.82f); y += ch*0.84f;
+    snprintf (buf, sizeof buf, "SIZE %dx%-3d MASS %d", st.radius, st.height, st.mass);
+    I_ConDrawText (px, y, buf, cw*0.82f, ch*0.82f); y += ch*0.84f;
+    // Attack style + named ability.  A modder can give either a long name, so this row
+    // shrinks to fit the panel instead of running off the right edge.
+    snprintf (buf, sizeof buf, "ATTACK %-8s ABILITY %s",
+	      (st.attack  && *st.attack)  ? st.attack  : "-",
+	      (st.ability && *st.ability) ? st.ability : "none");
+    {
+	float avail = W - px - cw*0.8f;
+	float need  = (float)strlen (buf) * cw;
+	float sc    = (need > 0 && avail/need < 0.82f) ? avail/need : 0.82f;
+	I_ConDrawText (px, y, buf, cw*sc, ch*sc);
+    }
+
+    // BUDDYDEF `special` -- the abilities blurb, under the stats on the right panel.
+    // Hard-clipped to its slice so a long blurb is cut with "..." rather than running
+    // over the cycler rows below it.
+    if (st.special && *st.special)
+    {
+	char spc[160];
+	snprintf (spc, sizeof spc, "SPECIAL: %s", st.special);
+	SDL_SetTextureColorMod (confont, 245, 160, 96);
+	I_ConDrawWrapped (px, H*0.55f, W - px - cw*0.8f, H*0.775f, spc,
+			  cw*0.52f, ch*0.52f, ch*0.58f);
+    }
+
+    // BUDDYDEF `desc` -- the flavour text, in the LOWER-LEFT quarter under the sprite.
+    {
+	const char* d  = P_Buddy_Desc (sel);
+	float	    lw = px - cw*0.6f;				// width of the left column
+	float	    lx = W * 0.025f;
+
+	if (d && *d)
+	{
+	    SDL_SetTextureColorMod (confont, 236, 148, 92);
+	    I_ConDrawText (lx, H*0.535f, "ABOUT", cw*0.62f, ch*0.62f);
+	    SDL_SetTextureColorMod (confont, 196, 116, 88);
+	    I_ConDrawWrapped (lx, H*0.60f, lw - lx*2.0f, H*0.95f, d,
+			      cw*0.52f, ch*0.52f, ch*0.58f);
+	}
+    }
+
+    // two selectable cycler rows: Buddy, Color (< value > hints Left/Right).  Pinned to
+    // the bottom of the panel so the desc/special block above can grow into the middle.
+    y = H * 0.80f;
+    for (i = 0; i < 2; i++, y += ch*1.18f)
+    {
+	boolean issel = (i == row);
+	if (issel)
+	{
+	    SDL_SetRenderDrawColor (renderer, 78, 14, 14, 235);	// dark-red highlight bar
+	    { SDL_FRect hb = { px - cw*0.5f, y - ch*0.18f, (W - px) - cw*0.2f, ch*1.32f }; SDL_RenderFillRect (renderer, &hb); }
+	}
+	SDL_SetTextureColorMod (confont, issel?255:184, issel?96:34, issel?64:24);
+	I_ConDrawText (px, y, rowlab[i], cw, ch);
+	if (i == 0) snprintf (buf, sizeof buf, "< %s >", P_Buddy_Name (sel));
+	else        snprintf (buf, sizeof buf, "< %s >", V_BuddyColorName (colidx));
+	SDL_SetTextureColorMod (confont, issel?255:224, issel?150:120, issel?96:88);
+	I_ConDrawText (px + cw*7.0f, y, buf, cw, ch);
+    }
+
+    // footer hint
+    SDL_SetTextureColorMod (confont, 156, 78, 66);
+    I_ConDrawText (px, H*0.955f,
+		   "Up/Down: row  Left/Right: change  Enter: choose  Esc: back",
+		   cw*0.66f, ch*0.66f);
+}
+
 void I_FinishUpdate (void)
 {
     static int	lasttic;
@@ -866,6 +1074,7 @@ void I_FinishUpdate (void)
     SDL_RenderTexture(renderer, texture, NULL, NULL);
     I_DrawControlsOverlay();		// Options -> Controls key-bindings screen
     I_DrawVideoOverlay();		// Options -> Video settings screen
+    I_DrawBuddySelectOverlay();		// Options -> Buddy select + colour screen
     I_DrawConsoleOverlay();		// crisp SDL/TTF console on top of the frame
     SDL_RenderPresent(renderer);
 }

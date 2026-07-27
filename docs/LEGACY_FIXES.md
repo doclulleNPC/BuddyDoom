@@ -478,3 +478,61 @@ composite then shows the HD version wherever the sprite is visible. (This also m
 Gated on `truecolor && hd_sprites` (config `hd_sprites`, default on) and skipped for
 spectres (no colormap) and invulnerability (fixedcolormap), which keep the paletted
 fuzz/inverse look. Not yet done: HD wall/flat textures (`docs/HD_TEXTURES.md`).
+
+---
+
+## 64-bit Windows (LLP64) build
+
+The Windows MSVC build now targets **x64** by default (`build_all_win.bat`, or
+`nmake /f Makefile.msvc PLATFORM=x64` from an x64 Native Tools prompt; pass
+`build_all_win.bat x86` for the old 32-bit build). `Makefile.msvc` and
+`tools/Makefile.msvc` take a `PLATFORM` var selecting `SDL\lib\{x86,x64}`.
+
+**The LLP64 trap (why it crashed where 64-bit Linux didn't).** Windows x64 is
+**LLP64**: `long` is **4 bytes**, pointers 8. 64-bit Linux (what `build.sh` targets)
+is **LP64**: `long` is 8 bytes. So the code was LP64-clean but not LLP64-clean:
+
+- **Implicitly-declared allocators = truncated pointers (the crash).** `p_mobj.c`
+  and `p_setup.c` used `calloc`/`realloc`/`free` **without `#include <stdlib.h>`**.
+  Under C's implicit-declaration rule the return type is `int`, so `calloc`'s 8-byte
+  pointer was **truncated to 32 bits** and stored into `seenstate_tab` — a garbage
+  pointer. It crashed in `P_SetMobjState` when the heap block landed above 4 GB, and
+  "worked" by luck when it landed below (intermittent!). On Linux a transitive
+  include pulled in `stdlib.h`, hiding it. Fix: `#include <stdlib.h>` in both files.
+  Watch for this warning: `C4013: 'calloc' undefined; assuming extern returning int`.
+- Latent (not currently hit): `m_misc.c` stores a string default's `char*` in an
+  `int` slot (all string defaults are commented out, so dead); `d_net.c`
+  `(int)&((doomdata_t*)0)->field` is struct-offset math (small, safe); `d_deh.c`
+  sfx `link`/`data` and `-statcopy` cast small/zero values.
+
+**Debugging aid added.** The Win32 crash handler (`i_main.c` `I_PrintStack`) now
+prints a **symbolized backtrace** (fault `function (file:line)` + frames, via the
+shipped PDB) to stderr — arch-aware (x86 `Eip/Ebp`, x64 `Rip/Rbp`). This is how the
+`calloc` truncation was pinned to `P_SetMobjState`.
+
+**Cross-arch saves are incompatible:** struct sizes differ (e.g. `mobj_t` 164→~232
+bytes), so a 32-bit `.dsg` won't load in the x64 build (and vice-versa). Start fresh
+saves after switching architecture.
+
+---
+
+## Sound-channel starvation (weapon SFX dropped)
+
+**Symptom:** the player's weapon fire sound was intermittently silent -- most noticeable
+in a firefight (several monsters + the co-op buddy all making noise).
+
+**Cause:** two caps, and the binding one was the 1993 default. `s_sound.c` manages
+`numChannels` *logical* channels; `S_getChannel` refuses a new sound (`return -1`,
+sound dropped) when every channel is busy with a **higher-priority** sound. `numChannels`
+comes from the `snd_channels` config default in `m_misc.c` -- which was still the vanilla
+linuxdoom value of **3**. With only three voices, a couple of monster/buddy sounds left
+no channel for the player's weapon, so its lower-priority SFX was silently dropped. (The
+physical mixer `i_sound.c NUM_CHANNELS` was 8, so it was never the limiting factor.)
+
+**Fix:** raised both caps to **16** (a modern norm; chocolate/crispy/woof use 8-32):
+- `m_misc.c` `snd_channels` default `3 -> 16`.
+- `i_sound.c NUM_CHANNELS 8 -> 16` (physical SDL mixer voices) so the logical channels
+  actually have somewhere to play -- keep `NUM_CHANNELS >= snd_channels`.
+
+Existing `run/buddydoom.cfg` files carry the old `snd_channels 3` (the default only
+applies to a fresh config), so bump that line too when updating an install.

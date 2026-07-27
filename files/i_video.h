@@ -49,6 +49,7 @@ void I_FinishUpdate (void);
 // snapshot the 8-bit view right after (before the crosshair/HUD).  See i_video.c.
 void I_TrueColorClearView (void);
 void I_CaptureTrueColorView (void);
+void I_TrueColorDimView (void);		// 50% dim (textured automap veil, am_map.c)
 
 // Wait for vertical retrace or pause a bit.
 void I_WaitVBL(int count);

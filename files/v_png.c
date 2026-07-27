@@ -98,6 +98,65 @@ const byte* V_HealthTrans (int hp)
     return vp_xlat_blu;
 }
 
+// ---- buddy player-colour remaps --------------------------------------------
+// Recolour ONLY the green player-uniform ramp (palette indices 0x70-0x7F) to a
+// named target hue, scaled by each source pixel's luminance so the shading is
+// preserved (dark folds stay dark).  Everything outside 0x70-0x7F is identity,
+// so the marine's face/hands/weapon are untouched -- exactly like Doom's own
+// green->indigo/brown/red player translations, just an arbitrary named set.
+// Index 0 ("Green") is the marine's own colour: identity (V_BuddyColorTable
+// returns NULL so callers fall through to a plain, untranslated draw).
+
+#define VP_NBUDDYCOL	8
+static const char* vp_buddycol_name[VP_NBUDDYCOL] =
+    { "Green", "Gray", "Brown", "Red", "Blue", "Orange", "Purple", "White" };
+static const byte vp_buddycol_rgb[VP_NBUDDYCOL][3] =
+{
+    {   0,   0,   0 },		// Green  -- identity, table unused
+    { 184, 184, 184 },		// Gray
+    { 152, 100,  52 },		// Brown
+    { 208,  16,  16 },		// Red
+    {  64,  72, 216 },		// Blue
+    { 232, 120,  24 },		// Orange
+    { 152,  48, 192 },		// Purple
+    { 240, 240, 240 },		// White
+};
+static byte	vp_buddycol[VP_NBUDDYCOL][256];
+static boolean	vp_buddycol_ready;
+
+static void VP_BuildBuddyCols (void)
+{
+    int c, i;
+    if (!vp_pal_ready) VP_LoadPalette ();
+    for (c = 0; c < VP_NBUDDYCOL; c++)
+    {
+	for (i = 0; i < 256; i++)
+	{
+	    if (c != 0 && i >= 0x70 && i <= 0x7f)
+	    {
+		int r = vp_pal[i][0], g = vp_pal[i][1], b = vp_pal[i][2];
+		int L = (r*77 + g*150 + b*29) >> 8;			// luminance 0..255
+		vp_buddycol[c][i] = VP_Nearest (vp_buddycol_rgb[c][0]*L/255,
+						vp_buddycol_rgb[c][1]*L/255,
+						vp_buddycol_rgb[c][2]*L/255);
+	    }
+	    else
+		vp_buddycol[c][i] = (byte) i;				// identity
+	}
+    }
+    vp_buddycol_ready = true;
+}
+
+int         V_BuddyColorCount (void)      { return VP_NBUDDYCOL; }
+const char* V_BuddyColorName  (int i)     { return (i >= 0 && i < VP_NBUDDYCOL) ? vp_buddycol_name[i] : ""; }
+
+const byte* V_BuddyColorTable (int i)
+{
+    if (i <= 0 || i >= VP_NBUDDYCOL) return NULL;	// 0 = Green = identity (plain draw)
+    if (!vp_buddycol_ready) VP_BuildBuddyCols ();
+    return vp_buddycol[i];
+}
+
 // ---- RGBA -> patch_t --------------------------------------------------------
 
 #define VP_ALPHA_CUT	128		// alpha below this -> transparent

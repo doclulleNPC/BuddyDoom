@@ -41,7 +41,9 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 
 #include "doomdef.h"
 
-#define NUM_CHANNELS		8
+#define NUM_CHANNELS		16	// physical mixer voices (was 8).  Must be >= snd_channels
+					// (m_misc.c default 16) or the player's weapon SFX get
+					// evicted when monsters/buddy saturate the channels.
 
 // Mixer configuration
 static boolean		use_old_mixer = false;
@@ -119,6 +121,50 @@ int*		channelrightvol_lookup[NUM_CHANNELS];
 // This function loads the sound data from the WAD lump,
 //  for single sound.
 //
+// OGG-encoded SFX support: decode an "OggS" lump with the same stb_vorbis the buddy
+// voice / music use (compiled standalone as stb_vorbis.obj -- just declare it here).
+extern int stb_vorbis_decode_memory (const unsigned char* mem, int len,
+				     int* channels, int* sample_rate, short** output);
+
+//
+// I_SfxLumpFor
+// Resolve an S_sfx name to a WAD lump.  BuddyDoom accepts the name written EITHER way,
+// so a modder never has to remember the "ds" convention:
+//   1. DOOM convention -- the name is the DS-suffix:  "frankn" -> DSFRANKN
+//   2. the literal lump name as it sits in the WAD:   "frankn" -> FRANKN
+//      (also how Heretic's native sounds -- IMPSIT, MUMSIT, ... -- are named)
+// The "ds" form is tried first, so a stock sound can never be shadowed by an unrelated
+// lump that happens to share its bare name.  Returns -1 when neither exists.
+//
+// Lump names are 8 bytes, so the "ds" form is only attempted for names up to 6 chars --
+// otherwise sprintf would overrun the buffer and W_CheckNumForName (which compares just
+// the first 8 bytes) could report a bogus match.
+//
+static int I_SfxLumpFor (const char* sfxname)
+{
+    extern int	heretic_mode;
+    char	namebuf[16];
+    int		l, n;
+
+    if (!sfxname || !*sfxname)
+	return -1;
+    n = (int)strlen (sfxname);
+    if (n > 8)
+	return -1;					// can't name a lump that long
+
+    if (heretic_mode && (l = W_CheckNumForName ((char*)sfxname)) >= 0)
+	return l;					// native Heretic sound, no "ds"
+
+    if (n <= 6)
+    {
+	sprintf (namebuf, "ds%s", sfxname);
+	if ((l = W_CheckNumForName (namebuf)) >= 0)
+	    return l;
+    }
+
+    return W_CheckNumForName ((char*)sfxname);		// name exactly as written
+}
+
 void*
 getsfx
 ( char*         sfxname,
@@ -129,14 +175,11 @@ getsfx
     int                 i;
     int                 size;
     int                 paddedsize;
-    char                name[20];
     int                 sfxlump;
 
-    
+
     // Get the sound data from the WAD, allocate lump
-    //  in zone memory.
-    extern int heretic_mode;
-    sprintf(name, "ds%s", sfxname);
+    //  in zone memory.  "ds"+name or the bare name -- see I_SfxLumpFor.
 
     // Now, there is a severe problem with the
     //  sound handling, in it is not (yet/anymore)
@@ -148,14 +191,11 @@ getsfx
     // I do not do runtime patches to that
     //  variable. Instead, we will use a
     //  default sound for replacement.
-    if ( heretic_mode && W_CheckNumForName(sfxname) != -1 )
-      sfxlump = W_GetNumForName(sfxname);		// native Heretic sound (no "ds" prefix)
-    else if ( W_CheckNumForName(name) != -1 )
-      sfxlump = W_GetNumForName(name);
-    else if ( W_CheckNumForName("dspistol") != -1 )
-      sfxlump = W_GetNumForName("dspistol");		// DOOM default replacement
-    else
-      sfxlump = -1;	// no DOOM SFX at all (e.g. heretic.wad) -> emit silence below
+    sfxlump = I_SfxLumpFor (sfxname);
+    if ( sfxlump < 0 )
+      sfxlump = W_CheckNumForName("dspistol");		// DOOM default replacement,
+							//  or -1 (no DOOM SFX at all, e.g.
+							//  heretic.wad) -> silence below
 
     // Heretic-mode / missing-SFX safety: hand back a tiny padded silence buffer
     // instead of W_GetNumForName I_Erroring when neither the named lump nor the
@@ -180,6 +220,48 @@ getsfx
     //fflush( stderr );
     
     sfx = (unsigned char*)W_CacheLumpNum( sfxlump, PU_STATIC );
+
+    // OGG-encoded SFX lump?  Decode it to the engine's native 8-bit unsigned mono
+    // 11025 Hz format (downmix to mono, resample, S16->u8) so actor sounds can ship
+    // as OGG lumps instead of only DMX.  Then it flows through the same channel mixer.
+    if (size >= 4 && memcmp (sfx, "OggS", 4) == 0)
+    {
+	int	chans = 0, rate = 0, frames;
+	short*	pcm = NULL;
+
+	frames = stb_vorbis_decode_memory (sfx, size, &chans, &rate, &pcm);
+	Z_Free (sfx);
+
+	if (frames > 0 && pcm && chans > 0 && rate > 0)
+	{
+	    int outn = (int)((long long)frames * SAMPLERATE / rate);	// resample -> 11025
+	    int j, c;
+	    if (outn < 1) outn = 1;
+	    paddedsize = ((outn + (SAMPLECOUNT-1)) / SAMPLECOUNT) * SAMPLECOUNT;
+	    paddedsfx  = (unsigned char*) Z_Malloc (paddedsize+8, PU_STATIC, 0);
+	    for (j = 0; j < outn; j++)
+	    {
+		int  src = (int)((long long)j * rate / SAMPLERATE);
+		long acc = 0;
+		if (src >= frames) src = frames - 1;
+		for (c = 0; c < chans; c++) acc += pcm[src*chans + c];
+		acc /= chans;					// downmix to mono
+		paddedsfx[8+j] = (unsigned char)((acc >> 8) + 128);	// S16 -> u8 unsigned
+	    }
+	    for (j = 8+outn; j < paddedsize+8; j++) paddedsfx[j] = 128;
+	    free (pcm);						// stb_vorbis malloc'd it
+	    *len = paddedsize;
+	    return (void *) (paddedsfx + 8);
+	}
+	free (pcm);						// decode failed -> silence
+	{
+	    int silbytes = SAMPLECOUNT;
+	    unsigned char* sil = (unsigned char*) Z_Malloc (silbytes+8, PU_STATIC, 0);
+	    for (i=0 ; i<silbytes+8 ; i++) sil[i] = 128;
+	    *len = silbytes;
+	    return (void *) (sil + 8);
+	}
+    }
 
     // Pads the sound effect out to the mixing buffer size.
     // The original realloc would interfere with zone memory.
@@ -419,16 +501,9 @@ void I_SetMusicVolume(int volume)
 //
 int I_GetSfxLumpNum(sfxinfo_t* sfx)
 {
-    extern int heretic_mode;
-    char namebuf[9];
-    int  l;
-    // Heretic sounds live in heretic.wad under their NATIVE names (IMPSIT, MUMSIT, ...) with
-    // no "ds" prefix.  In heretic_mode try the bare name first.
-    if (heretic_mode && (l = W_CheckNumForName ((char*)sfx->name)) >= 0)
-	return l;
-    sprintf(namebuf, "ds%s", sfx->name);
-    l = W_CheckNumForName (namebuf);
-    return (l >= 0) ? l : -1;	// missing (e.g. a DOOM sfx under heretic.wad) -> -1, never I_Error
+    // "ds"+name first, then the bare name as written -- see I_SfxLumpFor.
+    return I_SfxLumpFor (sfx->name);
+				// missing (e.g. a DOOM sfx under heretic.wad) -> -1, never I_Error
 				//   (lumpnum isn't used to index a lump; I_GetSfx emits silence)
 }
 

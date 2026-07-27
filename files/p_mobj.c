@@ -24,6 +24,8 @@
 static const char
 rcsid[] = "$Id: p_mobj.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
+#include <stdlib.h>			// calloc/realloc/free -- MUST be declared, else their
+					// 64-bit pointer return is truncated to int (LLP64 crash)
 #include "i_system.h"
 #include "z_zone.h"
 #include "m_random.h"

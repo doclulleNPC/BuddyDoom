@@ -55,6 +55,7 @@
 
 #include "font_atlas.h"
 #include "../files/buddydoom_icon.h"	// shared 64x64 RGBA window icon
+#include "../files/w_iwadid.h"		// content-based IWAD identification (lump sigs + MD5)
 #include "hero_launcher_img.h"		// 560x100 RGBA hero banner (replaces the text banner)
 #include "md5.h"			// SIGIL PWAD checksum verification
 
@@ -420,6 +421,37 @@ static void try_add_iwad(const char* dir, const char* filename, int from_steam)
     iwad_count++;
 }
 
+// Add a WAD to the IWAD list by CONTENT: any file whose header is "IWAD" is
+// identified via lump signatures + the MD5 table (w_iwadid.h), so a renamed or
+// custom IWAD (a name not in KNOWN_IWADS) still shows up, labelled with its exact
+// version.  Non-IWADs and already-listed files are skipped.
+static void try_add_iwad_content(const char* dir, const char* fname)
+{
+    if (iwad_count >= MAX_IWADS) return;
+    char full[520];
+    snprintf(full, sizeof full, "%s%s%s", dir,
+             (dir[strlen(dir)-1] == '/' || dir[strlen(dir)-1] == '\\') ? "" : "/", fname);
+
+    for (int i=0; i<iwad_count; i++)               // dedupe by path
+        if (same_path(iwads[i].path, full)) return;
+    for (int i=0; i<iwad_count; i++) {             // dedupe by filename
+        const char* p = iwads[i].path;
+        const char* fs = strrchr(p, '/'); const char* bs = strrchr(p, '\\');
+        const char* base = (fs > bs ? fs : bs); base = base ? base + 1 : p;
+        if (strcasecmp(base, fname) == 0) return;
+    }
+
+    char label[80];
+    if (IWID_Identify(full, label, sizeof label, NULL) == IWID_NONE) return;   // not an IWAD
+
+    iwad_t* e = &iwads[iwad_count];
+    snprintf(e->name, sizeof e->name, "%s  [%s]", label, fname);
+    snprintf(e->path, sizeof e->path, "%s", full);
+    e->detected = 1;
+    e->from_steam = 0;
+    iwad_count++;
+}
+
 // scan_dirs lists directory paths to search.  We always look in run/
 // (next to the binary), plus a few conventional locations.
 //
@@ -511,6 +543,23 @@ static void scan_iwads(void)
             snprintf(full, sizeof full, "%s/%s", steam_roots[r], steam_subs[s].subdir);
             try_add_iwad(full, steam_subs[s].iwad, 1);
         }
+    }
+
+    // 3) Content scan: enumerate run/ + ID0/ for any *.wad and add the ones whose
+    //    header is "IWAD" (identified by content), so renamed / custom / unlisted
+    //    IWADs appear too -- not just the canonical KNOWN_IWADS filenames.
+    {
+        const char* cdirs[2] = { id0_d, run_dir() };
+        const char* cpats[2] = { "*.wad", "*.WAD" };
+        for (int d = 0; d < 2; d++)
+            for (int p = 0; p < 2; p++) {
+                int count = 0;
+                char** files = SDL_GlobDirectory(cdirs[d], cpats[p], 0, &count);
+                if (files) {
+                    for (int i = 0; i < count; i++) try_add_iwad_content(cdirs[d], files[i]);
+                    SDL_free(files);
+                }
+            }
     }
 
     if (iwad_count == 0) {

@@ -437,8 +437,12 @@ typedef struct vissprite_s
     lighttable_t*	colormap;
    
     int			mobjflags;
-    
+
     fixed_t     floorz;
+
+    // Optional per-actor palette translation (buddy colour).  NULL = fall back to
+    // the MF_TRANSLATION flag bits.  Transient render data -- never serialised.
+    const byte*		translation;
 } vissprite_t;
 
 

@@ -348,6 +348,11 @@ void R_AddLine (seg_t*	line)
 
     curline = line;
 
+    // GL-node minisegs (linedef==NULL) carry no wall -- skip them; the rest of
+    // R_AddLine and R_StoreWallRange dereference line->linedef / line->sidedef.
+    if (!line->linedef)
+	return;
+
     // OPTIMIZE: quickly reject orthogonal back sides.
     angle1 = R_PointToAngle (line->v1->x, line->v1->y);
     angle2 = R_PointToAngle (line->v2->x, line->v2->y);

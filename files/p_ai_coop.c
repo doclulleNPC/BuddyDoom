@@ -42,6 +42,11 @@
 
 #include "p_ai_coop.h"
 
+// Buddy player-colour (v_png.c / r_things.c / m_menu.c)
+extern int		buddy_color;			// selected colour index (Buddy menu, config)
+extern const byte*	V_BuddyColorTable (int);	// 256-entry remap, NULL = Green(0)/identity
+extern void		R_SetBuddyColor (mobj_t*, const byte*);
+
 static int	companion_active;	// buddy enabled (-coop OR -aicoop)
 static int	aicoop_layer;		// -aicoop given: AI-driven layer requested
 static int	buddy_react;		// reaction delay (tics) before firing a fresh target (-buddyreact)
@@ -260,6 +265,18 @@ static fixed_t	coop_home_x, coop_home_y;
 static angle_t	coop_home_angle;
 static boolean	coop_home_set;
 
+// A point is only safe for the buddy to stand on if it lies inside the BLOCKMAP
+// grid.  Outside it, P_CheckPosition's line iteration walks no cells, so collision
+// is off and the buddy floats in the void (the exact failure that stranded it past
+// a boundary wall).  Used to confirm a teleport-home actually landed it back inside
+// the map rather than dropping it into another void spot.
+static boolean AICoop_OnGrid (fixed_t x, fixed_t y)
+{
+    int	cx = (x - bmaporgx) >> MAPBLOCKSHIFT;
+    int	cy = (y - bmaporgy) >> MAPBLOCKSHIFT;
+    return (cx >= 0 && cx < bmapwidth && cy >= 0 && cy < bmapheight);
+}
+
 void P_AICoop_VerifySpawn (void)
 {
     mobj_t*	buddy_mo;
@@ -294,6 +311,13 @@ void P_AICoop_VerifySpawn (void)
     // Map has no Player_2_Start.  Disable for this level (and all subsequent
     // levels until the user fixes the WAD or removes -coop), and tell them.
     companion_active = 0;				// local-only; not persisted
+
+    // CRITICAL: P_AICoop_Init set playeringame[coop_slot]=true so P_LoadThings would
+    // spawn the buddy.  With no P2_Start it never got a mobj, yet P_Ticker still calls
+    // P_PlayerThink(&players[coop_slot]) for every in-game slot -- which dereferences
+    // players[coop_slot].mo (NULL here) and crashes.  Clear the slot now so the mo-less
+    // buddy is skipped (also keeps intermission/HUD from counting a phantom player 2).
+    playeringame[coop_slot] = false;
 
     if (!P_AICoop_VerifySpawn_warned)
     {
@@ -1059,6 +1083,12 @@ const char* P_AICoop_Home (void)
     mo->angle = coop_home_angle;
     mo->momx = mo->momy = mo->momz = 0;
     forcetarget = NULL; forceaggro = 0; user_hold = 0;
+    // Verify the recall actually put the buddy back inside the map.  If the
+    // recorded home point is itself off the blockmap (a corrupt/void spawn), the
+    // teleport merely moved it to another void spot -- report that instead of
+    // falsely claiming success.
+    if (!AICoop_OnGrid (mo->x, mo->y))
+	return "[Buddy] home point is off the map -- recall failed.";
     AICoop_Callout ("home:", 3);		// (C) "Regrouping on you!" / "Beam me back, baby!"
     return "[Buddy] Teleporting back to start.";
 }
@@ -2076,6 +2106,12 @@ void P_AICoop_BuildCmd (void)
 
     bot = &players[coop_slot];
     cmd = &bot->cmd;
+
+    // Keep the marine buddy tinted to the chosen player colour (Buddy menu / config).
+    // Refreshed every tic so a live colour change (or reborn) takes effect immediately;
+    // applies in every state (incl. downed), so do it before the down-state handling.
+    if (bot->mo)
+	R_SetBuddyColor (bot->mo, V_BuddyColorTable (buddy_color));
 
     // Down (L4D-style incapacitation): NOT game over -- the buddy lies on the ground
     // (its corpse) and calls for help.  We clear the cmd (never tap USE, which would

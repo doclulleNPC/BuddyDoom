@@ -69,7 +69,7 @@ extern boolean		message_dontfuckwithme;
 extern boolean		chat_on;		// in heads-up code
 
 void M_SpriteShadow(int choice);
-void M_AutomapTextured(int choice);
+void M_Automap(int choice);
 
 //
 // defaulted values
@@ -252,14 +252,13 @@ enum
     options,
     loadgame,
     savegame,
-    buddy,		// BuddyDoom: pick your co-op companion (Hexen-style select screen)
     readthis,
     quitdoom,
     main_end
 } main_e;
 
-// "M_BUDDY" has no graphic lump, so its item name is empty (the generic drawer
-// skips it) and M_DrawMainMenu paints the word "BUDDY" as big-font text instead.
+// BuddyDoom: pick your co-op companion (Hexen-style select screen).  Lives on the
+// Options menu now (see options_e/OptionsMenu), not the main menu.
 void M_Buddy (int choice);
 
 menuitem_t MainMenu[]=
@@ -268,7 +267,6 @@ menuitem_t MainMenu[]=
     {1,"M_OPTION",M_Options,'o'},
     {1,"M_LOADG",M_LoadGame,'l'},
     {1,"M_SAVEG",M_SaveGame,'s'},
-    {1,"",M_Buddy,'b'},			// drawn as text by M_DrawMainMenu
     // Another hickup with Special edition.
     {1,"M_RDTHIS",M_ReadThis,'r'},
     {1,"M_QUITG",M_QuitDOOM,'q'}
@@ -352,15 +350,18 @@ menu_t  NewDef =
 //
 // OPTIONS MENU
 //
+// ("End Game" was removed -- quitting to the title is Quit Game / a new game from the
+//  main menu; it only ever sat here in vanilla to abandon a co-op session.)
 enum
 {
-    endgame,
     messages,
     mousesens,
     option_empty2,
     soundvol,
     vidoption,
     controls,
+    buddyopt,		// BuddyDoom: pick your co-op companion (was on the main menu)
+    automapopt,		// Automap style: vanilla / boom / textured
     opt_end
 } options_e;
 
@@ -372,13 +373,14 @@ menuitem_t OptionsMenu[]=
     // so M_Drawer doesn't blit the big graphic lumps.
     // (Vanilla's "Graphic Detail" High/Low was removed -- low-detail mode is a
     //  dead no-op in this hi-res renderer; see the old M_ChangeDetail.)
-    {1,"",	M_EndGame,'e'},
     {1,"",	M_ChangeMessages,'m'},
     {2,"",	M_ChangeSensitivity,'m'},
     {-1,"",0},
     {1,"",	M_Sound,'s'},
     {1,"",	M_Video,'v'},
-    {1,"",	M_ControlsMenu,'c'}
+    {1,"",	M_ControlsMenu,'c'},
+    {1,"",	M_Buddy,'b'},
+    {2,"",	M_Automap,'a'}		// left/right cycles vanilla / boom / textured
 };
 
 menu_t  OptionsDef =
@@ -406,8 +408,7 @@ enum
     vid_statusbar,  // Status bar style
     vid_dither,     // Light dithering
     vid_shadow,     // Sprite shadows
-    vid_automap,    // Textured automap
-    vid_fullcolor,  // Truecolor 3D view
+    vid_fullcolor,  // Truecolor 3D view (automap moved to Options -> Automap)
     vid_end
 } video_e;
 
@@ -422,8 +423,7 @@ menuitem_t VideoMenu[]=
     {2,"",	M_VideoBackend,'b'},	// GPU Backend
     {2,"",	M_StatusBarStyle,'h'},	// Vanilla / Small / Alt HUD
     {2,"",	M_LightDither,'d'},	// soften light banding
-    {1,"",	M_SpriteShadow,'o'},	// soft sprite shadows
-    {1,"",	M_AutomapTextured,'a'}	// textured (floor-flat) automap
+    {1,"",	M_SpriteShadow,'o'}	// soft sprite shadows
 };
 
 menu_t  VideoDef =
@@ -915,9 +915,6 @@ void M_MusicVol(int choice)
 void M_DrawMainMenu(void)
 {
     V_DrawPatchDirect (94,2,0,W_CacheLumpName("M_DOOM",PU_CACHE));
-    // "Buddy" has no graphic lump -- paint it as big-font text over its (empty) slot,
-    // so it lines up with the graphic items and the skull cursor.
-    M_WriteTextBig (MainDef.x, MainDef.y + buddy*LINEHEIGHT, "BUDDY", 2);
 }
 
 
@@ -1018,8 +1015,6 @@ void M_DrawOptions(void)
     V_DrawPatchDirect (108,15,0,W_CacheLumpName("M_OPTTTL",PU_CACHE));
 
     // All items drawn at the small hu_font size (same as the Video submenu).
-    M_WriteText (x, y+LINEHEIGHT*endgame,  "End Game");
-
     M_WriteText (x, y+LINEHEIGHT*messages, "Messages");
     M_WriteText (x+130, y+LINEHEIGHT*messages, showMessages ? "On" : "Off");
 
@@ -1031,6 +1026,16 @@ void M_DrawOptions(void)
     M_WriteText (x, y+LINEHEIGHT*vidoption, "Video");
 
     M_WriteText (x, y+LINEHEIGHT*controls, "Controls");
+
+    M_WriteText (x, y+LINEHEIGHT*buddyopt, "Buddy");
+
+    {
+	extern int automap_style;
+	static char* nm[3] = { "Vanilla", "Overlay", "Textured" };
+	M_WriteText (x, y+LINEHEIGHT*automapopt, "Automap");
+	M_WriteText (x+130, y+LINEHEIGHT*automapopt,
+		     nm[(automap_style>=0 && automap_style<=2) ? automap_style : 2]);
+    }
 }
 
 //
@@ -1069,7 +1074,7 @@ extern int statusbar_style;
 static char* M_StatusBarNames[3] = { "Vanilla", "Small (50%)", "Alt HUD" };
 extern int dither_lighting;
 extern int r_shadows;
-extern int automap_textured;		// am_map.c -- textured (floor-flat) automap
+extern int automap_style;		// am_map.c -- automap style (Options -> Automap)
 
 void M_DrawVideo(void)
 {
@@ -1116,10 +1121,6 @@ void M_DrawVideo(void)
     M_WriteText(VideoDef.x, VideoDef.y + LINEHEIGHT*vid_shadow, "Sprite Shadows");
     M_WriteText(VideoDef.x + 130, VideoDef.y + LINEHEIGHT*vid_shadow,
 		r_shadows ? "On" : "Off");
-
-    M_WriteText(VideoDef.x, VideoDef.y + LINEHEIGHT*vid_automap, "Textured Map");
-    M_WriteText(VideoDef.x + 130, VideoDef.y + LINEHEIGHT*vid_automap,
-		automap_textured ? "On" : "Off");
 }
 
 // ---------------------------------------------------------------------------
@@ -1128,7 +1129,7 @@ void M_DrawVideo(void)
 // i_video.c draws it (I_DrawVideoOverlay) via the accessors below.
 // ---------------------------------------------------------------------------
 void M_SpriteShadow (int choice);		// (defined below; used in the cycle table)
-void M_AutomapTextured (int choice);
+void M_Automap (int choice);
 void M_VideoFullcolor (int choice);
 extern int truecolor;				// i_video.c -- truecolor 3D view
 extern void M_SaveDefaults (void);
@@ -1141,13 +1142,13 @@ static const char* const M_VideoLabels[vid_end] =
 {
     "Resolution", "Fullscreen", "Aspect", "Filter", "VSync",
     "Scaling", "Backend (restart)", "Status Bar", "Light Dither",
-    "Sprite Shadows", "Textured Map", "Fullcolor"
+    "Sprite Shadows", "Fullcolor"
 };
 static void (* const M_VideoCycle[vid_end])(int) =
 {
     M_VideoRes, M_VideoFullscreen, M_VideoAspect, M_VideoFilter, M_VideoVSync,
     M_VideoScale, M_VideoBackend, M_StatusBarStyle, M_LightDither,
-    M_SpriteShadow, M_AutomapTextured, M_VideoFullcolor
+    M_SpriteShadow, M_VideoFullcolor
 };
 
 void	M_Video_Open (void)    { mvid_active = 1; mvid_sel = 0; }
@@ -1175,7 +1176,6 @@ void M_Video_Value (int i, char* b, int n)
       case vid_statusbar:  snprintf (b, n, "%s", M_StatusBarNames[(statusbar_style>=0&&statusbar_style<=2)?statusbar_style:0]); break;
       case vid_dither:     snprintf (b, n, "%s", dither_lighting ? "On" : "Off"); break;
       case vid_shadow:     snprintf (b, n, "%s", r_shadows ? "On" : "Off"); break;
-      case vid_automap:    snprintf (b, n, "%s", automap_textured ? "On" : "Off"); break;
       case vid_fullcolor:  snprintf (b, n, "%s", truecolor ? "On" : "Off"); break;
       default:             b[0] = 0;
     }
@@ -1211,29 +1211,59 @@ boolean M_Video_Responder (event_t* ev)
 // (persisted as `buddy_select`) and takes effect from the next level.
 // ===========================================================================
 int	buddy_select = 0;			// config (m_misc.c): 0 = Marine, 1..N = roster
+int	buddy_color  = 0;			// config (m_misc.c): player-colour index (0 = Green)
 
 extern int		P_Buddy_Count (void);
 extern const char*	P_Buddy_Name (int);
 extern const char*	P_Buddy_Desc (int);
 extern int		P_Buddy_Sprite (int);
+extern int		P_Buddy_Color (int);		// declared default colour, -1 = none
 extern void		V_DrawPatchFlipped (int x, int y, int scrn, patch_t* patch);
+extern void		V_DrawPatchTranslated (int x, int y, int scrn, patch_t* patch, const byte* trans);
+extern void		V_DrawPatchScaledTranslated (int x, int y, int scrn, patch_t* patch, int sc, const byte* trans);
+extern int		V_BuddyColorCount (void);
+extern const char*	V_BuddyColorName (int);
+extern const byte*	V_BuddyColorTable (int);
+extern int		I_GetTime (void);
 
-// Buddy stats for the select screen (mirror of buddystats_t in p_buddydef.h).
+// Buddy stats for the select screen (mirror of buddystats_t in p_buddydef.h -- keep
+// the field list identical, P_Buddy_GetStats writes through this layout).
 typedef struct { int health, speed, radius, height, mass, painchance, reactiontime;
-		 const char* attack; const char* special; } buddystats_t;
+		 const char* attack; const char* special; const char* ability; } buddystats_t;
 extern void		P_Buddy_GetStats (int slot, buddystats_t* out);
 
-static int	mbuddy_active, mbuddy_sel;
+// Styled like the Controls/Video screens: a crisp TTF overlay (drawn in i_video.c
+// by I_DrawBuddySelectOverlay) over an animated, recoloured paletted sprite (drawn
+// here by M_DrawBuddy).  Two selectable rows -- Buddy and Color -- are cycled with
+// Left/Right; Up/Down moves between them (mirrors the Video overlay).
+enum { MBROW_BUDDY, MBROW_COLOR, MBROW_COUNT };
+static int	mbuddy_active, mbuddy_sel, mbuddy_row, mbuddy_color;
+
+// When switching to a buddy that declares a default colour in its BUDDYDEF, snap
+// the colour selector to it (the player can still change it afterwards).
+static void M_Buddy_SeedColor (void)
+{
+    int c = P_Buddy_Color (mbuddy_sel);
+    if (c >= 0 && c < V_BuddyColorCount ()) mbuddy_color = c;
+}
 
 void	M_Buddy_Open (void)
 {
     mbuddy_active = 1;
+    mbuddy_row = MBROW_BUDDY;
     mbuddy_sel = buddy_select;
     if (mbuddy_sel < 0 || mbuddy_sel >= P_Buddy_Count()) mbuddy_sel = 0;
+    mbuddy_color = buddy_color;
+    if (mbuddy_color < 0 || mbuddy_color >= V_BuddyColorCount()) mbuddy_color = 0;
 }
 boolean	M_Buddy_Active (void) { return mbuddy_active; }
 
-// Main-menu entry hook.
+// Read-only accessors for the SDL/TTF overlay drawer (i_video.c).
+int	M_Buddy_Sel   (void) { return mbuddy_sel; }
+int	M_Buddy_Row   (void) { return mbuddy_row; }
+int	M_Buddy_Color (void) { return mbuddy_color; }
+
+// Options -> Buddy entry hook.
 void M_Buddy (int choice)
 {
     choice = 0;
@@ -1242,26 +1272,36 @@ void M_Buddy (int choice)
 
 boolean M_Buddy_Responder (event_t* ev)
 {
-    int n;
+    int n, nc;
     if (!mbuddy_active)
 	return false;
     if (ev->type != ev_keydown)
 	return true;
-    n = P_Buddy_Count ();
+    n  = P_Buddy_Count ();
+    nc = V_BuddyColorCount ();
     switch (ev->data1)
     {
-      case KEY_LEFTARROW:
       case KEY_UPARROW:
-	mbuddy_sel = (mbuddy_sel - 1 + n) % n;
+	mbuddy_row = (mbuddy_row - 1 + MBROW_COUNT) % MBROW_COUNT;
+	S_StartSound (NULL, sfx_pstop);
+	break;
+      case KEY_DOWNARROW:
+	mbuddy_row = (mbuddy_row + 1) % MBROW_COUNT;
+	S_StartSound (NULL, sfx_pstop);
+	break;
+      case KEY_LEFTARROW:
+	if (mbuddy_row == MBROW_COLOR)	mbuddy_color = (mbuddy_color - 1 + nc) % nc;
+	else				{ mbuddy_sel = (mbuddy_sel - 1 + n) % n; M_Buddy_SeedColor (); }
 	S_StartSound (NULL, sfx_pstop);
 	break;
       case KEY_RIGHTARROW:
-      case KEY_DOWNARROW:
-	mbuddy_sel = (mbuddy_sel + 1) % n;
+	if (mbuddy_row == MBROW_COLOR)	mbuddy_color = (mbuddy_color + 1) % nc;
+	else				{ mbuddy_sel = (mbuddy_sel + 1) % n; M_Buddy_SeedColor (); }
 	S_StartSound (NULL, sfx_pstop);
 	break;
       case KEY_ENTER:
 	buddy_select = mbuddy_sel;
+	buddy_color  = mbuddy_color;
 	M_SaveDefaults ();
 	S_StartSound (NULL, sfx_swtchx);
 	mbuddy_active = 0;
@@ -1296,6 +1336,21 @@ static void M_TileFlat (char* name)
     }
 }
 
+// The Buddy screen backdrop: the ANIMATED lava flat behind the buddy sprite.  The
+// engine's own flat animation (p_spec.c anims[]: LAVA1..LAVA4 at 8 tics a frame) only
+// runs while a level is ticking, and this screen is reachable from the title, so step
+// the frame off the wall clock here instead.  Falls back to the plain FLOOR4_8 when the
+// IWAD has no lava set (shareware / Heretic).
+static void M_TileLavaBackdrop (void)
+{
+    static const char*	lava[4] = { "LAVA1", "LAVA2", "LAVA3", "LAVA4" };
+    const char*		nm = lava[(I_GetTime() / 8) & 3];
+
+    if (W_CheckNumForName ((char*)nm) < 0)
+	nm = "FLOOR4_8";
+    M_TileFlat ((char*)nm);
+}
+
 // Word-wrap a description with the small font at BASE-coord x/y, width `wrap`.
 static void M_DrawWrapped (int x, int y, int wrap, const char* text)
 {
@@ -1328,78 +1383,61 @@ static void M_DrawWrapped (int x, int y, int wrap, const char* text)
     if (li) M_WriteText (x, y, line);
 }
 
+// Paletted layer of the Buddy screen: the tiled backdrop and the animated,
+// recoloured buddy sprite.  All text (title, name, stats, the Buddy/Color cycler
+// rows, hints) is drawn on top in crisp TTF by I_DrawBuddySelectOverlay (i_video.c),
+// matching the Controls/Video screens.  Called from M_Drawer before I_FinishUpdate.
 void M_DrawBuddy (void)
 {
     int		n   = P_Buddy_Count ();
     int		sel = mbuddy_sel;
     int		spr;
-    char	buf[64];
-    char*	title = "CHOOSE YOUR BUDDY";
-    char*	hint  = "LEFT/RIGHT  select     ENTER  choose     ESC  back";
-    const char*	name;
 
-    (void)title;
     if (sel < 0 || sel >= n) sel = 0;
 
-    M_TileFlat ("FLOOR4_8");
+    M_TileLavaBackdrop ();		// animated lava behind the buddy animation
 
-    // buddy NAME big, centered across the full width (long names still fit centred).
-    // Kept at y>=44: the very top of the frame is cropped in some windowed aspects.
-    name = P_Buddy_Name (sel);
-    {
-	int nx = 160 - M_StringWidth((char*)name);	// sc=2 -> half-width == M_StringWidth
-	if (nx < 4) nx = 4;
-	M_WriteTextBig (nx, 44, (char*)name, 2);
-    }
-
-    // "2 / 3 (current)" position indicator, centered
-    snprintf (buf, sizeof buf, "%d / %d%s", sel+1, n, (sel == buddy_select) ? "   (current)" : "");
-    M_WriteText (160 - M_StringWidth(buf)/2, 68, buf);
-
-    // Hexen-style split below: sprite on the LEFT, description on the RIGHT.
+    // Animated buddy sprite (front view), recoloured to the chosen player colour.
+    // Walk cycle over frames A-D; every few seconds it plays the attack frame (E)
+    // for a moment so it "sometimes shoots".
     spr = P_Buddy_Sprite (sel);
     if (spr >= 0 && spr < numsprites && sprites[spr].numframes > 0)
     {
-	spriteframe_t*	sf = &sprites[spr].spriteframes[0];
-	patch_t*	p  = spritepatch[sf->lump[0]]
-			   ? (patch_t*) spritepatch[sf->lump[0]]		// converted GZDoom PNG sprite
-			   : (patch_t*) W_CacheLumpNum (spritelumps[sf->lump[0]], PU_CACHE);
-	if (sf->flip[0]) V_DrawPatchFlipped (84, 166, 0, p);
-	else             V_DrawPatch        (84, 166, 0, p);
+	int		nf    = sprites[spr].numframes;
+	int		t     = I_GetTime ();			// 35 Hz game tics
+	int		cyc   = 105;				// ~3s shoot cycle
+	int		ph    = t % cyc;
+	unsigned	win   = (unsigned)(t / cyc);
+	unsigned	hash  = (win * 2654435761u) >> 26;	// 0..63, per-cycle pseudo-random
+	boolean		shoot = (nf > 4) && (ph < 9) && (hash < 30);	// fire ~0.25s, ~half the cycles
+	int		fr    = shoot ? 4 : ((nf >= 4) ? ((t/5) & 3) : ((t/5) % nf));
+	spriteframe_t*	sf    = &sprites[spr].spriteframes[fr];
+	patch_t*	p     = spritepatch[sf->lump[0]]
+			      ? (patch_t*) spritepatch[sf->lump[0]]	// converted GZDoom PNG sprite
+			      : (patch_t*) W_CacheLumpNum (spritelumps[sf->lump[0]], PU_CACHE);
+	const byte*	trans = V_BuddyColorTable (mbuddy_color);	// NULL for Green(0)=identity
+
+	// Sprite goes in the UPPER-LEFT QUARTER at 1x, anchored on its origin (the feet),
+	// which leaves the lower-left quarter free for the description panel that
+	// I_DrawBuddySelectOverlay draws there.
+	int	wb = SCREENWIDTH / hires;		// wide base width = the V_ coord space
+	int	qw = (int)(wb * 0.44f);			// left column = everything left of the panel
+	int	pw = SHORT (p->width);
+	int	phh = SHORT (p->height);
+	int	po = SHORT (p->leftoffset);
+	int	to = SHORT (p->topoffset);
+	int	fx = qw / 2;				// centred in the column...
+	int	fy = BASE_HEIGHT/2 - 6;			// ...feet just above the half-way line
+
+	// V_DrawPatchScaledTranslated does NOT clip, so an oversized sprite would write
+	// outside screens[0].  Nudge the anchor until the whole patch is on screen.
+	if (fy - to < 0)		 fy = to;
+	if (fy - to + phh > BASE_HEIGHT) fy = BASE_HEIGHT - phh + to;
+	if (fx - po < 0)		fx = po;
+	if (fx - po + pw > qw)		fx = qw - pw + po;
+
+	V_DrawPatchScaledTranslated (fx, fy, 0, p, 1, trans);
     }
-    else
-    {
-	// The buddy's sprite isn't renderable here (missing, or GZDoom PNG art the
-	// software renderer can't draw) -- show a placeholder instead of a blank.
-	M_WriteText (84 - M_StringWidth("no")/2,      124, "no");
-	M_WriteText (84 - M_StringWidth("preview")/2, 136, "preview");
-    }
-
-    // stats panel in the right column (every value comes from the BUDDYDEF)
-    {
-	buddystats_t	st;
-	int		lx = 146, rx = 240, y0 = 82, dy = 11;
-	const char*	abil;
-
-	P_Buddy_GetStats (sel, &st);
-
-	snprintf (buf, sizeof buf, "HP %d",    st.health);       M_WriteText (lx, y0,        buf);
-	snprintf (buf, sizeof buf, "SPEED %d", st.speed);        M_WriteText (rx, y0,        buf);
-	snprintf (buf, sizeof buf, "PAIN %d",  st.painchance);   M_WriteText (lx, y0+dy,     buf);
-	snprintf (buf, sizeof buf, "REACT %d", st.reactiontime); M_WriteText (rx, y0+dy,     buf);
-	snprintf (buf, sizeof buf, "SIZE %dx%d", st.radius, st.height); M_WriteText (lx, y0+2*dy, buf);
-	snprintf (buf, sizeof buf, "MASS %d",  st.mass);         M_WriteText (rx, y0+2*dy,   buf);
-	snprintf (buf, sizeof buf, "ATTACK %s", (st.attack && *st.attack) ? st.attack : "-");
-	M_WriteText (lx, y0+3*dy, buf);
-
-	// special abilities (falls back to the description if none defined)
-	M_WriteText (lx, y0+5*dy, "SPECIAL");
-	abil = (st.special && *st.special) ? st.special : P_Buddy_Desc(sel);
-	M_DrawWrapped (lx, y0+6*dy, 164, abil);
-    }
-
-    // controls hint, centered near the bottom
-    M_WriteText (160 - M_StringWidth(hint)/2, 186, hint);
 }
 
 void M_LightDither(int choice)
@@ -1415,9 +1453,12 @@ void M_SpriteShadow(int choice)
     M_SaveDefaults ();
 }
 
-void M_AutomapTextured(int choice)
+// Options -> Automap: cycle the automap style vanilla -> boom -> textured.
+// (choice 0 = Left/decrement, else Right/increment; also used as the Options item.)
+void M_Automap(int choice)
 {
-    automap_textured = !automap_textured;	// am_map.c (config default: on)
+    if (choice == 0) automap_style = (automap_style + 2) % 3;	// Left
+    else             automap_style = (automap_style + 1) % 3;	// Right / select
     M_SaveDefaults ();
 }
 

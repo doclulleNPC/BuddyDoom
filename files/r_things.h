@@ -64,6 +64,10 @@ void R_InitSprites (char** namelist);
 void R_ClearSprites (void);
 void R_DrawMasked (void);
 
+// Give a companion actor an arbitrary palette translation (buddy colour), applied
+// to its sprite each frame.  xlat==NULL clears it.  See R_SetBuddyColor in r_things.c.
+void R_SetBuddyColor (mobj_t* mo, const byte* xlat);
+
 void
 R_ClipVisSprite
 ( vissprite_t*		vis,

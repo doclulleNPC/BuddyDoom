@@ -399,6 +399,64 @@ V_DrawPatchScaled
 }
 
 //
+// V_DrawPatchScaledTranslated
+// V_DrawPatchScaled + an optional palette translation (trans==NULL -> no remap).
+// Unlike V_DrawPatchScaled, the patch OFFSET is scaled too, so the sprite's origin
+// (x,y) stays fixed as `sc` grows -- the image magnifies around its anchor point
+// instead of its top-left corner.  Used for the enlarged, recoloured buddy preview.
+//
+void
+V_DrawPatchScaledTranslated
+( int		x,
+  int		y,
+  int		scrn,
+  patch_t*	patch,
+  int		sc,
+  const byte*	trans )
+{
+    int		count, col;
+    column_t*	column;
+    byte*	desttop;
+    byte*	dest;
+    byte*	source;
+    int		w;
+    int		ps = hires;		// position scale (320x200 -> screen)
+    int		bs = hires * sc;	// magnified block size per source pixel
+    int		i, j;
+
+    y -= SHORT(patch->topoffset) * sc;	// scaled offset -> anchor the origin, not the corner
+    x -= SHORT(patch->leftoffset) * sc;
+
+    col = 0;
+    desttop = screens[scrn] + (y*ps)*SCREENWIDTH + x*ps;
+    w = SHORT(patch->width);
+
+    for ( ; col<w ; col++, desttop += bs)
+    {
+	column = (column_t *)((byte *)patch + LONG(patch->columnofs[col]));
+	while (column->topdelta != 0xff )
+	{
+	    source = (byte *)column + 3;
+	    dest = desttop + (column->topdelta*bs)*SCREENWIDTH;
+	    count = column->length;
+	    while (count--)
+	    {
+		byte px = trans ? trans[*source] : *source;
+		for (i=0 ; i<bs ; i++)
+		{
+		    byte* d = dest + i*SCREENWIDTH;
+		    for (j=0 ; j<bs ; j++)
+			d[j] = px;
+		}
+		source++;
+		dest += bs*SCREENWIDTH;
+	    }
+	    column = (column_t *)((byte *)column + column->length + 4);
+	}
+    }
+}
+
+//
 // V_DrawPatchFlipped
 // Masks a column based masked pic to the screen.
 // Flips horizontally, e.g. to mirror face.

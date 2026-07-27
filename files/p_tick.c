@@ -32,6 +32,7 @@ rcsid[] = "$Id: p_tick.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 #include "p_ai_director.h"
 #include "p_morph.h"		// (M) generic morph subsystem -- age morph timers
 #include "revmarine.h"		// (G) revived-marine per-second HP regen
+#include "p_buddydef.h"		// BUDDYDEF `ability` ticker (poisoncloud / drone)
 
 #include "doomstat.h"
 
@@ -153,14 +154,15 @@ void P_Ticker (void)
     P_AICoop_BuildCmd ();	// AI co-op companion: fill players[1].cmd first
 
     for (i=0 ; i<MAXPLAYERS ; i++)
-	if (playeringame[i])
-	    P_PlayerThink (&players[i]);
+	if (playeringame[i] && players[i].mo)	// mo guard: an in-game slot with no body
+	    P_PlayerThink (&players[i]);	// (e.g. buddy on a P2_Start-less map) would crash
 			
     P_AI_Ticker ();		// LLM AI Director: poll orders, age timers
     if (!demoplayback)		// keep demo playback (incl. the title-screen attract demos)
 	P_Director_Ticker ();	// vanilla: the L4D director's spawns would desync a recorded demo
     P_MorphTicker ();		// (M) age morph timers; restore expired morphs
     RevMarine_Ticker ();	// (G) revived marines heal +1 HP/sec up to 100
+    P_Buddy_AbilityTicker ();	// BUDDYDEF `ability`: the mobj companion's special power
 
     P_RunThinkers ();
     P_UpdateSpecials ();

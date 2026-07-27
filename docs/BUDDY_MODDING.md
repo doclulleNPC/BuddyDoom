@@ -51,7 +51,7 @@ buddy {
   mass        1000                  # higher = harder to knock back
   painchance  100                   # 0–255 chance to flinch when hit
   attack      baron                 # attack style, see table below
-  seesound    FRANKN                # DS-lump suffix → dsfrankn (blank = silent)
+  seesound    FRANKN                # name of the sound lump (blank = silent)
   painsound   FRANKN
   deathsound  FRANKN
   activesound FRANKN
@@ -74,16 +74,47 @@ buddy {
 | `painchance` | Flinch chance, 0–255 | `120` |
 | `reactiontime` / `reaction` | Tics before reacting to a target | `8` |
 | `attack` | Attack style (table below) | `melee` |
-| `special` / `abilities` | Free-text special abilities (shown on the Buddy screen) | *(empty)* |
-| `seesound` | Wake-up sound (DS-suffix) | *(none)* |
+| `special` / `abilities` | Free-text blurb (shown on the Buddy screen) | *(empty)* |
+| `ability` | **Named** special ability the buddy actually uses (table below) | `none` |
+| `seesound` | Wake-up sound (lump name) | *(none)* |
 | `painsound` | Hurt sound | *(none)* |
 | `deathsound` | Death sound | *(none)* |
 | `activesound` | Idle grunt | *(none)* |
 | `ednum` / `doomednum` | Map editor number | `-1` (not map-placed) |
 
-The **Buddy select screen** (Main Menu → Buddy) shows a stats panel with all of these
-— HP, Speed, Size (`radius`×`height`), Mass, Pain, Reaction, Attack, and the `special`
-abilities text — so every value you set in the `BUDDYDEF` is displayed there.
+The **Buddy select screen** (Options → Buddy) is laid out in quarters over an animated
+lava backdrop:
+
+- **upper left** — the animated, recoloured buddy sprite (1x, anchored on its feet; the
+  anchor is clamped so an oversized sprite can't draw outside the screen),
+- **lower left** — an `ABOUT` panel with the wrapped `desc` text,
+- **right** — title, name, the stats panel (HP, Speed, Size = `radius`×`height`, Mass,
+  Pain, Reaction, Attack, Ability), the `SPECIAL:` blurb, and the Buddy/Color cyclers.
+
+Anything too long for its slice is cut with `...`, and the Attack/Ability row shrinks to
+fit — so a long ability name can't run off the edge.
+
+### Special abilities (`ability`)
+
+`special` is just *text*; **`ability` is the mechanic the buddy actually uses in play**.
+It runs once per tic from `P_Buddy_AbilityTicker` (`p_buddydef.c`, called by `P_Ticker`)
+for whichever buddy you have selected:
+
+| `ability` value | Behaviour |
+|-----------------|-----------|
+| `none` (default) | No special power |
+| `poisoncloud` | Every 2 s, a cloud of gas around the buddy damages every enemy monster within 160 map units (4 damage, same-ish floor height) and puffs visible smoke. Players, other friendlies and corpses are never touched. |
+| `drone` | Deploys a friendly **Security Drone** (`MT_SECDRONE`, `p_secdrone.c`) when an enemy is within 1024 units and none of ours is already out; at most one per 20 s. |
+| `turret` | Tosses out a **sentry turret** exactly like the player's `key_turret` deploy (`MT_TURRET`, `p_turret.c`): spawned at the buddy, nudged forward so a wall can't swallow it, then thrown with a little arc. Same gate as the drone — an enemy within 1024 units, none of ours already out, at most one per 30 s. Costs no ammo (an mobj buddy has no inventory to spend, unlike the player's 50 bullets / 25 shells), so the cap and cooldown are the balance instead. |
+
+An unknown value is refused at load time with a console warning and falls back to
+`none`, so a typo can't silently pretend the buddy has a power. All of them wait until
+3 seconds into the level before firing, so nothing deploys on tic 0 before you've moved.
+
+The built-in **Marine** (roster slot 0) reports `ability drone`, which names behaviour it
+already had: `P_AICoop_MaybeSpawnDrone` deploys drones when it is under heavy fire,
+surrounded, or its ammo is capped. That path is the marine's own (it needs a `player_t`),
+so it is not driven by the ticker above.
 
 ### Attack styles
 
@@ -152,9 +183,20 @@ automatically, so your buddy stands on the floor correctly with no extra work.
 
 ## Sounds
 
-Sound values are the **DS-lump suffix**: `seesound FRANKN` plays the lump
-`DSFRANKN`. Ship your `DS…` lumps in the WAD, or point the fields at stock IWAD
-sounds so the buddy is audible with no new audio:
+A sound value is just **the name of the sound lump in your WAD** — write it exactly
+as the lump is called. `seesound FRANKN` finds a lump named `FRANKN`.
+
+DOOM's own sounds are all stored with a `DS` prefix (`DSPISTOL`, `DSBGSIT1`, …), and
+that convention still works: BuddyDoom looks for `DS`+name **first**, then for the
+bare name. So `seesound FRANKN` plays `DSFRANKN` **or** `FRANKN`, whichever your WAD
+has — you don't have to know or strip the prefix. (`DS`+name wins if both exist, so a
+stock sound can never be shadowed by an unrelated lump of the same bare name.)
+
+Note lump names are 8 bytes: a name longer than 6 characters can only be found in the
+bare form, because `DS`+7 chars no longer fits. Names are truncated to 8 characters.
+
+Ship your own sound lumps (DMX or OGG — both are accepted), or point the fields at
+stock IWAD sounds so the buddy is audible with no new audio:
 
 ```
   seesound    bgsit1     # imp sight
@@ -163,7 +205,9 @@ sounds so the buddy is audible with no new audio:
   activesound dmact
 ```
 
-Leave a field blank/absent for silence.
+Leave a field blank/absent for silence. If neither form of the lump is present when
+the `BUDDYDEF` is read, the console prints a `BUDDYDEF: sound "…"` warning at startup
+and that sound stays silent — the buddy still loads.
 
 ---
 
@@ -234,6 +278,24 @@ buddydoom -iwad DOOM2.WAD -file FRANK.wad my_frank_buddydef.wad
   level.
 - If you gave the buddy an `ednum`, mappers can also place it directly in a map with
   a DoomEd editor.
+
+### What the game shows and how you order it around
+
+A `BUDDYDEF` buddy is an **mobj**, not player 2 — `P_Buddy_SpawnSelected` switches the
+marine's co-op slot off. Since the HUD, the automap marker and the console orders were
+all keyed on that slot, they ask `P_Buddy_Mobj()` (`p_buddydef.c`) instead when it is
+empty, so a modder buddy is recognised just like the marine:
+
+- **HUD strip** (top-right, config `show_buddy_hud`) — the buddy's **name**, `HP n/max`
+  coloured by percentage, and its state: `FOLLOWING` / `FIGHTING` / `HOLDING` /
+  `COMING` / `DOWN`. No armor/weapon/ammo/mugshot line: an mobj has none of those.
+- **Automap** — a yellow arrow (green when it is down), same as the marine's.
+- **Console orders** — `where` (aliases `buddy`, `comp`), `report`/`status`,
+  `come`/`follow`, `wait`/`stay`, `attack`, and `buddyhome`/`buddytp` (warps it back to
+  your side; a mobj buddy has no map spawn point to return to). `come` makes it break
+  off and pad back to you for 8 seconds; `wait` toggles hold-position. `A_BuddyChase`
+  checks both each time it runs. `buddygod`/`buddyheal`/`buddyarm` are marine-player
+  powers and reply that they only work for the Marine.
 
 ---
 

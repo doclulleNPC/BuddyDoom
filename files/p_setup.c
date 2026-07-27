@@ -28,6 +28,8 @@ rcsid[] = "$Id: p_setup.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 #include <math.h>
 #include <limits.h>
+#include <stdlib.h>			// free() for the inflated-node buffer -- declared so the
+					// 64-bit pointer arg isn't truncated to int (LLP64)
 
 #include "z_zone.h"
 
@@ -41,6 +43,7 @@ rcsid[] = "$Id: p_setup.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 #include "doomdef.h"
 #include "p_local.h"
+#include "p_udmf.h"			// UDMF (TEXTMAP) map support
 #include "p_ai_director.h"
 #include "p_ai_llm.h"
 #include "p_morph.h"		// (M) P_MorphReset -- clear morphs on level load
@@ -284,30 +287,53 @@ static fixed_t P_SegOffset (fixed_t x1, fixed_t y1, fixed_t x2, fixed_t y2)
 // POSIX close() that clashes with p_spec.h's `close` enum).  Returns a malloc'd buffer.
 extern byte* W_InflateZlib (byte* src, unsigned srclen, unsigned* outlen);
 
+// Recognised extended/GL node containers.  All share the same outer layout
+// (verts, subsectors, segs, nodes); only the SEG record and (for XGL3) the NODE
+// geometry differ.  The Z* variants are just the X* body zlib-deflated.
+enum { EN_NONE, EN_XNOD, EN_XGLN, EN_XGL2, EN_XGL3 };
+
 boolean P_LoadNodes_Extended (int lump)
 {
-    byte*   data = W_CacheLumpNum (lump, PU_STATIC);
-    byte*   ibuf = NULL;		// inflated body for the compressed (ZNOD) variant
-    byte*   p;
+    byte*    data;
+    byte*    ibuf = NULL;		// inflated body for the compressed (Z*) variants
+    byte*    p;
     unsigned origv, newv, i;
     unsigned nsub, nseg, nnod;
+    int      fmt = EN_NONE;
+    boolean  compressed = false;
+    boolean  gl, wide_ld, xgl3;
+    const char* fmtname;
 
-    if (W_LumpLength (lump) < 8)
-    { Z_Free (data); return false; }
+    if (lump < 0 || W_LumpLength (lump) < 8) return false;
+    data = W_CacheLumpNum (lump, PU_STATIC);
 
-    if (memcmp (data, "XNOD", 4) == 0)
+    // magic: X*=uncompressed, Z*=zlib-compressed body
+    if      (!memcmp (data, "XNOD", 4)) { fmt = EN_XNOD; }
+    else if (!memcmp (data, "ZNOD", 4)) { fmt = EN_XNOD; compressed = true; }
+    else if (!memcmp (data, "XGLN", 4)) { fmt = EN_XGLN; }
+    else if (!memcmp (data, "ZGLN", 4)) { fmt = EN_XGLN; compressed = true; }
+    else if (!memcmp (data, "XGL2", 4)) { fmt = EN_XGL2; }
+    else if (!memcmp (data, "ZGL2", 4)) { fmt = EN_XGL2; compressed = true; }
+    else if (!memcmp (data, "XGL3", 4)) { fmt = EN_XGL3; }
+    else if (!memcmp (data, "ZGL3", 4)) { fmt = EN_XGL3; compressed = true; }
+    else { Z_Free (data); return false; }
+
+    if (compressed)
     {
-	p = data + 4;				// uncompressed: parse in place
-    }
-    else if (memcmp (data, "ZNOD", 4) == 0)
-    {
-	unsigned ilen = 0;			// zlib-compressed: inflate then parse
+	unsigned ilen = 0;
 	ibuf = W_InflateZlib (data + 4, W_LumpLength (lump) - 4, &ilen);
 	if (!ibuf || ilen < 8) { free (ibuf); Z_Free (data); return false; }
 	p = ibuf;
     }
     else
-    { Z_Free (data); return false; }		// XNOD/ZNOD only (GL variants unhandled)
+	p = data + 4;
+
+    gl      = (fmt != EN_XNOD);
+    wide_ld = (fmt == EN_XGL2 || fmt == EN_XGL3);	// 32-bit linedef index in the seg
+    xgl3    = (fmt == EN_XGL3);				// 32-bit fixed node partition geometry
+    fmtname = (fmt == EN_XNOD) ? "XNOD" : (fmt == EN_XGLN) ? "XGLN"
+	    : (fmt == EN_XGL2) ? "XGL2" : "XGL3";
+
     #define RD32() ( p += 4, (unsigned)(p[-4] | (p[-3]<<8) | (p[-2]<<16) | ((unsigned)p[-1]<<24)) )
     #define RD16() ( p += 2, (unsigned short)(p[-2] | (p[-1]<<8)) )
 
@@ -315,10 +341,10 @@ boolean P_LoadNodes_Extended (int lump)
 
     // --- vertices: keep the originals (already loaded), append the new ones ---
     {
-        vertex_t* nv = Z_Malloc ((origv + newv) * sizeof(vertex_t), PU_LEVEL, 0);
-        memcpy (nv, vertexes, origv * sizeof(vertex_t));
-        for (i = 0; i < newv; i++) { nv[origv+i].x = (fixed_t) RD32(); nv[origv+i].y = (fixed_t) RD32(); }
-        vertexes = nv; numvertexes = origv + newv;
+	vertex_t* nv = Z_Malloc ((origv + newv) * sizeof(vertex_t), PU_LEVEL, 0);
+	memcpy (nv, vertexes, origv * sizeof(vertex_t));
+	for (i = 0; i < newv; i++) { nv[origv+i].x = (fixed_t) RD32(); nv[origv+i].y = (fixed_t) RD32(); }
+	vertexes = nv; numvertexes = origv + newv;
     }
 
     // --- subsectors: each stores only a seg count; firstline is the running total ---
@@ -326,51 +352,118 @@ boolean P_LoadNodes_Extended (int lump)
     numsubsectors = nsub;
     subsectors = Z_Malloc (nsub * sizeof(subsector_t), PU_LEVEL, 0);
     memset (subsectors, 0, nsub * sizeof(subsector_t));
-    { int first = 0;
+    { unsigned first = 0;
       for (i = 0; i < nsub; i++)
       { int cnt = (int) RD32(); subsectors[i].firstline = first; subsectors[i].numlines = cnt; first += cnt; } }
 
-    // --- segs: v1,v2 (32-bit), linedef (16), side (8); angle+offset are computed ---
+    // --- segs ---
     nseg = RD32();
     numsegs = nseg;
     segs = Z_Malloc (nseg * sizeof(seg_t), PU_LEVEL, 0);
     memset (segs, 0, nseg * sizeof(seg_t));
-    for (i = 0; i < nseg; i++)
+
+    if (!gl)
     {
-        seg_t* li = &segs[i];
-        unsigned v1 = RD32(), v2 = RD32();
-        int ld = RD16();
-        int side = *p++;
-        line_t* ldef = &lines[ld];
-        li->v1 = &vertexes[v1];
-        li->v2 = &vertexes[v2];
-        li->linedef = ldef;
-        li->sidedef = &sides[ldef->sidenum[side]];
-        li->frontsector = sides[ldef->sidenum[side]].sector;
-        li->backsector = (ldef->flags & ML_TWOSIDED) ? sides[ldef->sidenum[side^1]].sector : 0;
-        li->angle = R_PointToAngle2 (li->v1->x, li->v1->y, li->v2->x, li->v2->y);
-        { vertex_t* vv = side ? ldef->v2 : ldef->v1;
-          li->offset = P_SegOffset (li->v1->x, li->v1->y, vv->x, vv->y); }
+	// XNOD: explicit v1,v2 (32-bit), linedef (16), side (8).
+	for (i = 0; i < nseg; i++)
+	{
+	    seg_t* li = &segs[i];
+	    unsigned v1 = RD32(), v2 = RD32();
+	    int ld = RD16();
+	    int side = *p++;
+	    line_t* ldef = &lines[ld];
+	    li->v1 = &vertexes[v1];
+	    li->v2 = &vertexes[v2];
+	    li->linedef = ldef;
+	    li->sidedef = &sides[ldef->sidenum[side]];
+	    li->frontsector = sides[ldef->sidenum[side]].sector;
+	    li->backsector = (ldef->flags & ML_TWOSIDED) ? sides[ldef->sidenum[side^1]].sector : 0;
+	    li->angle = R_PointToAngle2 (li->v1->x, li->v1->y, li->v2->x, li->v2->y);
+	    { vertex_t* vv = side ? ldef->v2 : ldef->v1;
+	      li->offset = P_SegOffset (li->v1->x, li->v1->y, vv->x, vv->y); }
+	}
+    }
+    else
+    {
+	// GL segs: ONE vertex (v1) per seg; v2 is the next seg's v1 within the same
+	// subsector (circular).  linedef==sentinel -> miniseg (no wall).  angle needs
+	// v2, so it's computed in a second per-subsector pass.
+	unsigned sentinel = wide_ld ? 0xFFFFFFFFu : 0xFFFFu;
+	unsigned ss;
+	for (ss = 0; ss < nsub; ss++)
+	{
+	    int first = subsectors[ss].firstline;
+	    int cnt   = subsectors[ss].numlines;
+	    int j;
+	    for (j = 0; j < cnt; j++)
+	    {
+		seg_t*   li = &segs[first + j];
+		unsigned v1 = RD32();
+		(void) RD32();					// partner seg -- unused
+		unsigned ld = wide_ld ? RD32() : RD16();
+		int      side = *p++;
+		li->v1 = &vertexes[v1];
+		segs[first + (j == 0 ? cnt - 1 : j - 1)].v2 = li->v1;	// back-patch prev v2
+		if (ld == sentinel)
+		{
+		    li->linedef = NULL; li->sidedef = NULL;		// miniseg
+		    li->frontsector = li->backsector = NULL;
+		    li->offset = 0;
+		}
+		else
+		{
+		    line_t* ldef = &lines[ld];
+		    int sn  = ldef->sidenum[side];
+		    int sn2 = ldef->sidenum[side ^ 1];
+		    li->linedef = ldef;
+		    li->sidedef = (sn  >= 0) ? &sides[sn]  : NULL;
+		    li->frontsector = (sn >= 0) ? sides[sn].sector : NULL;
+		    li->backsector = ((ldef->flags & ML_TWOSIDED) && sn2 >= 0) ? sides[sn2].sector : NULL;
+		    { vertex_t* vv = side ? ldef->v2 : ldef->v1;
+		      li->offset = P_SegOffset (li->v1->x, li->v1->y, vv->x, vv->y); }
+		}
+	    }
+	    // 2nd pass: minisegs adopt the subsector's real sector; set angles (v2 known now).
+	    {
+		sector_t* ssec = NULL;
+		for (j = 0; j < cnt; j++)
+		    if (segs[first + j].frontsector) { ssec = segs[first + j].frontsector; break; }
+		for (j = 0; j < cnt; j++)
+		{
+		    seg_t* li = &segs[first + j];
+		    if (!li->linedef) { li->frontsector = li->backsector = ssec; }
+		    li->angle = R_PointToAngle2 (li->v1->x, li->v1->y, li->v2->x, li->v2->y);
+		}
+	    }
+	}
     }
 
-    // --- nodes: 16-bit geometry, 32-bit children (bit 31 = subsector) ---
+    // --- nodes: XGL3 has 32-bit fixed partition geometry; all others 16-bit shorts ---
     nnod = RD32();
     numnodes = nnod;
     nodes = Z_Malloc (nnod * sizeof(node_t), PU_LEVEL, 0);
     for (i = 0; i < nnod; i++)
     {
-        node_t* no = &nodes[i]; int j, k;
-        no->x = ((short) RD16()) << FRACBITS; no->y = ((short) RD16()) << FRACBITS;
-        no->dx = ((short) RD16()) << FRACBITS; no->dy = ((short) RD16()) << FRACBITS;
-        for (j = 0; j < 2; j++) for (k = 0; k < 4; k++) no->bbox[j][k] = ((short) RD16()) << FRACBITS;
-        for (j = 0; j < 2; j++) no->children[j] = (int) RD32();   // already bit-31 = subsector
+	node_t* no = &nodes[i]; int j, k;
+	if (xgl3)
+	{
+	    no->x = (fixed_t) RD32(); no->y = (fixed_t) RD32();
+	    no->dx = (fixed_t) RD32(); no->dy = (fixed_t) RD32();
+	}
+	else
+	{
+	    no->x = ((short) RD16()) << FRACBITS; no->y = ((short) RD16()) << FRACBITS;
+	    no->dx = ((short) RD16()) << FRACBITS; no->dy = ((short) RD16()) << FRACBITS;
+	}
+	for (j = 0; j < 2; j++) for (k = 0; k < 4; k++) no->bbox[j][k] = ((short) RD16()) << FRACBITS;
+	for (j = 0; j < 2; j++) no->children[j] = (int) RD32();   // already bit-31 = subsector
     }
     #undef RD32
     #undef RD16
-    free (ibuf);			// NULL for the uncompressed XNOD path -- free(NULL) is fine
+    free (ibuf);			// NULL for uncompressed -- free(NULL) is fine
     Z_Free (data);
-    printf ("P_LoadNodes: extended (%s) nodes -- %u verts, %u ssectors, %u segs, %u nodes\n",
-            ibuf ? "ZNOD" : "XNOD", origv + newv, nsub, nseg, nnod);
+    printf ("P_LoadNodes: extended (%s%s) nodes -- %u verts, %u ssectors, %u segs, %u nodes\n",
+	    compressed ? "compressed " : "", fmtname, origv + newv, nsub, nseg, nnod);
     return true;
 }
 
@@ -852,12 +945,21 @@ void P_GroupLines (void)
     fixed_t		bbox[4];
     int			block;
 	
-    // look up sector number for each subsector
+    // look up sector number for each subsector.  With GL nodes the first seg can be
+    // a miniseg (sidedef==NULL), so scan for the first seg that has a real sidedef.
     ss = subsectors;
     for (i=0 ; i<numsubsectors ; i++, ss++)
     {
-	seg = &segs[ss->firstline];
-	ss->sector = seg->sidedef->sector;
+	int s;
+	ss->sector = NULL;
+	for (s = 0; s < ss->numlines; s++)
+	{
+	    seg = &segs[ss->firstline + s];
+	    if (seg->sidedef) { ss->sector = seg->sidedef->sector; break; }
+	}
+	// Fallback (all-miniseg subsector, shouldn't happen): use the seg's frontsector.
+	if (!ss->sector && ss->numlines > 0)
+	    ss->sector = segs[ss->firstline].frontsector;
     }
 
     // count number of lines in each sector
@@ -921,6 +1023,24 @@ void P_GroupLines (void)
 }
 
 
+// UDMF maps usually ship no REJECT lump (and if they do it may be a stub).  A
+// missing/short reject would make P_CheckSight read out of bounds, so allocate a
+// zero-filled matrix (0 == "every sector pair can see each other") of the correct
+// size when the lump is absent or too small.
+void P_LoadReject_UDMF (int lump)
+{
+    int need = (numsectors * numsectors + 7) / 8;		// bits -> bytes, rounded up
+    if (lump >= 0 && W_LumpLength (lump) >= need)
+    {
+	rejectmatrix = W_CacheLumpNum (lump, PU_LEVEL);
+    }
+    else
+    {
+	rejectmatrix = Z_Malloc (need, PU_LEVEL, 0);
+	memset (rejectmatrix, 0, need);
+    }
+}
+
 //
 // P_SetupLevel
 //
@@ -934,6 +1054,7 @@ P_SetupLevel
     int		i;
     char	lumpname[9];
     int		lumpnum;
+    boolean	udmf_map;
 
     totalkills = totalitems = totalsecret = wminfo.maxfrags = 0;
     wminfo.partime = 180;
@@ -988,26 +1109,41 @@ P_SetupLevel
     lumpnum = W_GetNumForName (lumpname);
 	
     leveltime = 0;
-	
-    // note: most of this ordering is important
-    P_LoadVertexes (lumpnum+ML_VERTEXES);
-    P_LoadSectors (lumpnum+ML_SECTORS);
-    P_LoadSideDefs (lumpnum+ML_SIDEDEFS);
 
-    P_LoadLineDefs (lumpnum+ML_LINEDEFS);
-    if (!P_LoadNodes_Extended (lumpnum+ML_NODES))   // Boom/ZDBSP XNOD -> loads verts+ssectors+segs+nodes
+    // UDMF (TEXTMAP) map?  Parse the text geometry + GL/ZDBSP nodes instead of the
+    // eight binary lumps.  udmf_map is remembered for the THINGS load below.
+    udmf_map = UDMF_IsMap (lumpnum);
+    if (udmf_map)
     {
-	P_LoadSubsectors (lumpnum+ML_SSECTORS);
-	P_LoadNodes (lumpnum+ML_NODES);
-	P_LoadSegs (lumpnum+ML_SEGS);
+	UDMF_LoadMap (lumpnum);				// vertexes/sectors/sides/lines + find sub-lumps
+	if (!P_LoadNodes_Extended (UDMF_ZnodesLump ()))	// GL/ZDBSP nodes from the ZNODES lump
+	    I_Error ("UDMF map \"%s\": missing or unsupported ZNODES "
+		     "(need XGL3/XGL2/XGLN or XNOD extended nodes).", lumpname);
+	P_LoadBlockMap (UDMF_BlockmapLump ());		// -1 (usually) -> rebuilt from linedefs
+	P_LoadReject_UDMF (UDMF_RejectLump ());
     }
+    else
+    {
+	// note: most of this ordering is important
+	P_LoadVertexes (lumpnum+ML_VERTEXES);
+	P_LoadSectors (lumpnum+ML_SECTORS);
+	P_LoadSideDefs (lumpnum+ML_SIDEDEFS);
 
-    // AFTER vertexes/linedefs (+ extended nodes): P_LoadBlockMap may need to REBUILD the
-    // blockmap from the linedef geometry (WAD blockmap missing or too big), which reads
-    // lines[]/vertexes[] -- so it can't run first like the stock order did.
-    P_LoadBlockMap (lumpnum+ML_BLOCKMAP);
+	P_LoadLineDefs (lumpnum+ML_LINEDEFS);
+	if (!P_LoadNodes_Extended (lumpnum+ML_NODES))   // Boom/ZDBSP XNOD -> loads verts+ssectors+segs+nodes
+	{
+	    P_LoadSubsectors (lumpnum+ML_SSECTORS);
+	    P_LoadNodes (lumpnum+ML_NODES);
+	    P_LoadSegs (lumpnum+ML_SEGS);
+	}
 
-    rejectmatrix = W_CacheLumpNum (lumpnum+ML_REJECT,PU_LEVEL);
+	// AFTER vertexes/linedefs (+ extended nodes): P_LoadBlockMap may need to REBUILD the
+	// blockmap from the linedef geometry (WAD blockmap missing or too big), which reads
+	// lines[]/vertexes[] -- so it can't run first like the stock order did.
+	P_LoadBlockMap (lumpnum+ML_BLOCKMAP);
+
+	rejectmatrix = W_CacheLumpNum (lumpnum+ML_REJECT,PU_LEVEL);
+    }
     P_GroupLines ();
 
     bodyqueslot = 0;
@@ -1023,7 +1159,10 @@ P_SetupLevel
     // and P_LoadThings didn't set it).
     P_AICoop_ResetSlot ();
 
-    P_LoadThings (lumpnum+ML_THINGS);
+    if (udmf_map)
+	UDMF_LoadThings ();
+    else
+	P_LoadThings (lumpnum+ML_THINGS);
     
     // if deathmatch, randomly spawn the active players
     if (deathmatch)

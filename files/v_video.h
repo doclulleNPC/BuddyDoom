@@ -129,8 +129,21 @@ patch_t* V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_
 // Draw a patch with a 256-entry palette translation applied per pixel (NULL = none).
 void V_DrawPatchTranslated (int x, int y, int scrn, patch_t* patch, const byte* trans);
 
+// V_DrawPatchScaled + palette translation, magnified around the patch's origin
+// (trans == NULL -> no remap).  Used for the enlarged, recoloured buddy preview.
+void V_DrawPatchScaledTranslated (int x, int y, int scrn, patch_t* patch, int sc, const byte* trans);
+
 // 256-entry health-colour translation: >75 green, >25 yellow, else red.  v_png.c.
 const byte* V_HealthTrans (int hp);
+
+// ---- buddy player-colour remaps (v_png.c) ----------------------------------
+// A named set of translations that recolour ONLY the green player-uniform ramp
+// (palette 0x70-0x7F), luminance-preserving, leaving skin/gun/etc. untouched --
+// like Doom's built-in player colours but arbitrary and named.  Used by the
+// Buddy menu preview, the in-world buddy sprite (R_SetBuddyColor) and BUDDYDEF.
+int         V_BuddyColorCount (void);		// number of named colours (index 0 = Green)
+const char* V_BuddyColorName  (int i);		// display name, or "" if out of range
+const byte* V_BuddyColorTable (int i);		// 256-entry remap, or NULL for Green(0)=identity
 
 
 void

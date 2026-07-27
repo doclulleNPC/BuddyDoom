@@ -225,9 +225,10 @@ extern int	showMessages;
 extern int	show_buddy_hud;	// hu_buddy.c -- companion top-of-screen HUD
 extern int	show_inventory_hud;	// hu_buddy.c -- (J) artifact inventory readout
 extern int	buddy_select;		// m_menu.c -- selected co-op buddy (Buddy menu)
+extern int	buddy_color;		// m_menu.c -- buddy player-colour index (Buddy menu)
 
 extern int	detailLevel;
-extern int	automap_textured;	// textured automap (am_map.c)
+extern int	automap_style;		// automap style: 0 vanilla / 1 boom / 2 textured (am_map.c)
 
 extern int	screenblocks;
 
@@ -264,6 +265,7 @@ default_t	defaults[] =
     {"show_buddy_hud",&show_buddy_hud, 1},
     {"show_inventory_hud",&show_inventory_hud, 1},	// (J) artifact inventory readout
     {"buddy_select",&buddy_select, 0},			// Buddy menu: 0=Marine, 1..N=BUDDYDEF roster index
+    {"buddy_color",&buddy_color, 0},			// Buddy menu: player-colour index (0=Green)
     
 
     {"key_right",&key_right, KEY_RIGHTARROW},
@@ -314,7 +316,7 @@ default_t	defaults[] =
 
     {"screenblocks",&screenblocks, 10},
     {"detaillevel",&detailLevel, 0},
-    {"automap_textured",&automap_textured, 1},	// textured automap: show floor flats
+    {"automap_style",&automap_style, 2},	// automap: 0 vanilla, 1 boom(overlay), 2 textured
 
     // Video: internal resolution scale (1 = 320x200 ... 6 = 1920x1200) and
     // fullscreen flag.  Applied by i_video.c at startup.
@@ -331,7 +333,8 @@ default_t	defaults[] =
     {"render_backend",&render_backend, 0},
     {"aspect",&aspect, 0},			// default 4:3 (0=4:3, 1=16:9, 2=16:10)
 
-    {"snd_channels",&numChannels, 3},
+    {"snd_channels",&numChannels, 16},		// simultaneous SFX voices (was the 1993 default of 3,
+						// which dropped the player's weapon sound under any load)
 
 
 

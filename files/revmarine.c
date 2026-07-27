@@ -277,24 +277,25 @@ const char* P_ReviveMarineNear (player_t* presser)
 
 // ---------------------------------------------------------------------------
 // The AI buddy can also revive a Dead Marine on its own -- but only when it can
-// afford the field surgery: EITHER 1 Medikit OR 2 Stimpacks in its own pack
-// (whichever it has is consumed).  Called each tic from the buddy AI (throttled there).
+// afford the field surgery: the SAME cost as the human's P_ReviveMarineNear, i.e.
+// EITHER 1 Stimpack OR 10 Health Bonuses from its own pack (whichever it has is
+// consumed).  Called each tic from the buddy AI (throttled there).
 // ---------------------------------------------------------------------------
 void RevMarine_BuddyTryRevive (player_t* bot)
 {
     mobj_t* corpse;
 
     if (!bot || !bot->mo || bot->playerstate != PST_LIVE) return;
-    // Need at least one full "kit": a medikit, or two stimpacks.
-    if (bot->inventory[arti_medikit] < 1 && bot->inventory[arti_stimpack] < 2) return;
+    // Same cost as the human's P_ReviveMarineNear: one stimpack, else ten health bonuses.
+    if (bot->inventory[arti_stimpack] < 1 && bot->inventory[arti_healthbonus] < 10) return;
 
     corpse = RevMarine_FindCorpse (bot->mo, REVMAR_BUDDY_RANGE);
     if (!corpse) return;
 
-    if (bot->inventory[arti_medikit] >= 1)
-	bot->inventory[arti_medikit]  -= 1;		// prefer the medikit
+    if (bot->inventory[arti_stimpack] >= 1)
+	bot->inventory[arti_stimpack]    -= 1;		// prefer the stimpack
     else
-	bot->inventory[arti_stimpack] -= 2;		// else two stimpacks
+	bot->inventory[arti_healthbonus] -= 10;		// else ten health bonuses
     RevMarine_Raise (corpse);
     players[consoleplayer].message = "[Buddy] Patched up a downed marine -- he's with us!";
 }
