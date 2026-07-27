@@ -2,6 +2,7 @@
 #   buddydoom_config.exe  (settings editor)   gpumon.exe (GPU monitor)
 #   launcher.exe       (IWAD / mode picker GUI)
 #   extractor.exe      (Heretic/Hexen/FreeDoom2 asset extractor GUI)
+#   mybuddy.exe        (BUDDYDEF-record editor / MyBuddy)
 #
 # Usage (x64 Native Tools Command Prompt for VS 2019), in tools\:
 #     nmake /f Makefile.msvc
@@ -22,7 +23,7 @@ CFLAGS = /nologo /O2 /MD /W3 /I. /I"$(SDL)\include" /DSDL_MAIN_HANDLED \
 LIBS = "$(SDL)\lib\$(PLATFORM)\SDL3.lib"
 LDFLAGS = /link /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup
 
-all: buddydoom_config.exe gpumon.exe launcher.exe director.exe extractor.exe
+all: buddydoom_config.exe gpumon.exe launcher.exe director.exe extractor.exe mybuddy.exe
 
 buddydoom_config.res: buddydoom_config.rc ..\buddydoom.ico
 	rc /nologo /fo buddydoom_config.res buddydoom_config.rc
@@ -65,5 +66,18 @@ extractor.exe: extractor.c extractor.res font_atlas.h ..\files\buddydoom_icon.h
 	@if not exist ..\run mkdir ..\run
 	@copy /Y extractor.exe ..\run\extractor.exe >nul
 
+# mybuddy.exe -- editor for BUDDYDEF records in WADs (MyBuddy).  Uses the
+# Windows common-dialog (comdlg32) for Open/Save.  The runtime window icon comes
+# from buddydoom_icon.h (SDL_SetWindowIcon); mybuddy.res gives the .exe itself an
+# icon in Explorer / the taskbar (buddydoom.ico, same as the other tools).
+mybuddy.res: mybuddy.rc ..\buddydoom.ico
+	rc /nologo /fo mybuddy.res mybuddy.rc
+
+mybuddy.exe: mybuddy.c buddydef_wad.c buddydef_parse.c mybuddy.res \
+        font_atlas.h ..\files\buddydoom_icon.h buddydef_wad.h buddydef_parse.h
+	$(CC) $(CFLAGS) /Fe:mybuddy.exe mybuddy.c buddydef_wad.c buddydef_parse.c mybuddy.res $(LDFLAGS) $(LIBS) comdlg32.lib
+	@if not exist ..\run mkdir ..\run
+	@copy /Y mybuddy.exe ..\run\mybuddy.exe >nul
+
 clean:
-	-del *.obj *.res buddydoom_config.exe gpumon.exe gpumon_sdl.exe launcher.exe director.exe extractor.exe 2>nul
+	-del *.obj *.res buddydoom_config.exe gpumon.exe gpumon_sdl.exe launcher.exe director.exe extractor.exe mybuddy.exe 2>nul
