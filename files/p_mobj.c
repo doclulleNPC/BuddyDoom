@@ -753,6 +753,11 @@ void P_SpawnPlayer (mapthing_t* mthing)
 
 
 //
+// The mobj created by the most recent P_SpawnMapThing call, or NULL if that
+// thing spawned no actor (player/DM start, filtered out, unknown type).  The UDMF
+// loader reads this to apply a thing's Z "height" after the spawn.
+mobj_t* P_LastMapThingMobj;
+
 // P_SpawnMapThing
 // The fields of the mapthing should
 // already be in host byte order.
@@ -766,6 +771,8 @@ void P_SpawnMapThing (mapthing_t* mthing)
     fixed_t		y;
     fixed_t		z;
 		
+    P_LastMapThingMobj = NULL;
+
     // count deathmatch start positions
     if (mthing->type == 11)
     {
@@ -790,6 +797,14 @@ void P_SpawnMapThing (mapthing_t* mthing)
 
     // check for apropriate skill level
     if (!netgame && (mthing->options & 16) )
+	return;
+
+    // Boom multiplayer-mode filters (0x20 = not in DM, 0x40 = not in co-op).  Only
+    // meaningful in a real netgame -- gated on netgame so single-player + AI buddy
+    // (which does NOT set netgame) is unaffected.
+    if (netgame &&  deathmatch && (mthing->options & 0x20))
+	return;
+    if (netgame && !deathmatch && (mthing->options & 0x40))
 	return;
 		
     if (gameskill == sk_baby)
@@ -863,6 +878,10 @@ void P_SpawnMapThing (mapthing_t* mthing)
     mobj->angle = ANG45 * (mthing->angle/45);
     if (mthing->options & MTF_AMBUSH)
 	mobj->flags |= MF_AMBUSH;
+    if (mthing->options & 0x80)		// MBF/UDMF "friend" flag
+	mobj->flags |= MF_FRIEND;
+
+    P_LastMapThingMobj = mobj;
 }
 
 

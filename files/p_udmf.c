@@ -29,6 +29,7 @@
 #include "z_zone.h"
 #include "r_defs.h"
 #include "r_state.h"		// numvertexes/vertexes/... globals
+#include "p_mobj.h"		// mobj_t (thing Z-height fixup)
 #include "p_udmf.h"
 
 // engine map globals (defined in p_setup.c / r_state)
@@ -41,6 +42,7 @@ extern line_t*		lines;
 extern int		R_FlatNumForName (char* name);
 extern int		R_TextureNumForName (char* name);
 extern void		P_SpawnMapThing (mapthing_t* mthing);
+extern mobj_t*		P_LastMapThingMobj;	// set by the last P_SpawnMapThing (or NULL)
 extern int		heretic_mode;
 
 // ---------------------------------------------------------------------------
@@ -137,8 +139,13 @@ static void SC_Name (char* dst, const char* src)
 typedef struct { double x, y; } u_vertex_t;
 typedef struct { int hfloor, hceil, light, special, id; char tfloor[9], tceil[9]; } u_sector_t;
 typedef struct { int offx, offy, sector; char ttop[9], tmid[9], tbot[9]; } u_side_t;
-typedef struct { int v1, v2, sfront, sback, flags, special, id; } u_line_t;
-typedef struct { short x, y, angle, type, options; } u_thing_t;
+typedef struct { int v1, v2, sfront, sback, flags, special, id, arg0; } u_line_t;
+typedef struct { short x, y, angle, type, options; int z; } u_thing_t;
+
+// Set when a linedef carries a parameterised-special marker (arg1..4 or a Hexen
+// SPAC activation flag).  Such maps use ZDoom/Hexen action specials this classic
+// tag-based playsim can't execute -- we warn once so broken doors aren't a mystery.
+static int udmf_parameterized;
 
 #define GROW(arr, cap, n) do { \
 	if ((n) >= (cap)) { (cap) = (cap) ? (cap) * 2 : 128; \
@@ -239,10 +246,22 @@ static void UDMF_ParseLine (void)
 	else if (!strcasecmp (k, "sideback"))   l.sback  = SC_Int (val);
 	else if (!strcasecmp (k, "special"))    l.special = SC_Int (val);
 	else if (!strcasecmp (k, "id"))         l.id     = SC_Int (val);
+	else if (!strcasecmp (k, "arg0"))       l.arg0   = SC_Int (val);	// special's tag/param
+	// arg1..arg4 set => a parameterised (ZDoom/Hexen) special we can't execute.
+	else if ((!strcasecmp (k, "arg1") || !strcasecmp (k, "arg2") ||
+		  !strcasecmp (k, "arg3") || !strcasecmp (k, "arg4")) && SC_Int (val))
+	    udmf_parameterized = 1;
 	// flags -> ML_* (same bit values as this engine's doomdata.h)
 	else if (SC_Bool (val))
 	{
-	    if      (!strcasecmp (k, "blocking"))          l.flags |= ML_BLOCKING;
+	    // Hexen SPAC activation flags likewise imply a parameterised special.
+	    if (!strcasecmp (k, "playercross")  || !strcasecmp (k, "playeruse")   ||
+		!strcasecmp (k, "monstercross") || !strcasecmp (k, "monsteruse")  ||
+		!strcasecmp (k, "impact")       || !strcasecmp (k, "playerpush")  ||
+		!strcasecmp (k, "monsterpush")  || !strcasecmp (k, "missilecross")||
+		!strcasecmp (k, "repeatspecial"))
+		udmf_parameterized = 1;
+	    else if (!strcasecmp (k, "blocking"))          l.flags |= ML_BLOCKING;
 	    else if (!strcasecmp (k, "blockmonsters"))     l.flags |= ML_BLOCKMONSTERS;
 	    else if (!strcasecmp (k, "twosided"))          l.flags |= ML_TWOSIDED;
 	    else if (!strcasecmp (k, "dontpegtop"))        l.flags |= ML_DONTPEGTOP;
@@ -261,15 +280,16 @@ static void UDMF_ParseLine (void)
 
 static void UDMF_ParseThing (void)
 {
-    double x = 0, y = 0;
+    double x = 0, y = 0, height = 0;
     int angle = 0, type = 0;
-    int sk12 = 0, sk3 = 0, sk45 = 0, ambush = 0, single = 0;
+    int sk12 = 0, sk3 = 0, sk45 = 0, ambush = 0, single = 0, dm = 0, coop = 0, friend = 0;
     char k[64], val[256]; int vt, opt;
     u_thing_t t;
     while (UDMF_Field (k, val, &vt))
     {
 	if      (!strcasecmp (k, "x"))      x = atof (val);
 	else if (!strcasecmp (k, "y"))      y = atof (val);
+	else if (!strcasecmp (k, "height")) height = atof (val);	// Z offset above the floor
 	else if (!strcasecmp (k, "angle"))  angle = SC_Int (val);
 	else if (!strcasecmp (k, "type"))   type = SC_Int (val);
 	else if (!strcasecmp (k, "skill1") || !strcasecmp (k, "skill2")) { if (SC_Bool (val)) sk12 = 1; }
@@ -277,15 +297,23 @@ static void UDMF_ParseThing (void)
 	else if (!strcasecmp (k, "skill4") || !strcasecmp (k, "skill5")) { if (SC_Bool (val)) sk45 = 1; }
 	else if (!strcasecmp (k, "ambush"))  ambush = SC_Bool (val);
 	else if (!strcasecmp (k, "single"))  single = SC_Bool (val);
+	else if (!strcasecmp (k, "dm"))      dm     = SC_Bool (val);
+	else if (!strcasecmp (k, "coop"))    coop   = SC_Bool (val);
+	else if (!strcasecmp (k, "friend"))  friend = SC_Bool (val);
     }
-    // Rebuild the vanilla options byte (P_SpawnMapThing decodes these bits).
+    // Rebuild the vanilla/Boom options byte (P_SpawnMapThing decodes these bits).
+    // UDMF stores "present in mode X"; the engine stores "NOT in mode X", so invert.
     opt = 0;
-    if (sk12)   opt |= 1;		// ITYTD + HNTR
-    if (sk3)    opt |= 2;		// HMP
-    if (sk45)   opt |= 4;		// UV + NM
-    if (ambush) opt |= 8;		// MTF_AMBUSH (deaf)
-    if (!single) opt |= 16;		// "not in single player" (net/co-op only)
+    if (sk12)    opt |= 1;		// ITYTD + HNTR
+    if (sk3)     opt |= 2;		// HMP
+    if (sk45)    opt |= 4;		// UV + NM
+    if (ambush)  opt |= 8;		// MTF_AMBUSH (deaf)
+    if (!single) opt |= 16;		// not in single player
+    if (!dm)     opt |= 0x20;		// Boom: not in deathmatch
+    if (!coop)   opt |= 0x40;		// Boom: not in co-op
+    if (friend)  opt |= 0x80;		// MBF friend
     t.x = (short) lround (x); t.y = (short) lround (y);
+    t.z = (int) lround (height);
     t.angle = (short) angle; t.type = (short) type; t.options = (short) opt;
     GROW (ut, ut_cap, ut_n); ut[ut_n++] = t;
 }
@@ -295,11 +323,14 @@ static void UDMF_ParseThing (void)
 // ---------------------------------------------------------------------------
 static void UDMF_ParseNamespace (const char* ns)
 {
-    // Only the vanilla-geometry namespaces are meaningful here: doom/heretic/strife
-    // keep id==tag and use classic specials.  hexen/zdoom/eternity imply parameterised
-    // specials + args this playsim can't execute, so reject them loudly.
-    if (strcasecmp (ns, "doom") && strcasecmp (ns, "heretic") && strcasecmp (ns, "strife"))
-	I_Error ("UDMF: unsupported namespace \"%s\" -- only the doom namespace is supported.", ns);
+    // Vanilla-geometry namespaces we can run: doom/heretic/strife keep id==tag and use
+    // classic specials, and "dsda" is DSDA-Doom's UDMF namespace -- the very Boom/MBF21/
+    // ID24 feature set this engine already implements, so it maps straight onto the doom
+    // path.  hexen/zdoom/eternity imply parameterised specials + args (and slopes/portals)
+    // this playsim can't execute, so reject them loudly.
+    if (strcasecmp (ns, "doom") && strcasecmp (ns, "heretic") &&
+	strcasecmp (ns, "strife") && strcasecmp (ns, "dsda"))
+	I_Error ("UDMF: unsupported namespace \"%s\" -- supported: doom, dsda, heretic, strife.", ns);
 }
 
 static void UDMF_Parse (const char* buf, int len)
@@ -410,7 +441,9 @@ static void UDMF_BuildLines (void)
 
 	ld->flags   = ul[i].flags;
 	ld->special = ul[i].special;
-	ld->tag     = ul[i].id;
+	// Doom-namespace tag lives in id; per the UDMF spec the special's target is
+	// arg0 and converters write it to both, so fall back to arg0 when id is unset.
+	ld->tag     = ul[i].id ? ul[i].id : ul[i].arg0;
 	v1 = ld->v1 = &vertexes[(ul[i].v1 >= 0 && ul[i].v1 < numvertexes) ? ul[i].v1 : 0];
 	v2 = ld->v2 = &vertexes[(ul[i].v2 >= 0 && ul[i].v2 < numvertexes) ? ul[i].v2 : 0];
 	ld->dx = v2->x - v1->x;
@@ -490,6 +523,7 @@ void UDMF_LoadMap (int lumpnum)
     }
 
     UDMF_FreeIntermediate ();
+    udmf_parameterized = 0;
     UDMF_Parse (raw, len);
     Z_Free (raw);
 
@@ -501,6 +535,11 @@ void UDMF_LoadMap (int lumpnum)
 
     printf ("UDMF: %d verts, %d sectors, %d sides, %d lines, %d things\n",
 	    numvertexes, numsectors, numsides, numlines, ut_n);
+    if (udmf_parameterized)
+	printf ("UDMF: WARNING -- this map uses parameterised (ZDoom/Hexen) line "
+		"specials with args/SPAC flags.  BuddyDoom runs classic Doom/Boom "
+		"tag-based specials only, so doors/switches/lifts/exits will NOT "
+		"work correctly.  Rebuild the map with a Doom/Boom-format config.\n");
 }
 
 void UDMF_LoadThings (void)
@@ -522,6 +561,9 @@ void UDMF_LoadThings (void)
 	    }
 	}
 	P_SpawnMapThing (&mt);
+	// UDMF thing "height" -- raise the spawned actor above its floor.
+	if (P_LastMapThingMobj && ut[i].z)
+	    P_LastMapThingMobj->z += ut[i].z << FRACBITS;
     }
     UDMF_FreeIntermediate ();
 }

@@ -26,11 +26,13 @@ Detection is automatic: if the lump right after the map marker is `TEXTMAP`,
 
 ## Supported namespaces
 
-`doom` (and `heretic` / `strife`, which are geometry-identical and keep
-`id == tag` with classic specials). The `hexen` / `zdoom` / `eternity` namespaces
-are **rejected** with an error: they imply parameterised specials, `arg0..arg4`,
-slopes and 3D floors this engine has no simulation for, so loading them would
-silently misbehave.
+`doom`, `dsda` (DSDA-Doom's namespace — the same Boom/MBF21/ID24 feature set this
+engine implements), and `heretic` / `strife` (geometry-identical, `id == tag`,
+classic specials). **Save UDMF maps from (Ultimate) Doom Builder with the
+DSDA-Doom game configuration** — it writes `namespace = "dsda"`. The `hexen` /
+`zdoom` / `eternity` namespaces are **rejected** with an error: they imply
+parameterised specials, `arg0..arg4`, slopes and 3D floors this engine has no
+simulation for, so loading them would silently misbehave.
 
 ## Field mapping (doom namespace)
 
@@ -40,19 +42,34 @@ silently misbehave.
 | linedef  | `v1`,`v2`,`sidefront`,`sideback`,`special`,`id`, flag booleans | `line_t` v1/v2/sidenum/special/**tag**, `flags` (`ML_*`) |
 | sidedef  | `offsetx`,`offsety`,`texturetop`,`texturemiddle`,`texturebottom`,`sector` | `side_t` offsets/textures/sector |
 | sector   | `heightfloor`,`heightceiling`,`texturefloor`,`textureceiling`,`lightlevel`,`special`,`id` | `sector_t` heights/pics/light/special/**tag** |
-| thing    | `x`,`y`,`angle`,`type`,`skill1..5`,`single`,`ambush` | vanilla `mapthing_t` (x/y rounded to int) + options byte |
+| linedef tag | `id`, falling back to `arg0` when `id` is unset (spec stores the tag in both) | `line_t.tag` |
+| thing    | `x`,`y`,`height`,`angle`,`type`,`skill1..5`,`single`,`dm`,`coop`,`ambush`,`friend` | vanilla `mapthing_t` (x/y rounded to int) + options byte; `height` applied as a Z offset after spawn |
 
 Linedef flag booleans map to the matching `ML_*` bit
 (`blocking`,`blockmonsters`,`twosided`,`dontpegtop`,`dontpegbottom`,`secret`,
 `blocksound`,`dontdraw`,`mapped`,`passuse`,`blocklandmonsters`,`blockplayers`).
-Thing skill/mode booleans are folded back into the classic options byte
-(`skill1|skill2`→easy bit, `skill3`→medium, `skill4|skill5`→hard, `ambush`→deaf,
-`!single`→multiplayer-only).
+Thing skill/mode booleans are folded back into the classic vanilla/Boom options
+byte (`skill1|skill2`→easy, `skill3`→medium, `skill4|skill5`→hard, `ambush`→deaf,
+`!single`→not-in-SP, `!dm`→not-in-DM `0x20`, `!coop`→not-in-coop `0x40`,
+`friend`→MBF friend `0x80`). The DM/co-op bits only take effect in a real netgame,
+so single-player + AI buddy is unaffected.
 
 **Dropped** (no engine support): per-texture offsets/scaling, light/tint/colormap,
-sector rotation/gravity/friction, linedef `arg0..arg4`/`alpha`/`health`, thing
-`height`/`tid`/`special`/`args`/`friend`. Sub-unit vertex/thing coordinates are
-rounded (things) or kept in fixed-point (vertices).
+sector rotation/gravity/friction, linedef `arg1..arg4`/`alpha`/`health`, thing
+`tid`/`special`/`args`. Sub-unit vertex/thing coordinates are rounded (things) or
+kept in fixed-point (vertices).
+
+## Parameterised (ZDoom/Hexen) specials are NOT executed
+
+BuddyDoom's playsim dispatches **classic tag-based** line/sector specials (a
+special number = one fixed action; the target is the line's tag; no `arg1..arg4`,
+no Hexen SPAC activation flags). If a map's linedefs carry `arg1..arg4` or SPAC
+flags (`playercross`, `playeruse`, `repeatspecial`, …) — the **parameterised**
+model used by ZDoom/Hexen/Eternity — those specials cannot run here, and the
+loader prints a one-time warning. The map's geometry still renders, but its doors,
+switches, lifts and exits will misbehave. **This is why the DoomBuilder "DSDA-Doom"
+UDMF config is a poor fit if it emits parameterised specials** (some versions do):
+build with a Doom/Boom-format configuration for specials that actually work.
 
 ## Nodes (`ZNODES`)
 
