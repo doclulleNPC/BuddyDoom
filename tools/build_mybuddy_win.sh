@@ -17,12 +17,12 @@ command -v "$CC" >/dev/null 2>&1 || { echo "[build] $CC not found" >&2; exit 1; 
 [ -f "$here/font_atlas.h" ] || python3 "$here/bake_font.py"
 
 # -mwindows: GUI subsystem (no console window). SDL_MAIN_HANDLED: we own main().
-# -lcomdlg32: Windows common-dialog (Open/Save dialogs).
+# File dialogs are SDL3's native SDL_ShowOpen/SaveFileDialog -- no comdlg32 needed.
 "$CC" -O2 -DSDL_MAIN_HANDLED -I"$here" -I"$here/.." -I"$SDL3/include" \
     "$here/mybuddy.c" \
     "$here/buddydef_wad.c" \
     "$here/buddydef_parse.c" \
-    -L"$SDL3/lib" -lSDL3 -lcomdlg32 -mwindows -static-libgcc \
+    -L"$SDL3/lib" -lSDL3 -mwindows -static-libgcc \
     -o "$here/mybuddy.exe"
 
 mkdir -p "$here/../run"

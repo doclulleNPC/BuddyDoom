@@ -13,6 +13,8 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <SDL3/SDL_dialog.h>	// SDL_ShowOpen/SaveFileDialog -- native, cross-platform
+#include <stdint.h>		// intptr_t (dialog userdata tag)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,11 +27,6 @@
 #endif
 #else
 #include <unistd.h>
-#endif
-
-#ifdef _WIN32
-#include <windows.h>
-#include <commdlg.h>
 #endif
 
 #include "font_atlas.h"
@@ -401,82 +398,49 @@ static int save_wad(const char* path)
 }
 
 // ----------------------------------------------------------------- native dialogs
-#ifdef _WIN32
-static const char* win32_open_dialog(void)
+// SDL3's built-in file dialogs are native on Windows/macOS/Linux -- one API, no
+// comdlg32 / zenity / kdialog.  They are ASYNCHRONOUS: the callback fires when the
+// user is done (may be a background thread), so it only stashes the result in
+// pending_* and wakes the event loop; the actual load/save runs on the main thread.
+static const SDL_DialogFileFilter WAD_FILTERS[] = {
+    { "Doom WAD", "wad" },
+    { "All files", "*"   },
+};
+enum { PENDING_NONE = 0, PENDING_OPEN = 1, PENDING_SAVE = 2, PENDING_CANCEL = -1 };
+static char pending_path[1024];
+static int  pending_action = PENDING_NONE;
+
+static void SDLCALL dialog_cb(void* userdata, const char* const* filelist, int filter)
 {
-    static char buf[1024];
-    OPENFILENAMEA ofn;
-    memset(&ofn, 0, sizeof ofn);
-    buf[0] = 0;
-    ofn.lStructSize = sizeof ofn;
-    ofn.hwndOwner = NULL;
-    ofn.lpstrFile = buf;
-    ofn.nMaxFile = sizeof buf;
-    ofn.lpstrFilter = "Doom WAD (*.wad)\0*.wad;*.WAD\0All files\0*.*\0";
-    ofn.nFilterIndex = 1;
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    return GetOpenFileNameA(&ofn) ? buf : NULL;
-}
-static const char* win32_save_dialog(void)
-{
-    static char buf[1024];
-    OPENFILENAMEA ofn;
-    memset(&ofn, 0, sizeof ofn);
-    snprintf(buf, sizeof buf, "%s", wad_path[0] ? wad_path : "buddies.wad");
-    ofn.lStructSize = sizeof ofn;
-    ofn.hwndOwner = NULL;
-    ofn.lpstrFile = buf;
-    ofn.nMaxFile = sizeof buf;
-    ofn.lpstrFilter = "Doom WAD (*.wad)\0*.wad\0All files\0*.*\0";
-    ofn.nFilterIndex = 1;
-    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-    return GetSaveFileNameA(&ofn) ? buf : NULL;
-}
-#else
-static const char* xdg_open_dialog(void)
-{
-    static char buf[1024];
-    const char* p = "/tmp/mybuddy_wad_path";
-    char cmd[1024];
-    if (access("/usr/bin/zenity", X_OK) == 0) {
-        snprintf(cmd, sizeof cmd,
-                 "/usr/bin/zenity --file-selection --title='Open WAD' --file-filter='*.wad' 2>/dev/null > %s", p);
-    } else if (access("/usr/bin/kdialog", X_OK) == 0) {
-        snprintf(cmd, sizeof cmd,
-                 "/usr/bin/kdialog --title 'Open WAD' --getopenfilename . '*.wad' 2>/dev/null > %s", p);
-    } else {
-        return NULL;
+    (void)filter;
+    int action = (int)(intptr_t)userdata;          // PENDING_OPEN or PENDING_SAVE
+    if (filelist && filelist[0])
+    {
+        snprintf(pending_path, sizeof pending_path, "%s", filelist[0]);
+        pending_action = action;
     }
-    if (system(cmd) != 0) return NULL;
-    FILE* f = fopen(p, "r"); if (!f) return NULL;
-    if (!fgets(buf, sizeof buf, f)) { fclose(f); return NULL; }
-    fclose(f);
-    int n = (int)strlen(buf); while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r')) buf[--n] = 0;
-    return buf;
+    else
+        pending_action = PENDING_CANCEL;           // cancelled, or error (filelist == NULL)
+
+    SDL_Event wake = { .type = SDL_EVENT_USER };    // make SDL_WaitEvent return
+    SDL_PushEvent(&wake);
 }
-static const char* xdg_save_dialog(void)
+
+static void open_dialog(void)
 {
-    static char buf[1024];
-    const char* p = "/tmp/mybuddy_wad_path";
-    char cmd[1024];
-    snprintf(buf, sizeof buf, "%s", wad_path[0] ? wad_path : "buddies.wad");
-    if (access("/usr/bin/zenity", X_OK) == 0) {
-        snprintf(cmd, sizeof cmd,
-                 "/usr/bin/zenity --file-selection --title='Save WAD' --save --confirm-overwrite --filename='%s' 2>/dev/null > %s", buf, p);
-    } else if (access("/usr/bin/kdialog", X_OK) == 0) {
-        snprintf(cmd, sizeof cmd,
-                 "/usr/bin/kdialog --title 'Save WAD' --getsavefilename '%s' '*.wad' 2>/dev/null > %s", buf, p);
-    } else {
-        return NULL;
-    }
-    if (system(cmd) != 0) return NULL;
-    FILE* f = fopen(p, "r"); if (!f) return NULL;
-    if (!fgets(buf, sizeof buf, f)) { fclose(f); return NULL; }
-    fclose(f);
-    int n = (int)strlen(buf); while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r')) buf[--n] = 0;
-    return buf;
+    SDL_ShowOpenFileDialog(dialog_cb, (void*)(intptr_t)PENDING_OPEN, win,
+                           WAD_FILTERS, (int)(sizeof WAD_FILTERS / sizeof WAD_FILTERS[0]),
+                           NULL, false);
+    snprintf(status, sizeof status, "Choose a WAD to open...");
 }
-#endif
+
+static void save_dialog(void)
+{
+    SDL_ShowSaveFileDialog(dialog_cb, (void*)(intptr_t)PENDING_SAVE, win,
+                           WAD_FILTERS, (int)(sizeof WAD_FILTERS / sizeof WAD_FILTERS[0]),
+                           wad_path[0] ? wad_path : NULL);
+    snprintf(status, sizeof status, "Choose where to save...");
+}
 
 // ----------------------------------------------------------------- UI layout
 typedef struct {
@@ -816,30 +780,10 @@ static void click_value(float mx, float my)
 
 static void click_main(float mx, float my)
 {
-    if (hit(mx, my, btn.open)) {
-        const char* path =
-#ifdef _WIN32
-            win32_open_dialog();
-#else
-            xdg_open_dialog();
-#endif
-        if (path) load_wad(path);
-        else snprintf(status, sizeof status, "Open cancelled.");
-        return;
-    }
+    if (hit(mx, my, btn.open))   { open_dialog(); return; }
     if (hit(mx, my, btn.newwad)) { new_wad_session(); return; }
-    if (hit(mx, my, btn.save)) { save_wad(NULL); return; }
-    if (hit(mx, my, btn.saveas)) {
-        const char* path =
-#ifdef _WIN32
-            win32_save_dialog();
-#else
-            xdg_save_dialog();
-#endif
-        if (path) save_wad(path);
-        else snprintf(status, sizeof status, "Save cancelled.");
-        return;
-    }
+    if (hit(mx, my, btn.save))   { save_wad(NULL); return; }
+    if (hit(mx, my, btn.saveas)) { save_dialog(); return; }
     if (hit(mx, my, btn.quit)) { SDL_Event q = {.type = SDL_EVENT_QUIT}; SDL_PushEvent(&q); return; }
     if (hit(mx, my, btn.add)) {
         buddies = (buddydef_entry_t*)realloc(buddies, (n_buddies + 1) * sizeof *buddies);
@@ -961,6 +905,12 @@ int main(int argc, char** argv)
             }
             break;
         }
+
+        // Apply an async file-dialog result (stashed by dialog_cb).
+        if (pending_action == PENDING_OPEN)        { load_wad(pending_path); pending_action = PENDING_NONE; }
+        else if (pending_action == PENDING_SAVE)   { save_wad(pending_path); pending_action = PENDING_NONE; }
+        else if (pending_action == PENDING_CANCEL) { snprintf(status, sizeof status, "Dialog cancelled."); pending_action = PENDING_NONE; }
+
         draw();
     }
     free(buddies);

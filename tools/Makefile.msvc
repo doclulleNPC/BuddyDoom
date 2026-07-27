@@ -75,7 +75,7 @@ mybuddy.res: mybuddy.rc ..\buddydoom.ico
 
 mybuddy.exe: mybuddy.c buddydef_wad.c buddydef_parse.c mybuddy.res \
         font_atlas.h ..\files\buddydoom_icon.h buddydef_wad.h buddydef_parse.h
-	$(CC) $(CFLAGS) /Fe:mybuddy.exe mybuddy.c buddydef_wad.c buddydef_parse.c mybuddy.res $(LDFLAGS) $(LIBS) comdlg32.lib
+	$(CC) $(CFLAGS) /Fe:mybuddy.exe mybuddy.c buddydef_wad.c buddydef_parse.c mybuddy.res $(LDFLAGS) $(LIBS)
 	@if not exist ..\run mkdir ..\run
 	@copy /Y mybuddy.exe ..\run\mybuddy.exe >nul
 
