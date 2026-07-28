@@ -124,20 +124,23 @@ static void HU_Buddy_LoadFaces (void)
 {
     int  i, j, fn = 0, ok = 1;
     char nm[9];
+    // DOOM buddy = marine (BUF*, from buddydoom.wad).  Heretic buddy = Corvus (COR*,
+    // from corvusface.wad -- baked by tools/bake_corvusface.py).  Same 42-face layout.
+    const char* pfx = heretic_mode ? "COR" : "BUF";
     if (faces_tried) return;
     faces_tried = 1;
     for (i = 0; i < 5; i++)
     {
 	for (j = 0; j < 3; j++)
-	    { sprintf (nm, "BUFST%d%d", i, j); buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok); }
-	sprintf (nm, "BUFTR%d0", i);  buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // turn right
-	sprintf (nm, "BUFTL%d0", i);  buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // turn left
-	sprintf (nm, "BUFOUCH%d", i); buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // ouch
-	sprintf (nm, "BUFEVL%d", i);  buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // evil grin
-	sprintf (nm, "BUFKILL%d", i); buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // rampage
+	    { sprintf (nm, "%sST%d%d", pfx, i, j); buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok); }
+	sprintf (nm, "%sTR%d0", pfx, i);  buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // turn right
+	sprintf (nm, "%sTL%d0", pfx, i);  buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // turn left
+	sprintf (nm, "%sOUCH%d", pfx, i); buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // ouch
+	sprintf (nm, "%sEVL%d", pfx, i);  buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // evil grin
+	sprintf (nm, "%sKILL%d", pfx, i); buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);  // rampage
     }
-    buf_faces[fn++] = HU_Buddy_LoadFace ("BUFGOD0",  &ok);
-    buf_faces[fn++] = HU_Buddy_LoadFace ("BUFDEAD0", &ok);
+    sprintf (nm, "%sGOD0",  pfx); buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);
+    sprintf (nm, "%sDEAD0", pfx); buf_faces[fn++] = HU_Buddy_LoadFace (nm, &ok);
     faces_ok = ok;
 }
 

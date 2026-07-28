@@ -388,11 +388,51 @@ static boolean P_Director_IsLiquidOnly (mobjtype_t mt)
     return mt == MT_XSTALKER || mt == MT_XSTALKERBOSS;
 }
 
+// Native Heretic IWAD: the DOOM monster types the trash pool / specials / guards draw
+// from have NO sprites here, so they spawn INVISIBLE but solid (a blocker you can't see
+// or shoot cleanly).  Map every DOOM type to the closest Heretic monster by tier so the
+// director's spawns are always visible Heretic actors.  Types already Heretic (MT_H*),
+// the Lichling, etc. pass straight through.
+static mobjtype_t P_Director_HereticEquiv (mobjtype_t mt)
+{
+    switch (mt)
+    {
+      // trash / hitscan grunts -> golem
+      case MT_POSSESSED: case MT_SHOTGUY: case MT_CHAINGUY: case MT_KEEN:
+	return MT_HMUMMY;
+      // imp / lost soul -> gargoyle (flying imp)
+      case MT_TROOP: case MT_SKULL:
+	return MT_HIMP;
+      // pinky / spectre -> sabreclaw (fast melee)
+      case MT_SERGEANT: case MT_SHADOWS:
+	return MT_HCLINK;
+      // cacodemon / pain elemental -> ophidian (floating ranged)
+      case MT_HEAD: case MT_PAIN:
+	return MT_HSNAKE;
+      // revenant / mancubus / arachnotron / wolf-SS -> disciple of D'Sparil
+      case MT_UNDEAD: case MT_FATSO: case MT_BABY: case MT_WOLFSS:
+	return MT_HWIZARD;
+      // arch-vile -> weredragon (fire-thrower)
+      case MT_VILE:
+	return MT_HBEAST;
+      // hell knight / baron -> undead warrior (Heretic miniboss)
+      case MT_KNIGHT: case MT_BRUISER:
+	return MT_HKNIGHT;
+      // spider mastermind -> D'Sparil (top boss); cyberdemon -> maulotaur
+      case MT_SPIDER:  return MT_HDSPARIL;
+      case MT_CYBORG:  return MT_HMINOTAUR;
+      default:
+	return mt;		// already a Heretic / Lichling / native type
+    }
+}
+
 // DOOM2-only monsters have no sprites in a DOOM1 IWAD (-> renderer I_Error).  In
 // non-commercial gamemodes substitute a tough DOOM1 stand-in (baron); otherwise
 // pass the type through.  Guards BOTH the rule FSM and the LLM spawn path.
 static mobjtype_t P_Director_SafeType (mobjtype_t mt)
 {
+    if (heretic_mode) return P_Director_HereticEquiv (mt);	// native Heretic: no DOOM sprites
+
     // numframes>0, not a lump name -- see P_Director_Doom2Available (the mirror-lump trap).
     if (gamemode == commercial) return mt;		// native DOOM2 IWAD
     if (sprites && sprites[SPR_SKEL].numframes > 0) return mt;	// doom2stuff -> real types

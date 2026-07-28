@@ -149,3 +149,5 @@ run/smk.txt
 
 # Extracted Heretic Iron-Lich frames for bake_lichling.py (Raven assets -- do not redistribute)
 run/ID0/lich/
+# Corvus mugshot PNGs for bake_corvusface.py (Raven Heretic assets -- do not redistribute)
+run/ID0/FACE.FD/

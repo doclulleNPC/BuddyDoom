@@ -1470,11 +1470,24 @@ static void M_TileFlat (char* name)
     }
 }
 
+// Dim whatever is on screen to ~50% black (through colormap row 16 of 0..31), used as
+// the Buddy backdrop when the IWAD has no flat to tile (Heretic: no LAVA*, no FLOOR4_8).
+// Works on any IWAD -- colormaps[] is the loaded IWAD's own COLORMAP, so Heretic dims
+// correctly too.  No missing-lump error, no opaque flat.
+static void M_DimScreen50 (void)
+{
+    byte*		d  = screens[0];
+    const byte*		cm = (const byte*)colormaps + 16*256;
+    int			i, n = SCREENWIDTH * SCREENHEIGHT;
+    for (i = 0 ; i < n ; i++)
+	d[i] = cm[d[i]];
+}
+
 // The Buddy screen backdrop: the ANIMATED lava flat behind the buddy sprite.  The
 // engine's own flat animation (p_spec.c anims[]: LAVA1..LAVA4 at 8 tics a frame) only
 // runs while a level is ticking, and this screen is reachable from the title, so step
-// the frame off the wall clock here instead.  Falls back to the plain FLOOR4_8 when the
-// IWAD has no lava set (shareware / Heretic).
+// the frame off the wall clock here instead.  When the IWAD has neither a lava set nor
+// FLOOR4_8 (Heretic), skip the flat entirely and just dim to 50% black.
 static void M_TileLavaBackdrop (void)
 {
     static const char*	lava[4] = { "LAVA1", "LAVA2", "LAVA3", "LAVA4" };
@@ -1482,6 +1495,11 @@ static void M_TileLavaBackdrop (void)
 
     if (W_CheckNumForName ((char*)nm) < 0)
 	nm = "FLOOR4_8";
+    if (W_CheckNumForName ((char*)nm) < 0)	// no flat at all (Heretic) -> just dim
+    {
+	M_DimScreen50 ();
+	return;
+    }
     M_TileFlat ((char*)nm);
 }
 

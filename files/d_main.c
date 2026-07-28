@@ -1211,6 +1211,13 @@ void IdentifyVersion (void)
 	    D_AddFile ("lichling.wad");
 	    printf ("Heretic overlay: lichling.wad -> buddy Lichling special sprites\n");
 	}
+	// Heretic: auto-overlay corvusface.wad (the buddy HUD's Corvus mugshot, COR* lumps).
+	if (heretic_mode
+	    && (!access ("ID0/corvusface.wad", R_OK) || !access ("corvusface.wad", R_OK)))
+	{
+	    D_AddFile ("corvusface.wad");
+	    printf ("Heretic overlay: corvusface.wad -> buddy HUD Corvus face\n");
+	}
 	return;
     }
 
