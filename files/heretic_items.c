@@ -203,19 +203,23 @@ boolean P_TouchHereticItem (player_t* player, mobj_t* special)
       case MT_HWGAUNTLETS:  P_GiveWeapon (player, wp_chainsaw, false); player->message = "GOT THE GAUNTLETS";         return true;
       case MT_HWBLASTER:    P_GiveWeapon (player, wp_chaingun, false); player->message = "GOT THE DRAGON CLAW";       return true;
 
-      // ---- armor -> closest DOOM equivalent ----
+      // ---- armor -> closest DOOM equivalent (leave on the ground if it wouldn't
+      //      upgrade the player's armor, like Heretic/DOOM) ----
       case MT_HITEMSHIELD1:
-	P_GiveArmor (player, 1);
+	if (!P_GiveArmor (player, 1))
+	    return false;
 	player->message = "SILVER SHIELD";
 	return true;
       case MT_HITEMSHIELD2:
-	P_GiveArmor (player, 2);
+	if (!P_GiveArmor (player, 2))
+	    return false;
 	player->message = "ENCHANTED SHIELD";
 	return true;
 
-      // ---- health -> +10 HP (Crystal Vial) ----
+      // ---- health -> +10 HP (Crystal Vial); left on the ground at full health ----
       case MT_HCRYSTALVIAL:
-	P_GiveBody (player, 10);
+	if (!P_GiveBody (player, 10))
+	    return false;
 	player->message = "CRYSTAL VIAL";
 	return true;
 

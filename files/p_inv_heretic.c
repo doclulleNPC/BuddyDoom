@@ -336,8 +336,11 @@ boolean P_TouchHereticArtifact (player_t* player, mobj_t* special)
 	return false;				// not ours
     }
 
-    if (player->inventory[a] < MAXARTICOUNT)
-	player->inventory[a]++;
+    // (H) Artifact inventory of this type full -> leave it on the ground (crispy:
+    // P_GiveArtifact returns false, so P_TouchSpecialThing does NOT remove the item).
+    if (player->inventory[a] >= MAXARTICOUNT)
+	return false;
+    player->inventory[a]++;
     if (player->invslot == arti_none)
 	player->invslot = a;
     return true;

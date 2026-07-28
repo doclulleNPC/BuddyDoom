@@ -25,6 +25,7 @@
 #include "sounds.h"
 #include "w_wad.h"
 #include "p_mobj.h"
+#include "r_state.h"		// sprites[]/numsprites -- parsed-sprite presence test
 #include "heretic.h"
 
 #define ONFLOORZ	MININT		// from p_local.h (avoided: its p_spec.h open/close enums)
@@ -899,7 +900,11 @@ void Heretic_Init (void)
 // hereticstuff.wad sprites loaded?  (the mummy's first frame lump)
 int Heretic_Available (void)
 {
-    return W_CheckNumForName ("HMUMA1") >= 0;
+    // Test the PARSED sprite, not a lump name: the mummy's on-disk lump is the native
+    // MUMMA1 (H* are BuddyDoom's placeholder codes, remapped to native at load), so
+    // W_CheckNumForName("HMUMA1") was always -1 -> this returned false in heretic_mode.
+    // sprites[SPR_HMUM] is populated once R_InitSprites has parsed the remapped frames.
+    return numsprites > SPR_HMUM && sprites[SPR_HMUM].numframes > 0;
 }
 
 // Map a name to a Heretic mobjtype, or -1 if unknown (default "" -> mummy).
