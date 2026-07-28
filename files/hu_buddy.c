@@ -108,12 +108,21 @@ static int HU_Buddy_FaceRand (void)
 
 static patch_t* HU_Buddy_LoadFace (const char* name, int* ok)
 {
-    char nm[9];
-    int  l;
+    char	nm[9];
+    int		l;
+    patch_t*	p;
     strncpy (nm, name, 8); nm[8] = 0;
     l = W_CheckNumForName (nm);
     if (l < 0) { *ok = 0; return NULL; }
-    return (patch_t*) W_CacheLumpNum (l, PU_STATIC);
+    // The face lumps may be classic Doom patches OR true-colour PNGs (buddydoom.wad
+    // now ships them as PNG).  V_PNGLumpToPatch decodes a PNG lump into a PU_STATIC
+    // patch -- nearest-matched to the live palette (so it's correct in Heretic too),
+    // grAb offsets applied -- and returns NULL for a non-PNG lump, so fall back to the
+    // raw patch.  Either way V_DrawPatch draws the result unchanged.
+    p = V_PNGLumpToPatch (l);
+    if (!p)
+	p = (patch_t*) W_CacheLumpNum (l, PU_STATIC);
+    return p;
 }
 
 // (The down-state HUD shows a compass arrow in the mugshot slot -- see the
