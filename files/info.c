@@ -4875,7 +4875,7 @@ mobjinfo_t mobjinfo_builtin[NUMMOBJTYPES] = {
 	1000000,		// mass (effectively immovable -- no knockback when shot)
 	0,			// damage
 	sfx_None,		// activesound
-	MF_SOLID|MF_SHOOTABLE|MF_NOBLOOD|MF_DROPOFF,	// flags -- DROPOFF: thrown over ledges (p_turret.c)
+	MF_SOLID|MF_SHOOTABLE|MF_NOBLOOD,	// flags
 	S_NULL			// raisestate
     },
     [MT_SECDRONE] = {		// Security Drone -- buddy-spawned flying friendly laser drone

@@ -1188,7 +1188,9 @@ P_DamageMobj
 	// dead -> P_InventorySelfRevive).  Hint at it.
 	else if (target->player && P_AICoop_Active ()
 		 && (target->player->inventory[arti_medikit] > 0
-		     || target->player->inventory[arti_stimpack] > 0))
+		     || target->player->inventory[arti_stimpack] > 0
+		     || target->player->inventory[h_arti_flask] > 0	// (H) Quartz Flask
+		     || target->player->inventory[h_arti_urn] > 0))	// (H) Mystic Urn
 	    target->player->message = "USE a health item to patch yourself up!";
 	return;
     }

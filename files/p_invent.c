@@ -381,7 +381,9 @@ boolean P_InventorySelfRevive (player_t* player)
     int		heal;
     if (!mo) return false;
     if      (player->inventory[arti_medikit]  > 0) { player->inventory[arti_medikit]--;  heal = 25; }
+    else if (player->inventory[h_arti_flask]  > 0) { player->inventory[h_arti_flask]--;  heal = 25; }	// (H) Quartz Flask
     else if (player->inventory[arti_stimpack] > 0) { player->inventory[arti_stimpack]--; heal = 10; }
+    else if (player->inventory[h_arti_urn]    > 0) { player->inventory[h_arti_urn]--;    heal = 100; }	// (H) Mystic Urn
     else return false;
 
     mo->flags |=  (MF_SOLID | MF_SHOOTABLE);

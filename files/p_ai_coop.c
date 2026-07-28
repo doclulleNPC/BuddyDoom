@@ -1997,11 +1997,13 @@ boolean P_AICoop_RevivePress (player_t* presser)
     // value.  With neither in the inventory, the buddy can't be revived: say so and bail.
     artitype_t	cost;
     int		reviveHP;
-    if      (presser->inventory[arti_stimpack] > 0) { cost = arti_stimpack; reviveHP = 10; }
-    else if (presser->inventory[arti_medikit]  > 0) { cost = arti_medikit;  reviveHP = 25; }
+    if      (presser->inventory[arti_stimpack] > 0) { cost = arti_stimpack;  reviveHP = 10; }
+    else if (presser->inventory[h_arti_flask]  > 0) { cost = h_arti_flask;   reviveHP = 25; }	// (H) Quartz Flask
+    else if (presser->inventory[arti_medikit]  > 0) { cost = arti_medikit;   reviveHP = 25; }
+    else if (presser->inventory[h_arti_urn]    > 0) { cost = h_arti_urn;     reviveHP = 100; }	// (H) Mystic Urn
     else
     {
-	presser->message = "NEED A STIMPACK OR MEDIKIT TO REVIVE YOUR BUDDY";
+	presser->message = "NEED A HEALTH ITEM TO REVIVE YOUR BUDDY";
 	return false;
     }
     presser->inventory[cost]--;			// spend it

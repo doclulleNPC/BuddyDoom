@@ -82,50 +82,13 @@ static mobj_t* Turret_FindTarget (mobj_t* self)
 }
 
 //
-// Turret_Settle
-// The thrown turret flies FLAT and forward like the drone -- MF_NOGRAVITY so it doesn't
-// drop at a ledge (sails over the edge) and a low 16u collision profile so it fits through
-// window openings.  It keeps flying until it hits a wall (P_XYMovement zeroes its momentum)
-// or its flight time (reactiontime) runs out; then gravity is switched back on, and once
-// it lands on the floor it rises to full deployed height and plants.  Called from both
-// codepointers (idle S_TURRET_STND ticks every 10 tics, so the counters step by 10).
-//
-static void Turret_Settle (mobj_t* self)
-{
-    if (self->height == self->info->height)
-	return;					// already deployed -- nothing to do
-
-    if (self->flags & MF_NOGRAVITY)
-    {
-	// Still airborne: land it when it slams a wall (momentum spent) or the flight
-	// timer expires -- switch gravity back on so it drops to the floor.
-	self->reactiontime -= 10;
-	if (self->reactiontime <= 0 || (self->momx == 0 && self->momy == 0))
-	{
-	    self->flags &= ~MF_NOGRAVITY;
-	    self->momx = self->momy = 0;	// stop drifting while it settles
-	}
-	return;
-    }
-
-    // Dropping under gravity: on touchdown, rise to full height and plant it.
-    if (self->z <= self->floorz && self->momz <= 0)
-    {
-	self->height = self->info->height;	// deployed height restored
-	self->momz = 0;
-    }
-}
-
 // A_TurretLook
 // Idle codepointer: scan for a target; when found, latch it and switch to the
 // fire loop (info->missilestate).
 //
 void A_TurretLook (mobj_t* self)
 {
-    mobj_t*	targ;
-
-    Turret_Settle (self);
-    targ = Turret_FindTarget (self);
+    mobj_t*	targ = Turret_FindTarget (self);
 
     if (targ)
     {
@@ -146,8 +109,6 @@ void A_TurretFire (mobj_t* self)
     angle_t	angle;
     fixed_t	slope;
     int		damage;
-
-    Turret_Settle (self);
 
     // Still a valid target?  If not, try to re-acquire, else go back to looking.
     if (!targ || targ->health <= 0 || !(targ->flags & MF_SHOOTABLE)
@@ -222,10 +183,7 @@ const char* P_TurretDeploy (player_t* player)
     t = P_SpawnMobj (p->x, p->y, z, MT_TURRET);
     if (!t)
 	return "";
-    t->height       = 16*FRACUNIT;	// low profile: fits window openings (restored on land)
-    t->flags       |= MF_NOGRAVITY;	// fly FLAT and forward -- sails over ledges, no drop
-    t->reactiontime = 30;		// flight-time cap; Turret_Settle lands it (or a wall does)
-    {   // nudge to the spot in front; a solid WALL still stops it (windows/edges don't)
+    {   // nudge to the spot in front; if blocked by a wall it stays at the player's feet
 	extern boolean P_TryMove (mobj_t* thing, fixed_t x, fixed_t y);
 	P_TryMove (t, x, y);
     }
@@ -237,15 +195,13 @@ const char* P_TurretDeploy (player_t* player)
     t->angle  = ang;
     t->target = NULL;
 
-    // Throw it FLAT and fast in the facing direction (no gravity arc -- it flies straight
-    // like the drone until it hits a wall or the flight timer lands it).  Look up/down to
-    // aim it through a high/low opening.
+    // Toss it in the facing direction with a little arc; steeper if looking up.
     t->momx = FixedMul (TURRET_THROW, finecosine[fine]);
     t->momy = FixedMul (TURRET_THROW, finesine[fine]);
     ld = player->lookdir;
     if (ld >  90) ld =  90;
     if (ld < -90) ld = -90;
-    t->momz = ld * (FRACUNIT/12);	// level throw = flat flight; (void)TURRET_ARC now
+    t->momz = TURRET_ARC + ld * (FRACUNIT/12);
 
     S_StartSound (t, sfx_itemup);
     return "Turret deployed";

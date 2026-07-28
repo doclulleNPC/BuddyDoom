@@ -1874,7 +1874,7 @@ void M_QuitDOOM(int choice)
   { extern int heretic_mode;
     if (heretic_mode)
     {
-      sprintf (endstring, "ARE YOU SURE YOU WANT TO QUIT?\n\n"DOSY);
+      sprintf (endstring, "ARE YOU SURE YOU WANT TO QUIT?\n\npress any key.");
       M_StartMessage (endstring, M_QuitResponse, true);
       return;
     }

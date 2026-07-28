@@ -595,16 +595,13 @@ static void Buddy_DeployTurret (mobj_t* mo)
     t = P_SpawnMobj (mo->x, mo->y, z, MT_TURRET);
     if (!t)
 	return;
-    t->height       = 16*FRACUNIT;		// low profile: fits window openings (p_turret.c)
-    t->flags       |= MF_NOGRAVITY;		// fly FLAT and forward like the drone (over ledges)
-    t->reactiontime = 30;			// flight-time cap; Turret_Settle lands it
-    P_TryMove (t, x, y);			// a solid wall still stops it (windows/edges don't)
+    P_TryMove (t, x, y);			// blocked by a wall -> stays at the buddy's feet
 
     t->angle  = ang;
     t->target = NULL;
     t->momx   = FixedMul (BA_TURRET_THROW, finecosine[fine]);
     t->momy   = FixedMul (BA_TURRET_THROW, finesine[fine]);
-    t->momz   = 0;				// flat flight (no gravity arc)
+    t->momz   = BA_TURRET_ARC;
 
     S_StartSound (t, sfx_itemup);
     players[consoleplayer].message = "[Buddy] Turret deployed!";
