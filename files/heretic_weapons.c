@@ -160,6 +160,7 @@ void A_FireCrossbowPL1 (player_t* player, pspdef_t* psp)
 {
     mobj_t* mo = player->mo;
     player->ammo[weaponinfo[player->readyweapon].ammo]--;
+    S_StartSound (mo, sfx_hw_bowsht);
     H_SpawnPlayerMissile (mo, MT_HWP_CBOWFX1);
     H_SPMAngle (mo, MT_HWP_CBOWFX3, mo->angle - (ANG45 / 10), true);
     H_SPMAngle (mo, MT_HWP_CBOWFX3, mo->angle + (ANG45 / 10), true);
@@ -192,6 +193,7 @@ void A_FireSkullRodPL1 (player_t* player, pspdef_t* psp)
     if (player->ammo[weaponinfo[player->readyweapon].ammo] < 1)
 	return;
     player->ammo[weaponinfo[player->readyweapon].ammo]--;
+    S_StartSound (player->mo, sfx_hw_hrnsht);
     mo = H_SpawnPlayerMissile (player->mo, MT_HWP_HRODFX1);
     if (mo && P_Random() > 128)
 	P_SetMobjState (mo, S_HWP_HRODFX1_2);
@@ -208,6 +210,7 @@ void A_FirePhoenixPL1 (player_t* player, pspdef_t* psp)
 {
     angle_t angle;
     player->ammo[weaponinfo[player->readyweapon].ammo]--;
+    S_StartSound (player->mo, sfx_hw_phosht);
     H_SpawnPlayerMissile (player->mo, MT_HWP_PHNXFX1);
     angle = (player->mo->angle + ANG180) >> ANGLETOFINESHIFT;
     player->mo->momx += FixedMul (4 * FRACUNIT, finecosine[angle]);
@@ -222,6 +225,7 @@ void A_FireMacePL1 (player_t* player, pspdef_t* psp)
     if (player->ammo[weaponinfo[player->readyweapon].ammo] < 1)
 	return;
     player->ammo[weaponinfo[player->readyweapon].ammo]--;
+    S_StartSound (player->mo, sfx_hw_lobsht);
     psp->sx = ((P_Random() & 3) - 2) * FRACUNIT;
     psp->sy = WEAPONTOP + (P_Random() & 3) * FRACUNIT;
     H_SPMAngle (player->mo, MT_HWP_MACEFX1,
