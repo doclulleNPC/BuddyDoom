@@ -32,6 +32,18 @@ boolean Companion_AttackingHuman (mobj_t* m)
     return m->target != NULL && m->target->player != NULL;
 }
 
+boolean Companion_IsEnemy (mobj_t* m)
+{
+    if (m->player)			return false;	// human OR buddy
+    if (!(m->flags & MF_COUNTKILL) && m->info->seestate == S_NULL)
+					return false;	// inert decor / barrel
+    if (m->flags & MF_FRIEND)		return false;	// our allies
+    if (!(m->flags & MF_SHOOTABLE))	return false;
+    if (m->flags & MF_CORPSE)		return false;
+    if (m->health <= 0)			return false;
+    return true;
+}
+
 mobj_t* Companion_BestTarget (mobj_t* self, fixed_t range)
 {
     thinker_t*	th;
@@ -45,12 +57,7 @@ mobj_t* Companion_BestTarget (mobj_t* self, fixed_t range)
 	if (th->function.acp1 != (actionf_p1)P_MobjThinker)	continue;
 	m = (mobj_t*)th;
 	if (m == self)			continue;
-	if (m->player)			continue;	// never the human OR the buddy
-	if (!(m->flags & MF_COUNTKILL) && m->info->seestate == S_NULL)	continue;
-	if (m->flags & MF_FRIEND)	continue;	// not our allies
-	if (!(m->flags & MF_SHOOTABLE))	continue;
-	if (m->flags & MF_CORPSE)	continue;
-	if (m->health <= 0)		continue;
+	if (!Companion_IsEnemy (m))	continue;
 	d = P_AproxDistance (m->x - self->x, m->y - self->y);
 	if (d > range)			continue;
 	if (!P_CheckSight (self, m))	continue;
@@ -128,12 +135,7 @@ int Companion_CountThreats (mobj_t* origin, fixed_t range)
 	mobj_t*	m;
 	if (th->function.acp1 != (actionf_p1)P_MobjThinker)	continue;
 	m = (mobj_t*)th;
-	if (m->player)			continue;
-	if (!(m->flags & MF_COUNTKILL) && m->info->seestate == S_NULL)	continue;
-	if (m->flags & MF_FRIEND)	continue;
-	if (!(m->flags & MF_SHOOTABLE))	continue;
-	if (m->flags & MF_CORPSE)	continue;
-	if (m->health <= 0)		continue;
+	if (!Companion_IsEnemy (m))	continue;
 	if (!Companion_AttackingHuman (m))	continue;
 	if (P_AproxDistance (m->x - origin->x, m->y - origin->y) > range)	continue;
 	if (!P_CheckSight (origin, m))	continue;

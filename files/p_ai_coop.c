@@ -30,6 +30,7 @@
 #include "d_items.h"
 #include "p_invent.h"		// inventory: spend a stimpack/medikit to revive
 #include "p_secdrone.h"		// P_AICoop_MaybeSpawnDrone (deploy a friendly Security Drone)
+#include "p_companion.h"		// Companion_IsEnemy -- the shared enemy-filter predicate
 #include "revmarine.h"		// RevMarine_BuddyTryRevive (buddy revives a dead marine)
 #include "m_argv.h"
 #include "p_local.h"
@@ -629,12 +630,7 @@ static mobj_t* AICoop_FindTarget (mobj_t* self)
 	m = (mobj_t*)th;
 
 	if (m == self)			continue;
-	if (m->type == MT_PLAYER)	continue;	// never target a human
-	if (m->flags & MF_FRIEND)	continue;	// never target an ally (revived marine / summonfriend)
-	if (!(m->flags & MF_COUNTKILL) && m->info->seestate == S_NULL)	continue;	// monsters incl. lost souls (skip barrels/deco)
-	if (!(m->flags & MF_SHOOTABLE))	continue;
-	if (m->flags & MF_CORPSE)	continue;
-	if (m->health <= 0)		continue;
+	if (!Companion_IsEnemy (m))	continue;	// shared filter: live shootable non-friendly monster
 	if (AICoop_IsBlacklisted (m))	continue;	// shots weren't connecting -> skip it
 
 	d = P_AproxDistance (m->x - self->x, m->y - self->y);
@@ -663,12 +659,7 @@ static mobj_t* AICoop_NearestMonsterTo (fixed_t x, fixed_t y)
 	    continue;
 	m = (mobj_t*)th;
 
-	if (m->type == MT_PLAYER)	continue;
-	if (m->flags & MF_FRIEND)	continue;	// never target an ally (revived marine / summonfriend)
-	if (!(m->flags & MF_COUNTKILL) && m->info->seestate == S_NULL)	continue;	// monsters incl. lost souls
-	if (!(m->flags & MF_SHOOTABLE))	continue;
-	if (m->flags & MF_CORPSE)	continue;
-	if (m->health <= 0)		continue;
+	if (!Companion_IsEnemy (m))	continue;	// shared filter: live shootable non-friendly monster
 
 	d = P_AproxDistance (m->x - x, m->y - y);
 	if (!best || d < bestd) { best = m; bestd = d; }

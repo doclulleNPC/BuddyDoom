@@ -28,6 +28,12 @@
 // A monster is "attacking a human" when its target is a player mobj (player OR buddy).
 boolean	Companion_AttackingHuman (mobj_t* m);
 
+// True for a live, shootable, non-friendly MONSTER worth engaging: skips players
+// (human + buddy), our allies (MF_FRIEND), corpses, dead things, and inert decor /
+// barrels (no MF_COUNTKILL and no see-state).  The one shared enemy filter used by
+// every companion/buddy target scan (callers still add self/range/sight/blacklist).
+boolean	Companion_IsEnemy (mobj_t* m);
+
 // Nearest live, shootable, visible non-friendly monster within `range` (all around).
 // Priority: whoever is shooting a human; else the nearest enemy.
 mobj_t*	Companion_BestTarget (mobj_t* self, fixed_t range);
