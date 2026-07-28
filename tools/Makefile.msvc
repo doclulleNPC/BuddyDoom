@@ -73,9 +73,11 @@ extractor.exe: extractor.c extractor.res font_atlas.h ..\files\buddydoom_icon.h
 mybuddy.res: mybuddy.rc ..\buddydoom.ico
 	rc /nologo /fo mybuddy.res mybuddy.rc
 
-mybuddy.exe: mybuddy.cpp buddydef_wad.cpp buddydef_parse.cpp mybuddy.res \
+# stb_vorbis.c (the engine's OGG decoder) is added for the sound preview.  It is a C
+# file, so cl compiles it as C by extension even alongside the /std:c++17 .cpp units.
+mybuddy.exe: mybuddy.cpp buddydef_wad.cpp buddydef_parse.cpp ..\files\stb_vorbis.c mybuddy.res \
         font_atlas.h ..\files\buddydoom_icon.h buddydef_wad.hpp buddydef_parse.hpp
-	$(CC) $(CFLAGS) /std:c++17 /EHsc /Fe:mybuddy.exe mybuddy.cpp buddydef_wad.cpp buddydef_parse.cpp mybuddy.res $(LDFLAGS) $(LIBS)
+	$(CC) $(CFLAGS) /std:c++17 /EHsc /Fe:mybuddy.exe mybuddy.cpp buddydef_wad.cpp buddydef_parse.cpp ..\files\stb_vorbis.c mybuddy.res $(LDFLAGS) $(LIBS)
 	@if not exist ..\run mkdir ..\run
 	@copy /Y mybuddy.exe ..\run\mybuddy.exe >nul
 

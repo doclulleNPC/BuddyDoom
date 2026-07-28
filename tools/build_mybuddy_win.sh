@@ -18,10 +18,12 @@ command -v "$CXX" >/dev/null 2>&1 || { echo "[build] $CXX not found" >&2; exit 1
 
 # -mwindows: GUI subsystem (no console window). SDL_MAIN_HANDLED: we own main().
 # File dialogs are SDL3's native SDL_ShowOpen/SaveFileDialog -- no comdlg32 needed.
+# stb_vorbis.c (OGG decode for the sound preview) is compiled as C via -x c ... -x none.
 "$CXX" -O2 -DSDL_MAIN_HANDLED -I"$here" -I"$here/.." -I"$SDL3/include" \
     "$here/mybuddy.cpp" \
     "$here/buddydef_wad.cpp" \
     "$here/buddydef_parse.cpp" \
+    -x c "$here/../files/stb_vorbis.c" -x none \
     -L"$SDL3/lib" -lSDL3 -mwindows -static-libgcc \
     -o "$here/mybuddy.exe"
 
