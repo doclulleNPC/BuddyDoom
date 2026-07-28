@@ -164,7 +164,7 @@ void A_Chase();
 void A_FaceTarget();
 void A_TurretLook();		// files/p_turret.c -- deployable sentry turret
 void A_TurretFire();
-void A_SecDroneLook();		// files/p_secdrone.c -- Security Drone (aggressive AI)
+void A_CompanionLook();		// files/p_companion.c -- shared buddy-special idle scan/roam
 void A_SecDroneChase();
 void A_SecDroneShot();		// Security Drone laser
 void A_SecDroneCharge();	// Security Drone lost-soul-style ram (initiate)
@@ -1202,7 +1202,7 @@ state_t	states_builtin[NUMSTATES] = {
     // Security Drone (files/p_secdrone.c).  MNDR frames: A=0 idle/chase, B=1 firing (bright),
     // C..H death.  Laser shot uses SHT1 A/B (flight) + POW1 F..J (impact).  A ZDoom->vanilla
     // port of SecurityDrone.pk3: laser volley of 3 shots, no charge/gib/trail codepointers.
-    [S_SECDR_STND] = {SPR_MNDR,0,      2,{A_SecDroneLook}, S_SECDR_STND, 0,0},	// fast tic: responsive idle roam/scan
+    [S_SECDR_STND] = {SPR_MNDR,0,      2,{A_CompanionLook}, S_SECDR_STND, 0,0},	// fast tic: responsive idle roam/scan (shared)
     [S_SECDR_RUN1] = {SPR_MNDR,0,      2,{A_SecDroneChase},S_SECDR_RUN1, 0,0},
     [S_SECDR_ATK1] = {SPR_MNDR,0,      4,{A_FaceTarget},  S_SECDR_ATK2, 0,0},
     [S_SECDR_ATK2] = {SPR_MNDR,32769,  3,{A_SecDroneShot},S_SECDR_ATK3, 0,0},

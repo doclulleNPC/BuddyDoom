@@ -20,8 +20,8 @@
 #include "p_mobj.h"
 #include "d_player.h"
 
-// Actor codepointers (referenced by the MT_SECDRONE states in info.c).
-void A_SecDroneLook  (mobj_t* self);	// idle: acquire the best target ALL AROUND
+// Actor codepointers (referenced by the MT_SECDRONE states in info.c).  The idle
+// scan/roam is now the shared A_CompanionLook (files/p_companion.c).
 void A_SecDroneChase (mobj_t* self);	// engage: charge / fire / close in on the target
 void A_SecDroneShot  (mobj_t* self);	// fire one laser (MT_SECDRONESHOT) at the target
 void A_SecDroneCharge     (mobj_t* self);	// lost-soul-style ram (initiate the charge)
