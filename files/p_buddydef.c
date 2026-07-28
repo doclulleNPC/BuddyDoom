@@ -595,7 +595,8 @@ static void Buddy_DeployTurret (mobj_t* mo)
     t = P_SpawnMobj (mo->x, mo->y, z, MT_TURRET);
     if (!t)
 	return;
-    P_TryMove (t, x, y);			// blocked by a wall -> stays at the buddy's feet
+    t->height = 16*FRACUNIT;			// low flight profile (clears ledges/windows; p_turret.c)
+    P_TryMove (t, x, y);			// a solid wall still stops it (windows/edges don't)
 
     t->angle  = ang;
     t->target = NULL;

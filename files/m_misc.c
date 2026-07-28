@@ -335,7 +335,7 @@ default_t	defaults[] =
     {"render_backend",&render_backend, 0},
     {"aspect",&aspect, 0},			// default 4:3 (0=4:3, 1=16:9, 2=16:10)
 
-    {"snd_channels",&numChannels, 16},		// simultaneous SFX voices (was the 1993 default of 3,
+    {"snd_channels",&numChannels, 32},		// simultaneous SFX voices (was the 1993 default of 3,
 						// which dropped the player's weapon sound under any load)
 
 

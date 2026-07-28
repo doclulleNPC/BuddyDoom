@@ -41,7 +41,7 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 
 #include "doomdef.h"
 
-#define NUM_CHANNELS		16	// physical mixer voices (was 8).  Must be >= snd_channels
+#define NUM_CHANNELS		32	// physical mixer voices (Woof-style headroom).  Must be >= snd_channels
 					// (m_misc.c default 16) or the player's weapon SFX get
 					// evicted when monsters/buddy saturate the channels.
 

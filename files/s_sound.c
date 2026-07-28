@@ -875,32 +875,6 @@ S_AdjustSoundParams
 //
 // S_getChannel :
 //   If none available, return -1.  Otherwise channel #.
-//
-// Weapon-fire and item-pickup SFX.  These get a dedicated channel (see S_getChannel)
-// so a firefight full of monster/buddy sounds can never starve them -- the reported
-// "weapon sounds don't always play".  (All originate from the local player, so they're
-// naturally one-at-a-time, which is exactly what a single reserved channel serves.)
-static boolean S_IsReservedSound (int id)
-{
-    // (H) The whole Heretic weapon fire/hit/pickup block (sfx_hw_*) is reserved too,
-    // or the player's weapon SFX get denied a channel and go silent when monsters +
-    // the buddy saturate the general channels in a busy Heretic fight.
-    if (id >= sfx_hw_gldhit && id <= sfx_hw_wpnup)
-	return true;
-
-    switch (id)
-    {
-      case sfx_pistol: case sfx_shotgn: case sfx_sgcock: case sfx_dshtgn:
-      case sfx_dbopn:  case sfx_dbcls:  case sfx_dbload: case sfx_plasma:
-      case sfx_bfg:    case sfx_sawup:  case sfx_sawidl: case sfx_sawful:
-      case sfx_sawhit: case sfx_rlaunc: case sfx_punch:		// weapon fire
-      case sfx_itemup: case sfx_wpnup:  case sfx_getpow:	// pickups
-	return true;
-      default:
-	return false;
-    }
-}
-
 int
 S_getChannel
 ( void*		origin,
@@ -912,24 +886,11 @@ S_getChannel
 
     channel_t*	c;
 
-    // The LAST channel is reserved exclusively for weapon/pickup SFX.  A weapon or
-    // pickup sound always gets it (evicting a previous one -- they're one-at-a-time
-    // from the player anyway), and no other sound may ever occupy it, so those SFX
-    // can never be dropped no matter how many monster sounds are playing.
-    int		reserved_ch = (numChannels >= 2) ? numChannels - 1 : -1;
-    if (reserved_ch >= 0 && S_IsReservedSound ((int)(sfxinfo - S_sfx)))
-    {
-	c = &channels[reserved_ch];
-	if (c->sfxinfo)
-	    S_StopChannel (reserved_ch);
-	c->sfxinfo = sfxinfo;
-	c->origin  = origin;
-	return reserved_ch;
-    }
-
-    // Everything else competes only over the GENERAL channels [0 .. reserved_ch),
-    // never the reserved one.
-    maxch = (reserved_ch >= 0) ? reserved_ch : numChannels;
+    // No channel is reserved (the old single "weapon channel" actually STARVED weapon
+    // SFX -- one at a time).  Woof-style: every sound competes over ALL channels,
+    // stealing the channel already used by the same origin, else evicting a
+    // lower-priority sound.  With a healthy snd_channels count weapon SFX aren't dropped.
+    maxch = numChannels;
 
     // Find an open channel
     for (cnum=0 ; cnum<maxch ; cnum++)

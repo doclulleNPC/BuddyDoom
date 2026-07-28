@@ -82,13 +82,32 @@ static mobj_t* Turret_FindTarget (mobj_t* self)
 }
 
 //
+// Turret_Settle
+// While thrown, the turret flies at a low collision profile (16u) so it clears ledges
+// (MF_DROPOFF) and passes through window openings that its full 40u height wouldn't fit.
+// Once it settles on the floor it rises to full deployed height and plants where it
+// landed.  Called from both codepointers so it lands whether looking or firing.
+//
+static void Turret_Settle (mobj_t* self)
+{
+    if (self->height < self->info->height
+	&& self->z <= self->floorz && self->momz <= 0)
+    {
+	self->height = self->info->height;	// deployed height restored
+	self->momx = self->momy = 0;		// plant it where it landed
+    }
+}
+
 // A_TurretLook
 // Idle codepointer: scan for a target; when found, latch it and switch to the
 // fire loop (info->missilestate).
 //
 void A_TurretLook (mobj_t* self)
 {
-    mobj_t*	targ = Turret_FindTarget (self);
+    mobj_t*	targ;
+
+    Turret_Settle (self);
+    targ = Turret_FindTarget (self);
 
     if (targ)
     {
@@ -109,6 +128,8 @@ void A_TurretFire (mobj_t* self)
     angle_t	angle;
     fixed_t	slope;
     int		damage;
+
+    Turret_Settle (self);
 
     // Still a valid target?  If not, try to re-acquire, else go back to looking.
     if (!targ || targ->health <= 0 || !(targ->flags & MF_SHOOTABLE)
@@ -183,7 +204,9 @@ const char* P_TurretDeploy (player_t* player)
     t = P_SpawnMobj (p->x, p->y, z, MT_TURRET);
     if (!t)
 	return "";
-    {   // nudge to the spot in front; if blocked by a wall it stays at the player's feet
+    t->height = 16*FRACUNIT;	// low flight profile: clears ledges + fits window openings
+				// (restored to full height on landing -- Turret_Settle)
+    {   // nudge to the spot in front; a solid WALL still stops it (windows/edges don't)
 	extern boolean P_TryMove (mobj_t* thing, fixed_t x, fixed_t y);
 	P_TryMove (t, x, y);
     }
