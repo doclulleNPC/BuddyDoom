@@ -806,7 +806,21 @@ P_TouchSpecialThing
 	break;
 		
       default:
-	I_Error ("P_SpecialThing: Unknown gettable thing");
+	// An unhandled pickup used to HARD-CRASH here.  Vanilla DOOM has a case for
+	// every gettable sprite, but a Heretic/other-game or modded map-placed item can
+	// reach this default (no Heretic handler + no DOOM sprite case).  Never die on a
+	// pickup: leave it on the ground (don't remove it) and warn once so it's
+	// debuggable.  Returning here skips the P_RemoveMobj/sound below.
+	{
+	    static boolean warned;
+	    if (!warned)
+	    {
+		fprintf (stderr, "P_TouchSpecialThing: unhandled pickup left on the "
+			 "ground (sprite %d, mobjtype %d)\n", special->sprite, special->type);
+		warned = true;
+	    }
+	    return;
+	}
     }
 	
     if (special->flags & MF_COUNTITEM)
