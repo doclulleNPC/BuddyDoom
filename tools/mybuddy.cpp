@@ -60,7 +60,7 @@ enum {
     WINW      = 1280,
     WINH      = 800,
     HEADER_H  = 36,
-    FOOTER_H  = 56,     // two rows: a full-width status line above the button row
+    FOOTER_H  = 36,     // one row: status line on the left, Quit on the right
     LIST_W    = 300,
     PAD       = 14,
     ROWH      = 26,
@@ -1024,17 +1024,15 @@ static bool     file_menu_open = false;              // the File v dropdown is s
 
 static void recompute_layout()
 {
-    // Footer: the status line gets its own full-width row (WINH-FOOTER_H+6); the buttons
-    // sit on the row below it so the status text is never drawn under a button.
-    const float fy = WINH - 30;
-    btn.file = { PAD,             fy, 110, 26 };
-    btn.quit = { WINW - PAD - 90, fy,  90, 26 };
-    // File-menu items pop UP from the File button (footer is at the window bottom).
+    // File dropdown lives in the top bar (where menus belong) and drops DOWN; Quit sits
+    // alone at the bottom-right, the status line fills the rest of the footer row.
+    btn.file = { PAD, 5, 100, 26 };
     const float mw = 150, ih = 26;
-    btn.mi_open   = { PAD, fy - 4 * ih, mw, ih };
-    btn.mi_new    = { PAD, fy - 3 * ih, mw, ih };
-    btn.mi_save   = { PAD, fy - 2 * ih, mw, ih };
-    btn.mi_saveas = { PAD, fy - 1 * ih, mw, ih };
+    btn.mi_open   = { PAD, HEADER_H + 0 * ih, mw, ih };
+    btn.mi_new    = { PAD, HEADER_H + 1 * ih, mw, ih };
+    btn.mi_save   = { PAD, HEADER_H + 2 * ih, mw, ih };
+    btn.mi_saveas = { PAD, HEADER_H + 3 * ih, mw, ih };
+    btn.quit = { WINW - PAD - 90, WINH - 31, 90, 26 };
 
     btn.add = { PAD,       BUDBTN_Y, 60,  BUDBTN_H };
     btn.del = { PAD + 70,  BUDBTN_Y, 80,  BUDBTN_H };
@@ -1064,7 +1062,9 @@ static void recompute_layout()
 static void draw_header()
 {
     rect(0, 0, WINW, HEADER_H, 32, 32, 40);
-    text(PAD, 10, "MyBuddy - BUDDYDEF Editor", 220, 220, 240);
+    // File dropdown button (top-left, menu-bar style); the title is in the window title.
+    rect(btn.file.x, btn.file.y, btn.file.w, btn.file.h, file_menu_open ? 70 : 50, 80, 110);
+    text(btn.file.x + 14, btn.file.y + 6, "File  v", 230, 240, 255);
     const std::string right = (wad_path.empty() ? "(unsaved)" : wad_path)
                             + (wad_modified ? " *" : "")
                             + "   " + std::to_string(buddies.size()) + " buddy(ies)";
@@ -1340,36 +1340,37 @@ static void draw_footer()
 {
     rect(0, WINH - FOOTER_H, WINW, FOOTER_H, 32, 32, 40);
     rect(0, WINH - FOOTER_H, WINW, 1, 60, 60, 80);
-    // Status / rename prompt on its own full-width row, above the button row.
-    if (mode == Mode::RenameLump)
-        text(PAD, WINH - FOOTER_H + 6, "Rename lump: " + editbuf + "_", 255, 235, 160,
-             WINW - 2 * PAD);
-    else if (!status.empty())
-        text(PAD, WINH - FOOTER_H + 6, status, 200, 220, 200, WINW - 2 * PAD);
-
-    rect(btn.file.x, btn.file.y, btn.file.w, btn.file.h, file_menu_open ? 70 : 50, 80, 110);
-    text(btn.file.x + 18, btn.file.y + 6, "File  v", 230, 240, 255);
     rect(btn.quit.x, btn.quit.y, btn.quit.w, btn.quit.h, 110, 50, 50);
     text(btn.quit.x + 28, btn.quit.y + 6, "Quit", 255, 230, 230);
 
-    // File dropdown, drawn last (after every panel) so it overlays them.
-    if (file_menu_open) {
-        float hx = 0, hy = 0;
-        mouse_logical(&hx, &hy);
-        struct Item { const SDL_FRect& r; const char* label; };
-        const Item items[4] = {
-            { btn.mi_open,   "Open WAD..." },
-            { btn.mi_new,    "New WAD" },
-            { btn.mi_save,   "Save" },
-            { btn.mi_saveas, "Save As..." },
-        };
-        const SDL_FRect& top = btn.mi_open;
-        rect(top.x, top.y, top.w, 4 * top.h, 30, 34, 44);              // menu background
-        rect_outline(top.x, top.y, top.w, 4 * top.h, 90, 110, 150);
-        for (const Item& it : items) {
-            if (hit(hx, hy, it.r)) rect(it.r.x, it.r.y, it.r.w, it.r.h, 55, 75, 110);
-            text(it.r.x + 10, it.r.y + 6, it.label, 225, 235, 245);
-        }
+    // Status / rename prompt on the left of the same row, clipped before the Quit button.
+    const float smaxw = btn.quit.x - PAD - 8;
+    if (mode == Mode::RenameLump)
+        text(PAD, WINH - FOOTER_H + 10, "Rename lump: " + editbuf + "_", 255, 235, 160, smaxw);
+    else if (!status.empty())
+        text(PAD, WINH - FOOTER_H + 10, status, 200, 220, 200, smaxw);
+}
+
+// The File dropdown, drawn last of all (after every panel) so it overlays them.  It hangs
+// DOWN from the File button in the top bar.
+static void draw_file_menu()
+{
+    if (!file_menu_open) return;
+    float hx = 0, hy = 0;
+    mouse_logical(&hx, &hy);
+    struct Item { const SDL_FRect& r; const char* label; };
+    const Item items[4] = {
+        { btn.mi_open,   "Open WAD..." },
+        { btn.mi_new,    "New WAD" },
+        { btn.mi_save,   "Save" },
+        { btn.mi_saveas, "Save As..." },
+    };
+    const SDL_FRect& top = btn.mi_open;
+    rect(top.x, top.y, top.w, 4 * top.h, 30, 34, 44);              // menu background
+    rect_outline(top.x, top.y, top.w, 4 * top.h, 90, 110, 150);
+    for (const Item& it : items) {
+        if (hit(hx, hy, it.r)) rect(it.r.x, it.r.y, it.r.w, it.r.h, 55, 75, 110);
+        text(it.r.x + 10, it.r.y + 6, it.label, 225, 235, 245);
     }
 }
 
@@ -1384,6 +1385,7 @@ static void draw()
     draw_editor();
     draw_preview();
     draw_footer();
+    draw_file_menu();       // on top of everything
     SDL_RenderPresent(ren);
 }
 
@@ -1708,7 +1710,7 @@ int main(int argc, char** argv)
         return 1;
     }
     SDL_InitSubSystem(SDL_INIT_AUDIO);      // sound preview -- optional, ignore failure
-    win = SDL_CreateWindow("MyBuddy - BUDDYDEF Editor", WINW, WINH, SDL_WINDOW_RESIZABLE);
+    win = SDL_CreateWindow("BUDDY Editor", WINW, WINH, SDL_WINDOW_RESIZABLE);
     if (!win) { printf("SDL_CreateWindow: %s\n", SDL_GetError()); return 1; }
     {
         SDL_Surface* icon = SDL_CreateSurfaceFrom(BUDDYDOOM_ICON_W, BUDDYDOOM_ICON_H,
