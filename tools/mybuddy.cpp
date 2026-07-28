@@ -1010,7 +1010,8 @@ static void delete_lump()
 
 // ----------------------------------------------------------------- UI layout
 struct Buttons {
-    SDL_FRect open, newwad, save, saveas, quit;
+    SDL_FRect file, quit;                            // footer: File v dropdown + Quit
+    SDL_FRect mi_open, mi_new, mi_save, mi_saveas;   // File-menu items (drawn when open)
     SDL_FRect add, del, dup;
     SDL_FRect marine;                   // seed the stat rows from the built-in Marine
     SDL_FRect imp, exp, ren, dell;      // lump-level WAD editing
@@ -1019,17 +1020,21 @@ struct Buttons {
     SDL_FRect play;                     // sprite preview: animate on/off
 };
 static Buttons btn;
+static bool     file_menu_open = false;              // the File v dropdown is showing
 
 static void recompute_layout()
 {
     // Footer: the status line gets its own full-width row (WINH-FOOTER_H+6); the buttons
     // sit on the row below it so the status text is never drawn under a button.
     const float fy = WINH - 30;
-    btn.open   = { PAD,              fy, 110, 26 };
-    btn.newwad = { PAD + 120,        fy, 110, 26 };
-    btn.save   = { WINW - PAD - 320, fy, 100, 26 };
-    btn.saveas = { WINW - PAD - 210, fy, 110, 26 };
-    btn.quit   = { WINW - PAD - 90,  fy,  90, 26 };
+    btn.file = { PAD,             fy, 110, 26 };
+    btn.quit = { WINW - PAD - 90, fy,  90, 26 };
+    // File-menu items pop UP from the File button (footer is at the window bottom).
+    const float mw = 150, ih = 26;
+    btn.mi_open   = { PAD, fy - 4 * ih, mw, ih };
+    btn.mi_new    = { PAD, fy - 3 * ih, mw, ih };
+    btn.mi_save   = { PAD, fy - 2 * ih, mw, ih };
+    btn.mi_saveas = { PAD, fy - 1 * ih, mw, ih };
 
     btn.add = { PAD,       BUDBTN_Y, 60,  BUDBTN_H };
     btn.del = { PAD + 70,  BUDBTN_Y, 80,  BUDBTN_H };
@@ -1207,6 +1212,7 @@ static void draw_sprite_preview()
 
 static int field_at(float mx, float my);
 static void mouse_logical(float* mx, float* my);
+static bool hit(float mx, float my, const SDL_FRect& r);
 
 static void draw_editor()
 {
@@ -1341,16 +1347,30 @@ static void draw_footer()
     else if (!status.empty())
         text(PAD, WINH - FOOTER_H + 6, status, 200, 220, 200, WINW - 2 * PAD);
 
-    rect(btn.open.x, btn.open.y, btn.open.w, btn.open.h, 50, 80, 110);
-    text(btn.open.x + 18, btn.open.y + 6, "Open WAD", 230, 240, 255);
-    rect(btn.newwad.x, btn.newwad.y, btn.newwad.w, btn.newwad.h, 80, 80, 110);
-    text(btn.newwad.x + 12, btn.newwad.y + 6, "New WAD", 230, 240, 255);
-    rect(btn.save.x, btn.save.y, btn.save.w, btn.save.h, 50, 110, 50);
-    text(btn.save.x + 28, btn.save.y + 6, "Save", 230, 255, 230);
-    rect(btn.saveas.x, btn.saveas.y, btn.saveas.w, btn.saveas.h, 70, 110, 50);
-    text(btn.saveas.x + 14, btn.saveas.y + 6, "Save As", 230, 255, 230);
+    rect(btn.file.x, btn.file.y, btn.file.w, btn.file.h, file_menu_open ? 70 : 50, 80, 110);
+    text(btn.file.x + 18, btn.file.y + 6, "File  v", 230, 240, 255);
     rect(btn.quit.x, btn.quit.y, btn.quit.w, btn.quit.h, 110, 50, 50);
     text(btn.quit.x + 28, btn.quit.y + 6, "Quit", 255, 230, 230);
+
+    // File dropdown, drawn last (after every panel) so it overlays them.
+    if (file_menu_open) {
+        float hx = 0, hy = 0;
+        mouse_logical(&hx, &hy);
+        struct Item { const SDL_FRect& r; const char* label; };
+        const Item items[4] = {
+            { btn.mi_open,   "Open WAD..." },
+            { btn.mi_new,    "New WAD" },
+            { btn.mi_save,   "Save" },
+            { btn.mi_saveas, "Save As..." },
+        };
+        const SDL_FRect& top = btn.mi_open;
+        rect(top.x, top.y, top.w, 4 * top.h, 30, 34, 44);              // menu background
+        rect_outline(top.x, top.y, top.w, 4 * top.h, 90, 110, 150);
+        for (const Item& it : items) {
+            if (hit(hx, hy, it.r)) rect(it.r.x, it.r.y, it.r.w, it.r.h, 55, 75, 110);
+            text(it.r.x + 10, it.r.y + 6, it.label, 225, 235, 245);
+        }
+    }
 }
 
 static void draw()
@@ -1539,11 +1559,18 @@ static void click_value(float mx, float my)
 
 static void click_main(float mx, float my)
 {
-    if (hit(mx, my, btn.open))   { open_dialog(); return; }
-    if (hit(mx, my, btn.newwad)) { new_wad_session(); return; }
-    if (hit(mx, my, btn.save))   { save_wad(""); return; }
-    if (hit(mx, my, btn.saveas)) { save_dialog(); return; }
-    if (hit(mx, my, btn.quit))   { SDL_Event q = {}; q.type = SDL_EVENT_QUIT; SDL_PushEvent(&q); return; }
+    // File dropdown: while open it captures the next click (an item runs its action,
+    // anything else just closes it).
+    if (file_menu_open) {
+        if      (hit(mx, my, btn.mi_open))   { file_menu_open = false; open_dialog(); }
+        else if (hit(mx, my, btn.mi_new))    { file_menu_open = false; new_wad_session(); }
+        else if (hit(mx, my, btn.mi_save))   { file_menu_open = false; save_wad(""); }
+        else if (hit(mx, my, btn.mi_saveas)) { file_menu_open = false; save_dialog(); }
+        else                                 { file_menu_open = false; }
+        return;
+    }
+    if (hit(mx, my, btn.file)) { file_menu_open = true; return; }
+    if (hit(mx, my, btn.quit)) { SDL_Event q = {}; q.type = SDL_EVENT_QUIT; SDL_PushEvent(&q); return; }
 
     if (hit(mx, my, btn.add)) {
         push_undo();
@@ -1773,7 +1800,7 @@ int main(int argc, char** argv)
                 else if (e.key.key == SDLK_RETURN) commit_edit_text();
                 else if (e.key.key == SDLK_ESCAPE) cancel_edit();
             } else {
-                if (e.key.key == SDLK_ESCAPE) run = false;
+                if (e.key.key == SDLK_ESCAPE) { if (file_menu_open) file_menu_open = false; else run = false; }
                 else if (e.key.key == SDLK_S && (e.key.mod & SDL_KMOD_CTRL)) save_wad("");
                 else if (e.key.key == SDLK_O && (e.key.mod & SDL_KMOD_CTRL)) open_dialog();
                 else if (e.key.key == SDLK_Z && (e.key.mod & SDL_KMOD_CTRL) && (e.key.mod & SDL_KMOD_SHIFT)) do_redo();
