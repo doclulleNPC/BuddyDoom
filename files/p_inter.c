@@ -1005,6 +1005,14 @@ P_DamageMobj
     if (target->health <= 0)
 	return;
 
+    // (H) The Maulotaur is invulnerable while charging (MF_SKULLFLY): you can't stun
+    // or kill it mid-slam -- it barrels through until its charge timer ends.
+    {
+	extern int heretic_mode;
+	if (heretic_mode && target->type == MT_HMINOTAUR && (target->flags & MF_SKULLFLY))
+	    return;
+    }
+
     // (M) Morph Ovum: the egg projectile (MT_HEGGFX) morphs the struck monster
     // into a chicken instead of damaging it.  Mirrors crispy's special-damage
     // switch in P_DamageMobj.  If the morph is refused (boss / player / already

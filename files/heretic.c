@@ -180,9 +180,25 @@ void A_MinotaurAtk1 (mobj_t* actor)			// melee hammer swing
 	P_DamageMobj (actor->target, actor, actor, HITDICE (4));
 }
 
-// Mid-range: maybe SLAM-CHARGE the target.  Set MF_SKULLFLY + momentum and switch to the
-// charge state; the engine's skull-fly path (p_map.c) carries it, damages on contact and
-// reverts to spawnstate on the slam -- no Heretic special1 charge-timer needed.
+extern angle_t	R_PointToAngle2 (fixed_t x1, fixed_t y1, fixed_t x2, fixed_t y2);
+
+// (H) Maulotaur slam (crispy P_MinotaurSlam): a hard directional shove + HITDICE(6),
+// and a brief stun (reactiontime) if it caught the player.  Called from the Maulotaur
+// branch of the skull-fly path in PIT_CheckThing (p_map.c).
+void P_MinotaurSlam (mobj_t* source, mobj_t* target)
+{
+    angle_t	angle = R_PointToAngle2 (source->x, source->y, target->x, target->y) >> ANGLETOFINESHIFT;
+    fixed_t	thrust = 16*FRACUNIT + (P_Random() << 10);
+    target->momx += FixedMul (thrust, finecosine[angle]);
+    target->momy += FixedMul (thrust, finesine[angle]);
+    P_DamageMobj (target, NULL, NULL, HITDICE (6));
+    if (target->player)
+	target->reactiontime = 14 + (P_Random() & 7);		// knocked off balance
+}
+
+// Mid-range: maybe SLAM-CHARGE the target.  Set MF_SKULLFLY + charge momentum + a charge
+// TIMER (reactiontime; this engine's mobj_t has no Heretic special1), then run the
+// A_MinotaurCharge loop.  The slam itself (P_MinotaurSlam) fires from the p_map.c hook.
 void A_MinotaurDecide (mobj_t* actor)
 {
     mobj_t*	t = actor->target;
@@ -199,11 +215,29 @@ void A_MinotaurDecide (mobj_t* actor)
 	an = actor->angle >> ANGLETOFINESHIFT;
 	actor->momx = FixedMul (MNTR_CHARGE_SPEED, finecosine[an]);
 	actor->momy = FixedMul (MNTR_CHARGE_SPEED, finesine[an]);
+	actor->reactiontime = 35 / 2;			// charge duration (crispy special1)
 	P_SetMobjState (actor, S_HMIN_ATK4_1);
     }
 }
 
-void A_MinotaurCharge (mobj_t* actor) { (void)actor; }	// engine skull-fly does the slam
+// Charge loop (crispy A_MinotaurCharge): trail dust each tic; when the timer runs out,
+// drop out of the skull-fly charge and resume chasing.  (A wall/target hit also ends it
+// via the p_map.c skull-fly path.)
+void A_MinotaurCharge (mobj_t* actor)
+{
+    if (actor->reactiontime > 0)
+    {
+	mobj_t*	puff = P_SpawnMobj (actor->x, actor->y, actor->z, MT_HWP_PHNXPUFF);
+	if (puff)
+	    puff->momz = 2*FRACUNIT;
+	actor->reactiontime--;
+    }
+    else
+    {
+	actor->flags &= ~MF_SKULLFLY;
+	P_SetMobjState (actor, actor->info->seestate);
+    }
+}
 
 void A_MinotaurAtk2 (mobj_t* actor)			// melee, else hurl a mace ball
 {

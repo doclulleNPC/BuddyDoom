@@ -390,6 +390,23 @@ boolean PIT_CheckThing (mobj_t* thing)
 	    && (thing->player || (thing->flags & MF_FRIEND)))
 	    return true;
 
+	// (H) Maulotaur slam: on a charging Maulotaur hitting a shootable thing, apply the
+	// proper Heretic slam (hard thrust + HITDICE(6) + player stun) instead of the
+	// generic skull-fly damage, then end the charge back into the chase.
+	{
+	    extern int  heretic_mode;
+	    extern void P_MinotaurSlam (mobj_t*, mobj_t*);
+	    if (heretic_mode && tmthing->type == MT_HMINOTAUR)
+	    {
+		if (thing->player || (thing->flags & MF_SHOOTABLE))
+		    P_MinotaurSlam (tmthing, thing);
+		tmthing->flags &= ~MF_SKULLFLY;
+		tmthing->momx = tmthing->momy = tmthing->momz = 0;
+		P_SetMobjState (tmthing, tmthing->info->seestate);
+		return false;
+	    }
+	}
+
 	damage = ((P_Random()%8)+1)*tmthing->info->damage;
 
 	P_DamageMobj (thing, tmthing, tmthing, damage);
