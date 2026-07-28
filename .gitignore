@@ -116,6 +116,12 @@ run/director
 # SDL3 launcher (built by tools/build_launcher.sh, copied to run/)
 tools/launcher
 run/launcher
+# SDL3 asset extractor (built by tools/build_extractor.sh, copied to run/)
+tools/extractor
+run/extractor
+# SDL3 buddy editor (built by tools/build_mybuddy.sh, copied to run/)
+tools/mybuddy
+run/mybuddy
 
 # Claude Code session/config directory
 .claude/
