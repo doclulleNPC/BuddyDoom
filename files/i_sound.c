@@ -895,7 +895,7 @@ I_InitSound()
   }
 
   fprintf( stderr, " pre-cached all sound data\n");
-  
+
   // Finished initialization.
   fprintf(stderr, "I_InitSound: sound module ready\n");
   if (use_old_mixer)
