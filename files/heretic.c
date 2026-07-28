@@ -881,7 +881,7 @@ void Heretic_Init (void)
     m->seestate  = S_HSR2_WALK1; m->seesound  = sfx_h_sorsit;  m->reactiontime = 8;
     m->attacksound = sfx_h_soratk; m->painstate = S_HSR2_PAIN1; m->painchance = 32;
     m->painsound = sfx_h_sorpai; m->meleestate = S_HSR2_ATK1;  m->missilestate = S_HSR2_ATK1;
-    m->deathstate = S_HSR2_DIE1; m->xdeathstate = S_NULL;    m->deathsound = sfx_None;
+    m->deathstate = S_HSR2_DIE1; m->xdeathstate = S_NULL;    m->deathsound = sfx_h_sordexp;
     m->speed = 14; m->radius = 16*FRACUNIT; m->height = 70*FRACUNIT; m->mass = 150;
     m->damage = 0; m->activesound = sfx_h_soract;
     m->flags = MF_SOLID|MF_SHOOTABLE|MF_COUNTKILL|MF_FLOAT|MF_NOGRAVITY; m->raisestate = S_NULL;

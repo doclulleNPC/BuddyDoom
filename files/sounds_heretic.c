@@ -32,6 +32,7 @@ static const struct { char* name; int priority; } heretic_sfx[] =
     { "mumpai", 96 },  { "mumsit", 98 },
     { "snkact", 120 }, { "snkatk", 70 }, { "snkdth", 70 }, { "snkpai", 96 }, { "snksit", 98 },	// snake (ophidian)
     { "sorzap", 70 },  { "sorsit", 98 }, { "soratk", 70 }, { "sorpai", 96 }, { "soract", 120 },	// sorcerer (d'sparil)
+    { "sordexp", 70 },										// d'sparil death explosion
     { "wizact", 120 }, { "wizatk", 70 }, { "wizdth", 70 }, { "wizpai", 96 }, { "wizsit", 98 },	// wizard (disciple)
 };
 

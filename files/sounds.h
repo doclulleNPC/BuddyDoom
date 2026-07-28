@@ -344,6 +344,7 @@ typedef enum
     sfx_h_soratk,
     sfx_h_sorpai,
     sfx_h_soract,
+    sfx_h_sordexp,	// D'Sparil death explosion (SORDEXP)
     sfx_h_wizact,
     sfx_h_wizatk,
     sfx_h_wizdth,
