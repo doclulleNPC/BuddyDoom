@@ -1977,6 +1977,33 @@ void A_BossDeath (mobj_t* mo)
     line_t	junk;
     int		i;
 
+    // (H) Heretic episode-boss death (crispy heretic A_BossDeath): on MxM8, once the
+    // last boss of this episode's type is dead, lower the tag-666 floor to open the
+    // exit.  Heretic bosses don't carry DOOM's MBF21 boss flags / UMAPINFO, so handle
+    // them here and return before the DOOM logic.
+    {
+	extern int heretic_mode;
+	if (heretic_mode)
+	{
+	    static const int hbossType[5] =
+		{ MT_HIRONLICH, MT_HMINOTAUR, MT_HDSPARIL, MT_HIRONLICH, MT_HMINOTAUR };
+	    int ep = gameepisode - 1;
+	    if (gamemap != 8 || ep < 0 || ep > 4 || (int) mo->type != hbossType[ep])
+		return;
+	    for (th = thinkercap.next ; th != &thinkercap ; th = th->next)
+	    {
+		if (th->function.acp1 != (actionf_p1)P_MobjThinker)
+		    continue;
+		mo2 = (mobj_t *) th;
+		if (mo2 != mo && mo2->type == mo->type && mo2->health > 0)
+		    return;			// another boss of this type still alive
+	    }
+	    junk.tag = 666;
+	    EV_DoFloor (&junk, lowerFloor);
+	    return;
+	}
+    }
+
     // UMAPINFO boss actions REPLACE the hardcoded episode-boss behaviour when the
     // current map defines its own (or bossaction=clear to suppress them entirely).
     {

@@ -39,6 +39,7 @@ extern void	A_FaceTarget (mobj_t*);
 extern void	A_Pain (mobj_t*);
 extern void	A_Scream (mobj_t*);
 extern void	A_Fall (mobj_t*);
+extern void	A_BossDeath (mobj_t*);	// episode-boss death -> tag-666 floor (p_enemy.c, heretic branch)
 extern boolean	P_CheckMeleeRange (mobj_t*);
 extern void	P_DamageMobj (mobj_t* target, mobj_t* inflictor, mobj_t* source, int damage);
 extern void	S_StartSound (void* origin, int sfx_id);
@@ -745,7 +746,7 @@ void Heretic_Init (void)
     ST (S_HMIN_DIE12, SPR_HMIN, 16, 5, NULL,                        S_HMIN_DIE13);
     ST (S_HMIN_DIE13, SPR_HMIN, 17, 6, NULL,                        S_HMIN_DIE14);
     ST (S_HMIN_DIE14, SPR_HMIN, 18, 5, NULL,                        S_HMIN_DIE15);
-    ST (S_HMIN_DIE15, SPR_HMIN, 19, -1, NULL,                       S_NULL);
+    ST (S_HMIN_DIE15, SPR_HMIN, 19, -1, (actionf_p1)A_BossDeath,    S_NULL);
     ST (S_HMNA1, SPR_HMNA, 32768, 6, NULL, S_HMNA2);
     ST (S_HMNA2, SPR_HMNA, 32769, 6, NULL, S_HMNA1);
     ST (S_HMNAX1, SPR_HMNA, 32770, 5, NULL, S_HMNAX2);
@@ -790,7 +791,7 @@ void Heretic_Init (void)
     ST (S_HIRO_DIE4,  SPR_HIRO, 5,  7, NULL,                      S_HIRO_DIE5);
     ST (S_HIRO_DIE5,  SPR_HIRO, 6,  7, (actionf_p1)A_Fall,        S_HIRO_DIE6);
     ST (S_HIRO_DIE6,  SPR_HIRO, 7,  7, NULL,                      S_HIRO_DIE7);
-    ST (S_HIRO_DIE7,  SPR_HIRO, 8, -1, NULL,                      S_NULL);
+    ST (S_HIRO_DIE7,  SPR_HIRO, 8, -1, (actionf_p1)A_BossDeath,   S_NULL);
     ST (S_HIRB1, SPR_HIRB, 0, 6, NULL, S_HIRB2);
     ST (S_HIRB2, SPR_HIRB, 1, 6, NULL, S_HIRB3);
     ST (S_HIRB3, SPR_HIRB, 2, 6, NULL, S_HIRB1);
@@ -863,7 +864,7 @@ void Heretic_Init (void)
     ST (S_HSR2_DIE3,  SPR_HSR2,  7, 7, (actionf_p1)A_Fall,         S_HSR2_DIE4);
     ST (S_HSR2_DIE4,  SPR_HSR2,  8, 7, NULL,                       S_HSR2_DIE5);
     ST (S_HSR2_DIE5,  SPR_HSR2,  9, 7, NULL,                       S_HSR2_DIE6);
-    ST (S_HSR2_DIE6,  SPR_HSR2, 10, -1, NULL,                      S_NULL);
+    ST (S_HSR2_DIE6,  SPR_HSR2, 10, -1, (actionf_p1)A_BossDeath,   S_NULL);
     ST (S_HSRB1, SPR_HSRB, 32768, 3, NULL, S_HSRB2);
     ST (S_HSRB2, SPR_HSRB, 32769, 3, NULL, S_HSRB3);
     ST (S_HSRB3, SPR_HSRB, 32770, 3, NULL, S_HSRB1);
