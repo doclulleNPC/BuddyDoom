@@ -230,13 +230,48 @@ typedef enum
 
 
 //
+// mobj pointer swizzling for target/tracer (crispy/Boom style).  Vanilla DOOM
+// nulled target on load and never touched tracer, leaving tracer a stale pointer
+// from the saving process -- a crash waiting for any homing missile (revenant/
+// D'Sparil/Heretic FX).  Instead we serialise both as 1-based positions in the
+// mobj thinker list, then restore them to live pointers in a second pass once
+// every mobj is back (P_UnArchiveThinkers).
+static int P_MobjToIndex (mobj_t* mobj)
+{
+    thinker_t*	th;
+    int		i = 0;
+    if (!mobj)
+	return 0;
+    for (th = thinkercap.next ; th != &thinkercap ; th = th->next)
+	if (th->function.acp1 == (actionf_p1)P_MobjThinker)
+	{
+	    i++;
+	    if ((mobj_t *)th == mobj)
+		return i;
+	}
+    return 0;				// not a live mobj (already removed) -> NULL on load
+}
+
+static mobj_t* P_IndexToMobj (int idx)
+{
+    thinker_t*	th;
+    int		i = 0;
+    if (idx <= 0)
+	return NULL;
+    for (th = thinkercap.next ; th != &thinkercap ; th = th->next)
+	if (th->function.acp1 == (actionf_p1)P_MobjThinker)
+	    if (++i == idx)
+		return (mobj_t *)th;
+    return NULL;
+}
+
 // P_ArchiveThinkers
 //
 void P_ArchiveThinkers (void)
 {
     thinker_t*		th;
     mobj_t*		mobj;
-	
+
     // save off the current thinkers
     for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
     {
@@ -248,9 +283,12 @@ void P_ArchiveThinkers (void)
 	    memcpy (mobj, th, sizeof(*mobj));
 	    save_p += sizeof(*mobj);
 	    mobj->state = (state_t *)(mobj->state - states);
-	    
+
 	    if (mobj->player)
 		mobj->player = (player_t *)((mobj->player-players) + 1);
+	    // swizzle actor references to thinker-list indices (0 = none)
+	    mobj->target = (mobj_t *)(intptr_t) P_MobjToIndex (mobj->target);
+	    mobj->tracer = (mobj_t *)(intptr_t) P_MobjToIndex (mobj->tracer);
 	    continue;
 	}
 		
@@ -295,15 +333,15 @@ void P_UnArchiveThinkers (void)
 	switch (tclass)
 	{
 	  case tc_end:
-	    return; 	// end of list
-			
+	    goto swizzle_refs; 	// end of list -> resolve target/tracer indices
+
 	  case tc_mobj:
 	    PADSAVEP();
 	    mobj = Z_Malloc (sizeof(*mobj), PU_LEVEL, NULL);
 	    memcpy (mobj, save_p, sizeof(*mobj));
 	    save_p += sizeof(*mobj);
 	    mobj->state = &states[(intptr_t)mobj->state];
-	    mobj->target = NULL;
+	    // target/tracer hold saved thinker-list INDICES here; resolved below.
 	    if (mobj->player)
 	    {
 		mobj->player = &players[(intptr_t)mobj->player-1];
@@ -327,9 +365,23 @@ void P_UnArchiveThinkers (void)
 		     "Load with the same -iwad and -file wads used to save it.",
 		     tclass);
 	}
-	
+
     }
 
+  swizzle_refs:
+    // Second pass: every mobj is back in the thinker list (added in save order),
+    // so the saved target/tracer indices now map 1:1 onto live pointers.  Out-of-
+    // range indices (e.g. an old save's raw pointer value) resolve to NULL -- safe.
+    {
+	thinker_t*	th;
+	for (th = thinkercap.next ; th != &thinkercap ; th = th->next)
+	    if (th->function.acp1 == (actionf_p1)P_MobjThinker)
+	    {
+		mobj_t*	mo = (mobj_t *)th;
+		mo->target = P_IndexToMobj ((int)(intptr_t) mo->target);
+		mo->tracer = P_IndexToMobj ((int)(intptr_t) mo->tracer);
+	    }
+    }
 }
 
 
