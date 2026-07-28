@@ -146,3 +146,6 @@ run/smk.txt
 *.dbs
 *.wad.backup*
 *.wad.*.autosave*
+
+# Extracted Heretic Iron-Lich frames for bake_lichling.py (Raven assets -- do not redistribute)
+run/ID0/lich/
