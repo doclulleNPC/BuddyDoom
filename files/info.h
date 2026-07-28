@@ -317,6 +317,7 @@ typedef enum
     // psprites (CRBW/BLSR/HROD/PHNX/MACE/GAUN) + their projectiles/puffs (FX*/PUF1)
     SPR_CRBW, SPR_BLSR, SPR_HROD, SPR_PHNX, SPR_MACE, SPR_GAUN,
     SPR_FX03, SPR_FX17, SPR_FX00, SPR_FX04, SPR_FX08, SPR_FX02, SPR_PUF1,
+    SPR_LICS, SPR_LICF, SPR_LICE,	// Lichling body / fire / ice (lichling.wad) -- buddy special
     NUMSPRITES
 
 } spritenum_t;
@@ -1790,6 +1791,11 @@ typedef enum
     S_HWP_GAUNATK1, S_HWP_GAUNATK2, S_HWP_GAUNATK3, S_HWP_GAUNATK4,
     S_HWP_GAUNATK5, S_HWP_GAUNATK6, S_HWP_GAUNATK7,
     S_HWP_GAUNPUFF1, S_HWP_GAUNPUFF2, S_HWP_GAUNPUFF3, S_HWP_GAUNPUFF4,
+    // Lichling (Heretic buddy special -- files/heretic_lichling.c)
+    S_LICL_LOOK, S_LICL_CHASE, S_LICL_ATK1, S_LICL_ATK2, S_LICL_PAIN,
+    S_LICL_DIE1, S_LICL_DIE2, S_LICL_DIE3, S_LICL_DIE4, S_LICL_DIE5, S_LICL_DIE6, S_LICL_DIE7,
+    S_LICF_FLY1, S_LICF_FLY2, S_LICF_BOOM1, S_LICF_BOOM2, S_LICF_BOOM3, S_LICF_BOOM4, S_LICF_BOOM5,
+    S_LICE_FLY1, S_LICE_FLY2, S_LICE_BOOM1, S_LICE_BOOM2, S_LICE_BOOM3, S_LICE_BOOM4, S_LICE_BOOM5,
     NUMSTATES
 } statenum_t;
 
@@ -2147,6 +2153,7 @@ typedef enum {
     // (H) Heretic weapons phase 2-4 projectiles/puffs
     MT_HWP_CBOWFX1, MT_HWP_CBOWFX3, MT_HWP_BLSRPUFF, MT_HWP_HRODFX1,
     MT_HWP_PHNXFX1, MT_HWP_PHNXPUFF, MT_HWP_MACEFX1, MT_HWP_GAUNPUFF,
+    MT_LICHLING, MT_LICHFIRE, MT_LICHICE,	// Lichling + its fire/ice projectiles (files/heretic_lichling.c)
     NUMMOBJTYPES
 
 } mobjtype_t;

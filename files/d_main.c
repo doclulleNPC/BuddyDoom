@@ -1204,6 +1204,13 @@ void IdentifyVersion (void)
 	    doom2_overlay = 1;
 	    printf ("DOOM2 overlay: doom2stuff.wad -> DOOM2 monsters + super shotgun enabled\n");
 	}
+	// Heretic: auto-overlay lichling.wad (the buddy's Lichling special sprites) if present.
+	if (heretic_mode
+	    && (!access ("ID0/lichling.wad", R_OK) || !access ("lichling.wad", R_OK)))
+	{
+	    D_AddFile ("lichling.wad");
+	    printf ("Heretic overlay: lichling.wad -> buddy Lichling special sprites\n");
+	}
 	return;
     }
 

@@ -126,7 +126,8 @@ char *sprnames_builtin[NUMSPRITES] = {
     "STFF","GWND","PUF3","PUF2",
     // (H) Heretic weapons phase 2-4: psprites + projectiles/puffs
     "CRBW","BLSR","HROD","PHNX","MACE","GAUN",
-    "FX03","FX17","FX00","FX04","FX08","FX02","PUF1"
+    "FX03","FX17","FX00","FX04","FX08","FX02","PUF1",
+    "LICS","LICF","LICE"		// Lichling body / fire / ice (lichling.wad)
 };
 
 
@@ -165,6 +166,9 @@ void A_FaceTarget();
 void A_TurretLook();		// files/p_turret.c -- deployable sentry turret
 void A_TurretFire();
 void A_CompanionLook();		// files/p_companion.c -- shared buddy-special idle scan/roam
+void A_CompanionChase();	// files/p_companion.c -- shared engage (used by the Lichling)
+void A_LichlingAttack();	// files/heretic_lichling.c -- melee / ice / fire
+void A_LichFireImpact();	// files/heretic_lichling.c -- fire ball AOE on impact
 void A_SecDroneChase();
 void A_SecDroneShot();		// Security Drone laser
 void A_SecDroneCharge();	// Security Drone lost-soul-style ram (initiate)
@@ -1226,7 +1230,37 @@ state_t	states_builtin[NUMSTATES] = {
     [S_SECDRSHOT_X2] = {SPR_POW1,32769, 3,{NULL},S_SECDRSHOT_X3, 0,0},
     [S_SECDRSHOT_X3] = {SPR_POW1,32770, 3,{NULL},S_SECDRSHOT_X4, 0,0},
     [S_SECDRSHOT_X4] = {SPR_POW1,32771, 3,{NULL},S_SECDRSHOT_X5, 0,0},
-    [S_SECDRSHOT_X5] = {SPR_POW1,32772, 3,{NULL},S_NULL,         0,0}
+    [S_SECDRSHOT_X5] = {SPR_POW1,32772, 3,{NULL},S_NULL,         0,0},
+
+    // --- Lichling (Heretic buddy special -- files/heretic_lichling.c) ---
+    [S_LICL_LOOK]  = {SPR_LICS,0,10,{A_CompanionLook},  S_LICL_LOOK,  0,0},
+    [S_LICL_CHASE] = {SPR_LICS,0, 4,{A_CompanionChase}, S_LICL_CHASE, 0,0},
+    [S_LICL_ATK1]  = {SPR_LICS,0, 5,{A_FaceTarget},     S_LICL_ATK2,  0,0},
+    [S_LICL_ATK2]  = {SPR_LICS,1,15,{A_LichlingAttack}, S_LICL_CHASE, 0,0},
+    [S_LICL_PAIN]  = {SPR_LICS,0, 4,{A_Pain},           S_LICL_CHASE, 0,0},
+    [S_LICL_DIE1]  = {SPR_LICS,2, 6,{NULL},             S_LICL_DIE2,  0,0},
+    [S_LICL_DIE2]  = {SPR_LICS,3, 6,{A_Scream},         S_LICL_DIE3,  0,0},
+    [S_LICL_DIE3]  = {SPR_LICS,4, 6,{NULL},             S_LICL_DIE4,  0,0},
+    [S_LICL_DIE4]  = {SPR_LICS,5, 6,{A_Fall},           S_LICL_DIE5,  0,0},
+    [S_LICL_DIE5]  = {SPR_LICS,6, 6,{NULL},             S_LICL_DIE6,  0,0},
+    [S_LICL_DIE6]  = {SPR_LICS,7, 6,{NULL},             S_LICL_DIE7,  0,0},
+    [S_LICL_DIE7]  = {SPR_LICS,8,-1,{NULL},             S_NULL,       0,0},
+    // fire projectile (bright)
+    [S_LICF_FLY1]  = {SPR_LICF,32768,4,{NULL},            S_LICF_FLY2,  0,0},
+    [S_LICF_FLY2]  = {SPR_LICF,32769,4,{NULL},            S_LICF_FLY1,  0,0},
+    [S_LICF_BOOM1] = {SPR_LICF,32770,5,{A_LichFireImpact},S_LICF_BOOM2, 0,0},
+    [S_LICF_BOOM2] = {SPR_LICF,32771,4,{NULL},            S_LICF_BOOM3, 0,0},
+    [S_LICF_BOOM3] = {SPR_LICF,32772,4,{NULL},            S_LICF_BOOM4, 0,0},
+    [S_LICF_BOOM4] = {SPR_LICF,32773,4,{NULL},            S_LICF_BOOM5, 0,0},
+    [S_LICF_BOOM5] = {SPR_LICF,32774,4,{NULL},            S_NULL,       0,0},
+    // ice projectile (bright)
+    [S_LICE_FLY1]  = {SPR_LICE,32768,4,{NULL}, S_LICE_FLY2,  0,0},
+    [S_LICE_FLY2]  = {SPR_LICE,32769,4,{NULL}, S_LICE_FLY1,  0,0},
+    [S_LICE_BOOM1] = {SPR_LICE,32770,5,{NULL}, S_LICE_BOOM2, 0,0},
+    [S_LICE_BOOM2] = {SPR_LICE,32771,4,{NULL}, S_LICE_BOOM3, 0,0},
+    [S_LICE_BOOM3] = {SPR_LICE,32772,4,{NULL}, S_LICE_BOOM4, 0,0},
+    [S_LICE_BOOM4] = {SPR_LICE,32773,4,{NULL}, S_LICE_BOOM5, 0,0},
+    [S_LICE_BOOM5] = {SPR_LICE,32774,4,{NULL}, S_NULL,       0,0}
 };
 
 
@@ -4893,6 +4927,32 @@ mobjinfo_t mobjinfo_builtin[NUMMOBJTYPES] = {
 	sfx_None,		// activesound
 	MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY,	// flags
 	S_NULL			// raisestate
+    },
+    [MT_LICHLING] = {		// Lichling -- buddy-spawned little Lich (Heretic special)
+	-1,			// doomednum (buddy-spawned, not map-placed)
+	S_LICL_LOOK, 200, S_LICL_CHASE, sfx_None, 8, sfx_None,
+	S_LICL_PAIN, 64, sfx_None,
+	S_NULL,			// meleestate (melee is inside A_LichlingAttack)
+	S_LICL_ATK1, S_LICL_DIE1, S_NULL, sfx_None,
+	10, 20*FRACUNIT, 40*FRACUNIT, 300,
+	0,			// damage
+	sfx_None,
+	MF_SHOOTABLE|MF_FLOAT|MF_NOGRAVITY|MF_NOBLOOD,	// MF_FRIEND added on spawn; not solid (like the drone)
+	S_NULL
+    },
+    [MT_LICHFIRE] = {		// Lichling fire ball (AOE on impact)
+	-1, S_LICF_FLY1, 1000, S_NULL, sfx_None, 8, sfx_None,
+	S_NULL, 0, sfx_None, S_NULL, S_NULL, S_LICF_BOOM1, S_NULL, sfx_None,
+	12*FRACUNIT, 11*FRACUNIT, 8*FRACUNIT, 100,
+	3,			// direct-hit damage (small; AOE added by A_LichFireImpact)
+	sfx_None, MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY, S_NULL
+    },
+    [MT_LICHICE] = {		// Lichling ice ball (single-target)
+	-1, S_LICE_FLY1, 1000, S_NULL, sfx_None, 8, sfx_None,
+	S_NULL, 0, sfx_None, S_NULL, S_NULL, S_LICE_BOOM1, S_NULL, sfx_None,
+	14*FRACUNIT, 11*FRACUNIT, 8*FRACUNIT, 100,
+	5,			// direct-hit damage (a bit higher than fire, no AOE)
+	sfx_None, MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY, S_NULL
     }
 };
 

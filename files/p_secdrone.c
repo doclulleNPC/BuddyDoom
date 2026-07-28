@@ -202,8 +202,8 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
 
     useClip  = bot->ammo[am_clip]  >= DRONE_CLIP_COST;
     useShell = bot->ammo[am_shell] >= DRONE_SHELL_COST;
-    if (!useClip && !useShell)
-	return;
+    if (!heretic_mode && !useClip && !useShell)
+	return;					// the DOOM drone burns ammo; the Heretic lichling is free
 
     heavyFire   = bot->damagecount >= DRONE_PAIN_THRESH;
     surrounded  = threats >= DRONE_ENEMY_COUNT;
@@ -217,16 +217,25 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
     if (atCap && !heavyFire && !surrounded && !lowHP)
 	useClip = clipCapped;			// burning overflow -> spend the capped pool
 
-    if (Companion_CountActive (MT_SECDRONE) >= DRONE_MAX_ACTIVE)
-	return;					// at most one drone out
+    // In Heretic the buddy summons a Lichling instead of the tech drone -- same
+    // deploy decision, different actor / message, and it costs no (DOOM) ammo.
+    {
+	int ctype = heretic_mode ? MT_LICHLING : MT_SECDRONE;
 
-    d = P_AICoop_SpawnCompanion (bot, MT_SECDRONE);
-    if (!d)
-	return;
+	if (Companion_CountActive (ctype) >= DRONE_MAX_ACTIVE)
+	    return;				// at most one companion out
 
-    if (useClip) bot->ammo[am_clip]  -= DRONE_CLIP_COST;
-    else         bot->ammo[am_shell] -= DRONE_SHELL_COST;
-    cooldown = DRONE_COOLDOWN;
+	d = P_AICoop_SpawnCompanion (bot, ctype);
+	if (!d)
+	    return;
 
-    players[consoleplayer].message = "[Buddy] Deploying security drone!";
+	if (!heretic_mode)			// only the DOOM drone spends ammo
+	{
+	    if (useClip) bot->ammo[am_clip]  -= DRONE_CLIP_COST;
+	    else         bot->ammo[am_shell] -= DRONE_SHELL_COST;
+	}
+	cooldown = DRONE_COOLDOWN;
+	players[consoleplayer].message = heretic_mode
+	    ? "[Buddy] Summoning a Lichling!" : "[Buddy] Deploying security drone!";
+    }
 }
