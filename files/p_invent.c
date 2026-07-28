@@ -98,6 +98,9 @@ boolean P_StoreOverflow (player_t* player, artitype_t a, int amount)
 {
     ammotype_t	at;
 
+    // (H) purely-native Heretic: no DOOM-style overflow pocketing in heretic_mode
+    // (the native Heretic inventory owns the artifact store there).
+    { extern int heretic_mode; if (heretic_mode) return false; }
     if (!P_AICoop_Active ())			// no buddy -> no DOOM inventory; pickup stays vanilla
 	return false;
     if (a <= arti_none || a >= NUMARTIFACTS)
