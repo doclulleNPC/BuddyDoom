@@ -25,6 +25,7 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -39,6 +40,11 @@
 #include "buddydef_parse.hpp"
 #include "../files/buddydoom_icon.h"
 
+// OGG decode for the sound preview: the engine's stb_vorbis (files/stb_vorbis.c, added
+// to the MyBuddy build), declared the same way i_sound.c declares it.
+extern "C" int stb_vorbis_decode_memory(const unsigned char* mem, int len,
+                                        int* channels, int* sample_rate, short** output);
+
 using buddy::Buddy;
 using buddy::Key;
 using buddy::Wad;
@@ -47,31 +53,34 @@ using buddy::Wad;
 // Left column, top to bottom: the WAD's lump directory + its edit buttons, the buddy
 // list + its buttons, then the sprite preview.  Right column: the field editor above
 // the BUDDYDEF text preview.
+// A wide, landscape 1280x800 design (fits comfortably inside 1080p with room for the
+// title bar / taskbar).  The window is resizable and the whole UI is letterboxed to fit
+// (SDL_SetRenderLogicalPresentation), so it also scales down on smaller displays.
 enum {
-    WINW      = 1020,
-    WINH      = 1000,
+    WINW      = 1280,
+    WINH      = 800,
     HEADER_H  = 36,
-    FOOTER_H  = 44,
+    FOOTER_H  = 56,     // two rows: a full-width status line above the button row
     LIST_W    = 300,
     PAD       = 14,
     ROWH      = 26,
 
     WADLIST_Y = HEADER_H + PAD,
-    WADLIST_H = 250,
+    WADLIST_H = 220,
     WADBTN_Y  = WADLIST_Y + WADLIST_H + 6,
     WADBTN_H  = 56,
     BUDLIST_Y = WADBTN_Y + WADBTN_H + PAD,
-    BUDLIST_H = 230,
+    BUDLIST_H = 150,
     BUDBTN_Y  = BUDLIST_Y + BUDLIST_H + 6,
     BUDBTN_H  = 28,
     SPRITE_Y  = BUDBTN_Y + BUDBTN_H + PAD,
     SPRITE_H  = WINH - FOOTER_H - PAD - SPRITE_Y,
 
     EDIT_Y    = HEADER_H + PAD,
-    EDIT_H    = 380,
+    EDIT_H    = 340,
     PREV_Y    = EDIT_Y + EDIT_H + PAD,
     PREV_H    = WINH - FOOTER_H - PAD - PREV_Y,
-    LABEL_W   = 110,
+    LABEL_W   = 130,    // fits the longest labels ("Special blurb", "Reactiontime")
 };
 
 // ----- fields -----
@@ -128,7 +137,7 @@ static const std::vector<Field> FIELDS = {
       "The power the buddy really uses in play. Runs on the buddy's body each tic." },
     { "Color",         Kind::Choice,   Key::Color,   &Buddy::color,   nullptr, 0, 0, &COLOR_CHOICES, 24, Status::Live,
       "Default player-colour on the Buddy screen. Empty = no default (menu picks Green)." },
-    { "Special blurb", Kind::Text,     Key::Special, &Buddy::special, nullptr, 0, 0, nullptr, 96, Status::Live,
+    { "Special blurb", Kind::TextLong, Key::Special, &Buddy::special, nullptr, 0, 0, nullptr, 96, Status::Live,
       "Free text for the SPECIAL: line on the select screen. Not a mechanic." },
     { "Description",   Kind::TextLong, Key::Desc,    &Buddy::desc,    nullptr, 0, 0, nullptr, 160, Status::Live,
       "Flavour text, word-wrapped into the ABOUT panel of the select screen." },
@@ -230,6 +239,71 @@ static void set_status(const char* fmt, ...)
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
     status = buf;
+}
+
+// ----- undo / redo -----
+// Snapshot the whole editable state (buddy roster + WAD + selections) before each
+// mutating action.  Coarse-grained but simple and always correct; a buddy pack is
+// small enough that copying the WAD per edit is cheap.
+static void sprite_invalidate();            // defined with the sprite preview below
+
+struct Snapshot {
+    std::vector<Buddy> buddies;
+    int                sel, wad_sel;
+    Wad                wad;
+    bool               wad_modified;
+};
+static std::vector<Snapshot> undo_stack, redo_stack;
+enum { UNDO_MAX = 64 };
+
+static Snapshot snapshot_now()
+{
+    return Snapshot{ buddies, sel, wad_sel, wad, wad_modified };
+}
+
+static void restore(const Snapshot& s)
+{
+    buddies      = s.buddies;
+    sel          = s.sel;
+    wad_sel      = s.wad_sel;
+    wad          = s.wad;
+    wad_modified = s.wad_modified;
+    if (sel >= (int)buddies.size()) sel = (int)buddies.size() - 1;
+    if (sel < 0 && !buddies.empty()) sel = 0;
+    sprite_invalidate();
+}
+
+// Call at the START of a mutating action, before the change.  Clears the redo
+// stack (a new edit forks history) and caps the undo depth.
+static void push_undo()
+{
+    undo_stack.push_back(snapshot_now());
+    if (undo_stack.size() > UNDO_MAX) undo_stack.erase(undo_stack.begin());
+    redo_stack.clear();
+}
+
+static void undo_reset()                    // a fresh WAD -- no history to walk back into
+{
+    undo_stack.clear();
+    redo_stack.clear();
+}
+
+static void do_undo()
+{
+    if (undo_stack.empty()) { set_status("Nothing to undo."); return; }
+    redo_stack.push_back(snapshot_now());
+    restore(undo_stack.back());
+    undo_stack.pop_back();
+    set_status("Undo (%d more).", (int)undo_stack.size());
+}
+
+static void do_redo()
+{
+    if (redo_stack.empty()) { set_status("Nothing to redo."); return; }
+    undo_stack.push_back(snapshot_now());
+    restore(redo_stack.back());
+    redo_stack.pop_back();
+    set_status("Redo (%d more).", (int)redo_stack.size());
 }
 
 // ----------------------------------------------------------------- font / primitives
@@ -371,6 +445,24 @@ static void load_palette()
     }
 }
 
+// The IWAD the palette came from, cached so sprite scans/decodes (and especially frame
+// animation, which re-decodes ~8x/sec) don't reload a 15 MB WAD from disk each time.
+// nullptr when there is no separate IWAD (a self-contained pack, or none found).
+static Wad         iwad_cache;
+static std::string iwad_cache_path;
+static bool        iwad_cache_ok = false;
+
+static const Wad* sprite_iwad()
+{
+    if (!have_pal || pal_from.empty() || pal_from == "this WAD") return nullptr;
+    if (iwad_cache_path != pal_from) {
+        iwad_cache      = Wad();
+        iwad_cache_ok   = iwad_cache.load(pal_from);
+        iwad_cache_path = pal_from;
+    }
+    return iwad_cache_ok ? &iwad_cache : nullptr;
+}
+
 // Doom patch -> RGBA.  Layout (files/r_defs.h patch_t): width, height, leftoffset,
 // topoffset as int16, then `width` int32 column offsets; a column is a run list of
 // {topdelta, length, pad, pixels[length], pad} ended by topdelta 0xFF.
@@ -409,10 +501,15 @@ static std::vector<uint8_t> patch_to_rgba(const std::vector<uint8_t>& d, int& ow
 
 static SDL_Texture* sprite_tex;
 static int          sprite_w, sprite_h;
-static std::string  sprite_key = "\x01";    // base the texture was built from
-static std::string  sprite_note;            // what we found, or why we found nothing
+static std::string  sprite_key      = "\x01";   // base|frame|rot the texture was built from
+static std::string  sprite_base_key = "\x01";   // just the base, to detect buddy switches
+static std::string  sprite_note;                // what we found, or why we found nothing
+static char         sprite_frame  = 'A';        // animation frame being previewed
+static int          sprite_rot    = 1;          // rotation (0 = rotation-less)
+static bool         sprite_mirror = false;      // found a mirrored view -> flip on draw
+static bool         sprite_anim   = false;      // cycle frames on a timer
 
-static void sprite_invalidate() { sprite_key = "\x01"; }   // never equal to a real base
+static void sprite_invalidate() { sprite_key = "\x01"; }   // force a texture rebuild
 
 static void sprite_free()
 {
@@ -420,21 +517,85 @@ static void sprite_free()
     sprite_w = sprite_h = 0;
 }
 
-// Frame A of `base`: the 8-rotation front frame (A1), the rotation-less frame (A0), or
-// a mirrored pair (A2A8 etc.) -- whichever the art uses.
-static int find_sprite_lump(const Wad& w, const std::string& base)
+static std::string cur_sprite_base()
 {
+    return (sel >= 0 && sel < (int)buddies.size()) ? buddies[sel].sprite : std::string();
+}
+
+// The lump for (base, frame, rot).  Sprite lumps are base(4)+frame+rot, with an
+// optional second frame+rot pair for the mirrored view (e.g. TROOA2A8 = frame A rot 2,
+// and frame A rot 8 drawn mirrored).  Preference: exact rot, then the rotation-less
+// '0' frame, then the mirrored pair.  `mirror` tells the caller to flip horizontally.
+static int find_sprite_lump(const Wad& w, const std::string& base, char frame, int rot,
+                            bool& mirror)
+{
+    mirror = false;
     if (base.empty()) return -1;
     const std::string b4 = base.substr(0, 4);
-    int i = w.find(b4 + "A1"); if (i >= 0) return i;
-    i     = w.find(b4 + "A0"); if (i >= 0) return i;
+    const char fr = (char)toupper((unsigned char)frame);
+    const char rc = (char)('0' + rot);
+
+    int  best = -1, bestpri = 99;
+    bool bestmir = false;
     for (size_t k = 0; k < w.size(); k++) {
-        const std::string& n = w[k].name;
-        if (n.size() > 4 && SDL_strncasecmp(n.c_str(), b4.c_str(), 4) == 0
-            && toupper((unsigned char)n[4]) == 'A' && w[k].data.size() > 8)
-            return (int)k;
+        const buddy::Lump& L = w[k];
+        if (L.name.size() < 6 || L.data.size() <= 8) continue;
+        if (SDL_strncasecmp(L.name.c_str(), b4.c_str(), 4) != 0) continue;
+        if ((char)toupper((unsigned char)L.name[4]) == fr) {
+            if      (L.name[5] == rc  && bestpri > 0) { best = (int)k; bestpri = 0; bestmir = false; }
+            else if (L.name[5] == '0' && bestpri > 1) { best = (int)k; bestpri = 1; bestmir = false; }
+        }
+        if (L.name.size() >= 8 && (char)toupper((unsigned char)L.name[6]) == fr) {
+            if      (L.name[7] == rc  && bestpri > 2) { best = (int)k; bestpri = 2; bestmir = true; }
+            else if (L.name[7] == '0' && bestpri > 3) { best = (int)k; bestpri = 3; bestmir = true; }
+        }
     }
-    return -1;
+    mirror = bestmir;
+    return best;
+}
+
+// The frame letters (and, for `frame`, the rotation digits) that exist for `base`.
+static void scan_sprite(const Wad& w, const std::string& base, std::string& frames,
+                        char frame, std::vector<int>& rots)
+{
+    const std::string b4 = base.substr(0, 4);
+    const char fr = (char)toupper((unsigned char)frame);
+    auto add_frame = [&](char f) {
+        f = (char)toupper((unsigned char)f);
+        if (f >= 'A' && f <= 'Z' && frames.find(f) == std::string::npos) frames += f;
+    };
+    auto add_rot = [&](char f, char r) {
+        if ((char)toupper((unsigned char)f) != fr) return;
+        const int d = r - '0';
+        if (d < 0 || d > 8) return;
+        for (int x : rots) if (x == d) return;
+        rots.push_back(d);
+    };
+    for (size_t k = 0; k < w.size(); k++) {
+        const buddy::Lump& L = w[k];
+        if (L.name.size() < 6 || L.data.size() <= 8) continue;
+        if (SDL_strncasecmp(L.name.c_str(), b4.c_str(), 4) != 0) continue;
+        add_frame(L.name[4]);
+        add_rot(L.name[4], L.name[5]);
+        if (L.name.size() >= 8) { add_frame(L.name[6]); add_rot(L.name[6], L.name[7]); }
+    }
+}
+
+// Available frames/rotations for `base`, from the edited WAD (or the IWAD fallback the
+// preview also uses).  Sorted so navigation steps in a stable order.
+static void sprite_scan(const std::string& base, std::string& frames, char frame,
+                        std::vector<int>& rots)
+{
+    frames.clear();
+    rots.clear();
+    if (!wad_loaded || base.empty()) return;
+    scan_sprite(wad, base, frames, frame, rots);
+    if (frames.empty()) {
+        const Wad* iw = sprite_iwad();
+        if (iw) scan_sprite(*iw, base, frames, frame, rots);
+    }
+    std::sort(frames.begin(), frames.end());
+    std::sort(rots.begin(), rots.end());
 }
 
 static std::vector<uint8_t> decode_lump(const Wad& w, int lump, const char* whence,
@@ -478,37 +639,48 @@ static std::vector<uint8_t> decode_lump(const Wad& w, int lump, const char* when
 
 // Decode from the edited WAD, or -- for the "point `sprite` at art already in the IWAD"
 // shortcut the modding guide recommends -- from the IWAD the palette came from.
-static std::vector<uint8_t> decode_sprite(const std::string& base, int& ow, int& oh,
-                                          std::string& note)
+static std::vector<uint8_t> decode_sprite(const std::string& base, char frame, int rot,
+                                          bool& mirror, int& ow, int& oh, std::string& note)
 {
     note.clear();
+    mirror = false;
     if (!wad_loaded) { note = "no WAD open";        return {}; }
     if (base.empty()) { note = "no sprite base set"; return {}; }
 
-    const int lump = find_sprite_lump(wad, base);
+    int lump = find_sprite_lump(wad, base, frame, rot, mirror);
     if (lump >= 0) return decode_lump(wad, lump, "", ow, oh, note);
 
-    if (have_pal && !pal_from.empty() && pal_from != "this WAD") {
-        Wad iw;
-        if (iw.load(pal_from)) {
-            const int l = find_sprite_lump(iw, base);
-            if (l >= 0) return decode_lump(iw, l, "  (from the IWAD)", ow, oh, note);
-        }
+    const Wad* iw = sprite_iwad();
+    if (iw) {
+        const int l = find_sprite_lump(*iw, base, frame, rot, mirror);
+        if (l >= 0) return decode_lump(*iw, l, "  (from the IWAD)", ow, oh, note);
     }
-    note = "no " + base.substr(0, 4) + "A1/" + base.substr(0, 4) + "A0 lump in this WAD";
+    note = "no " + base.substr(0, 4) + std::string(1, (char)toupper((unsigned char)frame))
+         + " frame in this WAD";
     return {};
 }
 
 static void sprite_refresh(bool force)
 {
-    const std::string base = (sel >= 0 && sel < (int)buddies.size()) ? buddies[sel].sprite
-                                                                    : std::string();
-    if (!force && sprite_key == base) return;
-    sprite_key = base;
+    const std::string base = cur_sprite_base();
+    if (base != sprite_base_key) {              // switched buddy or edited the base
+        sprite_base_key = base;
+        sprite_frame    = 'A';
+        sprite_rot      = 1;
+        sprite_key      = "\x01";
+    }
+    const std::string key = base + "|" + std::string(1, sprite_frame)
+                          + std::to_string(sprite_rot);
+    if (!force && sprite_key == key) return;
+    sprite_key = key;
     sprite_free();
 
-    int w = 0, h = 0;
-    std::vector<uint8_t> rgba = decode_sprite(base, w, h, sprite_note);
+    int  w = 0, h = 0;
+    bool mir = false;
+    std::vector<uint8_t> rgba = decode_sprite(base, sprite_frame, sprite_rot, mir, w, h,
+                                              sprite_note);
+    sprite_mirror = mir;
+    if (mir && !sprite_note.empty()) sprite_note += "  (mirrored)";
     if (rgba.empty()) return;
 
     SDL_Surface* surf = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_ABGR8888,
@@ -519,6 +691,98 @@ static void sprite_refresh(bool force)
         SDL_DestroySurface(surf);
         sprite_w = w; sprite_h = h;
     }
+}
+
+// Step to the previous/next existing frame letter (or rotation) for the current buddy.
+static void sprite_step_frame(int dir)
+{
+    std::string frames;
+    std::vector<int> rots;
+    sprite_scan(cur_sprite_base(), frames, sprite_frame, rots);
+    if (frames.empty()) return;
+    size_t idx = frames.find(sprite_frame);
+    idx = (idx == std::string::npos) ? 0
+        : (idx + frames.size() + (dir > 0 ? 1 : -1)) % frames.size();
+    sprite_frame = frames[idx];
+    sprite_invalidate();
+}
+
+static void sprite_step_rot(int dir)
+{
+    std::string frames;
+    std::vector<int> rots;
+    sprite_scan(cur_sprite_base(), frames, sprite_frame, rots);
+    if (rots.empty()) return;
+    size_t idx = 0;
+    for (size_t i = 0; i < rots.size(); i++) if (rots[i] == sprite_rot) { idx = i; break; }
+    idx = (idx + rots.size() + (dir > 0 ? 1 : -1)) % rots.size();
+    sprite_rot = rots[idx];
+    sprite_invalidate();
+}
+
+// ----------------------------------------------------------------- sound preview
+// Play a buddy sound lump (See/Pain/Death/Active) so a modder can check the mapping.
+// Mirrors i_sound.c: OGG lumps decode via stb_vorbis; DMX lumps are 8-bit unsigned PCM
+// behind an 8-byte header (sample rate at bytes 2-3).  Name resolution mirrors
+// I_SfxLumpFor: try "DS"+name first (only when <= 6 chars, or it can't be a lump), then
+// the bare lump name.  find() is case-insensitive, so no need to upper-case here.
+static SDL_AudioStream* snd_stream = nullptr;
+
+static bool is_sound_field(Key k)
+{
+    return k == Key::SeeSound || k == Key::PainSound
+        || k == Key::DeathSound || k == Key::ActiveSound;
+}
+
+static int find_sound_lump(const std::string& name)
+{
+    if (name.empty()) return -1;
+    if (name.size() <= 6) { const int l = wad.find("DS" + name); if (l >= 0) return l; }
+    return wad.find(name);
+}
+
+static void play_sound(const std::string& name)
+{
+    const int l = find_sound_lump(name);
+    if (l < 0) { set_status("No sound lump for '%s' (tried DS%s / %s).",
+                            name.c_str(), name.c_str(), name.c_str()); return; }
+    const std::vector<uint8_t>& d = wad[(size_t)l].data;
+    if (d.size() < 8) { set_status("Sound lump %s is empty.", wad[(size_t)l].name.c_str()); return; }
+
+    if (snd_stream) { SDL_DestroyAudioStream(snd_stream); snd_stream = nullptr; }
+
+    SDL_AudioSpec spec = {};
+    const uint8_t* pcm = nullptr;
+    int            bytes = 0;
+    std::vector<uint8_t> ogg_pcm;               // keeps the decoded S16 alive until Put
+
+    if (memcmp(d.data(), "OggS", 4) == 0) {
+        int chans = 0, rate = 0;
+        short* out = nullptr;
+        const int frames = stb_vorbis_decode_memory(d.data(), (int)d.size(), &chans, &rate, &out);
+        if (frames <= 0 || !out || chans <= 0 || rate <= 0) {
+            free(out);
+            set_status("Could not decode OGG sound %s.", wad[(size_t)l].name.c_str());
+            return;
+        }
+        spec.format = SDL_AUDIO_S16; spec.channels = chans; spec.freq = rate;
+        bytes = frames * chans * (int)sizeof(short);
+        ogg_pcm.assign((uint8_t*)out, (uint8_t*)out + bytes);
+        free(out);
+        pcm = ogg_pcm.data();
+    } else {
+        const int rate = d[2] | (d[3] << 8);    // DMX header: format, samplerate, count
+        spec.format = SDL_AUDIO_U8; spec.channels = 1; spec.freq = rate > 0 ? rate : 11025;
+        pcm = d.data() + 8;
+        bytes = (int)d.size() - 8;
+    }
+
+    snd_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec,
+                                           nullptr, nullptr);
+    if (!snd_stream) { set_status("No audio device: %s", SDL_GetError()); return; }
+    SDL_PutAudioStreamData(snd_stream, pcm, bytes);     // SDL copies it -> pcm can go away
+    SDL_ResumeAudioStreamDevice(snd_stream);
+    set_status("Playing %s (%d bytes).", wad[(size_t)l].name.c_str(), bytes);
 }
 
 // ----------------------------------------------------------------- file ops
@@ -533,6 +797,7 @@ static void new_wad_session()
     sel = 0;
     wad_sel = -1;
     wad_modified = false;
+    undo_reset();
     set_status("New WAD -- add a buddy, then Save As.");
 }
 
@@ -556,6 +821,7 @@ static bool load_wad(const std::string& path)
     wad_scroll = 0;
     wad_sel = -1;
     wad_modified = false;
+    undo_reset();
     load_palette();                     // PLAYPAL for paletted patch previews
     sprite_invalidate();
     set_status("Loaded %s -- %u lump(s), %d buddy(ies).", path.c_str(),
@@ -686,6 +952,7 @@ static void import_file(const std::string& path)
     const std::vector<uint8_t> data = read_file(path, ok);
     if (!ok) { set_status("Could not read '%s'.", path.c_str()); return; }
 
+    push_undo();
     const std::string name = lump_name_from_path(path);
     const bool is_sprite = sel >= 0 && sel < (int)buddies.size()
                         && !buddies[sel].sprite.empty()
@@ -732,6 +999,7 @@ static void delete_lump()
 {
     if (wad_sel < 0 || (size_t)wad_sel >= wad.size()) { set_status("Select a lump first."); return; }
     const std::string nm = wad[(size_t)wad_sel].name;
+    push_undo();
     if (!wad.erase(wad_sel)) return;
     if ((size_t)wad_sel >= wad.size()) wad_sel = (int)wad.size() - 1;
     wad_modified = true;
@@ -746,29 +1014,43 @@ struct Buttons {
     SDL_FRect add, del, dup;
     SDL_FRect marine;                   // seed the stat rows from the built-in Marine
     SDL_FRect imp, exp, ren, dell;      // lump-level WAD editing
+    SDL_FRect frame_prev, frame_next;   // sprite preview: step animation frame
+    SDL_FRect rot_prev, rot_next;       // sprite preview: step rotation
+    SDL_FRect play;                     // sprite preview: animate on/off
 };
 static Buttons btn;
 
 static void recompute_layout()
 {
-    const float fy = WINH - FOOTER_H + 8;
-    btn.open   = { PAD,              fy, 110, 28 };
-    btn.newwad = { PAD + 120,        fy, 110, 28 };
-    btn.save   = { WINW - PAD - 320, fy, 100, 28 };
-    btn.saveas = { WINW - PAD - 210, fy, 110, 28 };
-    btn.quit   = { WINW - PAD - 90,  fy,  90, 28 };
+    // Footer: the status line gets its own full-width row (WINH-FOOTER_H+6); the buttons
+    // sit on the row below it so the status text is never drawn under a button.
+    const float fy = WINH - 30;
+    btn.open   = { PAD,              fy, 110, 26 };
+    btn.newwad = { PAD + 120,        fy, 110, 26 };
+    btn.save   = { WINW - PAD - 320, fy, 100, 26 };
+    btn.saveas = { WINW - PAD - 210, fy, 110, 26 };
+    btn.quit   = { WINW - PAD - 90,  fy,  90, 26 };
 
     btn.add = { PAD,       BUDBTN_Y, 60,  BUDBTN_H };
     btn.del = { PAD + 70,  BUDBTN_Y, 80,  BUDBTN_H };
     btn.dup = { PAD + 160, BUDBTN_Y, 100, BUDBTN_H };
 
-    btn.marine = { WINW - PAD - 152, EDIT_Y + 4, 152, 22 };
+    btn.marine = { WINW - PAD - 160, EDIT_Y + 4, 160, 22 };
 
     const float bw = (LIST_W - 6) / 2.0f;
     btn.imp  = { PAD,          WADBTN_Y,      bw, 26 };
     btn.exp  = { PAD + bw + 6, WADBTN_Y,      bw, 26 };
     btn.ren  = { PAD,          WADBTN_Y + 30, bw, 26 };
     btn.dell = { PAD + bw + 6, WADBTN_Y + 30, bw, 26 };
+
+    // Sprite-preview control row, along the bottom of the preview panel.
+    // Layout: "Fr" [<] X [>]   "Rot" [<] N [>]   [Play].
+    const float scy = SPRITE_Y + SPRITE_H - 46;
+    btn.frame_prev = { PAD + 30,  scy, 20, 22 };
+    btn.frame_next = { PAD + 66,  scy, 20, 22 };
+    btn.rot_prev   = { PAD + 124, scy, 20, 22 };
+    btn.rot_next   = { PAD + 160, scy, 20, 22 };
+    btn.play       = { PAD + 186, scy, 94, 22 };
 
     layout_fields();
 }
@@ -890,19 +1172,41 @@ static void draw_sprite_preview()
     sprite_refresh(false);
 
     if (sprite_tex && sprite_w > 0 && sprite_h > 0) {
-        const float bw = w - 16, bh = h - 52;
+        const float bw = w - 16, bh = h - 78;   // leave room for the control row + note
         float sc = bw / (float)sprite_w;
         if (sprite_h * sc > bh) sc = bh / (float)sprite_h;
         if (sc > 6.0f) sc = 6.0f;               // don't blow a 20px sprite up to mush
         const float dw = sprite_w * sc, dh = sprite_h * sc;
         SDL_FRect dst = { x + (w - dw) / 2.0f, y + 28 + (bh - dh) / 2.0f, dw, dh };
-        SDL_RenderTexture(ren, sprite_tex, nullptr, &dst);
+        if (sprite_mirror)
+            SDL_RenderTextureRotated(ren, sprite_tex, nullptr, &dst, 0.0, nullptr,
+                                     SDL_FLIP_HORIZONTAL);
+        else
+            SDL_RenderTexture(ren, sprite_tex, nullptr, &dst);
     }
+
+    // Frame / rotation stepper + animation toggle.
+    auto ctl = [&](const SDL_FRect& b, const char* s, bool on) {
+        rect(b.x, b.y, b.w, b.h, on ? 70 : 50, on ? 100 : 60, on ? 70 : 90);
+        text(b.x + (b.w - textw(s)) / 2.0f, b.y + 4, s, 230, 240, 245);
+    };
+    const float scy = btn.frame_prev.y;
+    text(x + 8, scy + 4, "Fr", 200, 210, 220);
+    ctl(btn.frame_prev, "<", false);
+    text(btn.frame_prev.x + 24, scy + 4, std::string(1, sprite_frame), 255, 235, 160);
+    ctl(btn.frame_next, ">", false);
+    text(btn.rot_prev.x - 36, scy + 4, "Rot", 200, 210, 220);
+    ctl(btn.rot_prev, "<", false);
+    text(btn.rot_prev.x + 24, scy + 4, std::to_string(sprite_rot), 255, 235, 160);
+    ctl(btn.rot_next, ">", false);
+    ctl(btn.play, sprite_anim ? "Stop" : "Play", sprite_anim);
+
     text(x + 8, y + h - 20, sprite_note.empty() ? "(nothing to show)" : sprite_note,
          150, 160, 180, w - 16);
 }
 
 static int field_at(float mx, float my);
+static void mouse_logical(float* mx, float* my);
 
 static void draw_editor()
 {
@@ -921,7 +1225,7 @@ static void draw_editor()
     const Buddy& b = buddies[sel];
 
     float mxf = 0, myf = 0;
-    SDL_GetMouseState(&mxf, &myf);
+    mouse_logical(&mxf, &myf);
     const int hover = field_at(mxf, myf);
 
     for (size_t i = 0; i < FIELDS.size(); i++) {
@@ -946,7 +1250,14 @@ static void draw_editor()
             text(L.vx, L.ry + 4, editbuf, 255, 235, 160);
             text(L.vx + textw(editbuf), L.ry + 4, "_", 255, 255, 160);
         } else {
-            text(L.vx, L.ry + 4, ellipsize(format_value(b, f), (int)L.vw), vr, vg, vb);
+            const float vmaxw = is_sound_field(f.key) ? L.vw - 20 : L.vw;
+            text(L.vx, L.ry + 4, ellipsize(format_value(b, f), (int)vmaxw), vr, vg, vb);
+        }
+        // Sound rows get a small ">" play button at the right of the value cell.
+        if (is_sound_field(f.key)) {
+            const float px = L.vx + L.vw - 16;
+            rect(px, L.ry + 3, 14, ROWH - 8, 55, 85, 55);
+            text(px + 3, L.ry + 4, ">", 220, 245, 220);
         }
     }
 
@@ -962,7 +1273,7 @@ static void draw_editor()
         text(x + 8, hy, line, f.status == Status::Retired ? 150 : 190,
              f.status == Status::Retired ? 150 : 200, 210, w - 16);
     } else {
-        text(x + 8, hy, "Hover a row for help. Click a < value > to cycle, any other value to type.",
+        text(x + 8, hy, "Hover for help. Click </> to nudge a number or the number to type it; a < choice > cycles.",
              130, 140, 160, w - 16);
     }
 }
@@ -1021,12 +1332,14 @@ static void draw_preview()
 
 static void draw_footer()
 {
-    rect(0, WINH - FOOTER_H, WINW, 20, 32, 32, 40);
-    rect(0, WINH - FOOTER_H + 20, WINW, 1, 60, 60, 80);
+    rect(0, WINH - FOOTER_H, WINW, FOOTER_H, 32, 32, 40);
+    rect(0, WINH - FOOTER_H, WINW, 1, 60, 60, 80);
+    // Status / rename prompt on its own full-width row, above the button row.
     if (mode == Mode::RenameLump)
-        text(PAD, WINH - FOOTER_H + 4, "Rename lump: " + editbuf + "_", 255, 235, 160);
+        text(PAD, WINH - FOOTER_H + 6, "Rename lump: " + editbuf + "_", 255, 235, 160,
+             WINW - 2 * PAD);
     else if (!status.empty())
-        text(PAD, WINH - FOOTER_H + 4, status, 200, 220, 200);
+        text(PAD, WINH - FOOTER_H + 6, status, 200, 220, 200, WINW - 2 * PAD);
 
     rect(btn.open.x, btn.open.y, btn.open.w, btn.open.h, 50, 80, 110);
     text(btn.open.x + 18, btn.open.y + 6, "Open WAD", 230, 240, 255);
@@ -1060,6 +1373,15 @@ static bool hit(float mx, float my, const SDL_FRect& r)
     return mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h;
 }
 
+// SDL_GetMouseState returns window pixels; with logical presentation the UI lives in
+// 1020x1000 logical space, so convert before hit-testing against layout rects.
+static void mouse_logical(float* mx, float* my)
+{
+    float wx = 0, wy = 0;
+    SDL_GetMouseState(&wx, &wy);
+    SDL_RenderCoordinatesFromWindow(ren, wx, wy, mx, my);
+}
+
 static int field_at(float mx, float my)
 {
     if (sel < 0 || sel >= (int)buddies.size()) return -1;
@@ -1090,10 +1412,10 @@ static void begin_edit_text(int idx)
     const Field& f = FIELDS[(size_t)idx];
     active = idx;
     mode = Mode::EditField;
-    editbuf = field_value(buddies[sel], f);
-    editbuf_max = f.textmax ? f.textmax : 64;
+    editbuf = f.num ? std::string() : field_value(buddies[sel], f);   // numbers: type fresh
+    editbuf_max = f.textmax ? f.textmax : (f.num ? 7 : 64);   // ints: up to 7 digits
     SDL_StartTextInput(win);
-    set_status("Editing '%s' -- Enter to confirm, Esc to cancel.", f.label);
+    set_status("Editing '%s' -- type a value, Enter to confirm, Esc to cancel.", f.label);
 }
 
 static void commit_edit_text()
@@ -1102,7 +1424,16 @@ static void commit_edit_text()
     const Field& f = FIELDS[(size_t)active];
     Buddy& b = buddies[sel];
     if (editbuf.size() > editbuf_max) editbuf.resize(editbuf_max);
-    b.*(f.str) = editbuf;
+    if (f.num) {                                 // numeric field: type fresh, parse + clamp
+        if (!editbuf.empty()) {                  // empty commit -> leave the value as-is
+            const int v = std::max(f.vmin, std::min(f.vmax, atoi(editbuf.c_str())));
+            if (b.*(f.num) != v) push_undo();
+            b.*(f.num) = v;
+        }
+    } else {
+        if (b.*(f.str) != editbuf) push_undo();  // skip a no-op commit (click-away)
+        b.*(f.str) = editbuf;
+    }
     b.set(f.key);
     record_change();
     if (f.key == Key::Sprite) sprite_invalidate();
@@ -1134,6 +1465,8 @@ static void begin_rename_lump()
 static void commit_rename_lump()
 {
     if (mode != Mode::RenameLump) return;
+    if (wad_sel >= 0 && (size_t)wad_sel < wad.size() && wad[(size_t)wad_sel].name != editbuf)
+        push_undo();
     if (wad.rename(wad_sel, editbuf)) {
         wad_modified = true;
         sprite_invalidate();
@@ -1149,6 +1482,7 @@ static void cycle_choice(int idx, int dir)
 {
     const Field& f = FIELDS[(size_t)idx];
     Buddy& b = buddies[sel];
+    push_undo();
     const std::vector<std::string>& set = *f.choices;
     size_t cur = 0;
     // Case-insensitive, like the engine's own lookups (Buddy_ColorIndex /
@@ -1167,7 +1501,10 @@ static void inc_int(int idx, int dir)
     const Field& f = FIELDS[(size_t)idx];
     Buddy& b = buddies[sel];
     int& v = b.*(f.num);
-    v = std::max(f.vmin, std::min(f.vmax, v + dir));
+    const int nv = std::max(f.vmin, std::min(f.vmax, v + dir));
+    if (nv == v) return;                        // clamped at min/max -- no change
+    push_undo();
+    v = nv;
     b.set(f.key);
     record_change();
 }
@@ -1177,10 +1514,24 @@ static void click_value(float mx, float my)
     const int i = field_at(mx, my);
     if (i < 0) return;
     const Field& f = FIELDS[(size_t)i];
-    if (f.kind == Kind::Choice || f.kind == Kind::Int) {
+    if (f.kind == Kind::Choice) {
         const int dir = value_dir(mx, LAY[i].vx, textw(format_value(buddies[sel], f)));
-        if (f.kind == Kind::Choice) cycle_choice(i, dir);
-        else                        inc_int(i, dir);
+        cycle_choice(i, dir);
+        return;
+    }
+    if (f.kind == Kind::Int) {
+        // "< n >": the leftmost "<" nudges down, the rightmost ">" nudges up, and
+        // clicking the number itself opens a text edit -- so 500 -> 200 is one type,
+        // not 300 clicks.
+        const std::string s = format_value(buddies[sel], f);
+        const float x0 = LAY[i].vx, wpx = textw(s);
+        if (mx < x0 + 2 * FONT_CW)              inc_int(i, -1);
+        else if (mx >= x0 + wpx - 2 * FONT_CW)  inc_int(i, +1);
+        else                                    begin_edit_text(i);
+        return;
+    }
+    if (is_sound_field(f.key) && mx >= LAY[i].vx + LAY[i].vw - 18) {
+        play_sound(field_value(buddies[sel], f));       // clicked the ">" play button
         return;
     }
     begin_edit_text(i);
@@ -1195,6 +1546,7 @@ static void click_main(float mx, float my)
     if (hit(mx, my, btn.quit))   { SDL_Event q = {}; q.type = SDL_EVENT_QUIT; SDL_PushEvent(&q); return; }
 
     if (hit(mx, my, btn.add)) {
+        push_undo();
         buddies.emplace_back();
         buddies.back().set(Key::Name);
         sel = (int)buddies.size() - 1;
@@ -1205,6 +1557,7 @@ static void click_main(float mx, float my)
     }
     if (hit(mx, my, btn.del)) {
         if (buddies.size() <= 1) { set_status("Need at least one buddy."); return; }
+        push_undo();
         buddies.erase(buddies.begin() + sel);
         if (sel >= (int)buddies.size()) sel = (int)buddies.size() - 1;
         sprite_invalidate();
@@ -1213,6 +1566,7 @@ static void click_main(float mx, float my)
         return;
     }
     if (hit(mx, my, btn.dup)) {
+        push_undo();
         buddies.push_back(buddies[sel]);
         sel = (int)buddies.size() - 1;
         record_change();
@@ -1224,6 +1578,7 @@ static void click_main(float mx, float my)
         // honest starting point.  (The parser's defaults are a different, older
         // baseline -- see docs/BUDDYDEF.md section 5.)
         if (sel < 0 || sel >= (int)buddies.size()) return;
+        push_undo();
         Buddy& b = buddies[sel];
         b.health = MARINE.health;  b.set(Key::Health);
         b.speed  = MARINE.speed;   b.set(Key::Speed);
@@ -1241,6 +1596,17 @@ static void click_main(float mx, float my)
     if (hit(mx, my, btn.exp))  { export_dialog(); return; }
     if (hit(mx, my, btn.ren))  { begin_rename_lump(); return; }
     if (hit(mx, my, btn.dell)) { delete_lump(); return; }
+
+    // Sprite-preview controls (view only -- no record change, no undo entry).
+    if (hit(mx, my, btn.frame_prev)) { sprite_step_frame(-1); return; }
+    if (hit(mx, my, btn.frame_next)) { sprite_step_frame(+1); return; }
+    if (hit(mx, my, btn.rot_prev))   { sprite_step_rot(-1);   return; }
+    if (hit(mx, my, btn.rot_next))   { sprite_step_rot(+1);   return; }
+    if (hit(mx, my, btn.play)) {
+        sprite_anim = !sprite_anim;
+        set_status(sprite_anim ? "Animating sprite frames." : "Animation stopped.");
+        return;
+    }
 
     {   // WAD directory: pick the lump the lump buttons act on
         const int wi = wadrow_at(mx, my);
@@ -1287,9 +1653,10 @@ static int check_mode(const std::string& path)
         printf("      hp %d  speed %d  size %dx%d  mass %d  pain %d  react %d\n",
                b.health, b.speed, b.radius, b.height, b.mass, b.painchance, b.reactiontime);
 
-        int w = 0, h = 0;
+        int  w = 0, h = 0;
+        bool mir = false;
         std::string note;
-        decode_sprite(b.sprite, w, h, note);
+        decode_sprite(b.sprite, 'A', 1, mir, w, h, note);
         printf("      art    %s\n", note.c_str());
 
         const std::string probs = issues_line(b);
@@ -1313,7 +1680,8 @@ int main(int argc, char** argv)
         printf("SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
-    win = SDL_CreateWindow("MyBuddy - BUDDYDEF Editor", WINW, WINH, 0);
+    SDL_InitSubSystem(SDL_INIT_AUDIO);      // sound preview -- optional, ignore failure
+    win = SDL_CreateWindow("MyBuddy - BUDDYDEF Editor", WINW, WINH, SDL_WINDOW_RESIZABLE);
     if (!win) { printf("SDL_CreateWindow: %s\n", SDL_GetError()); return 1; }
     {
         SDL_Surface* icon = SDL_CreateSurfaceFrom(BUDDYDOOM_ICON_W, BUDDYDOOM_ICON_H,
@@ -1323,12 +1691,25 @@ int main(int argc, char** argv)
         if (icon) { SDL_SetWindowIcon(win, icon); SDL_DestroySurface(icon); }
     }
     ren = SDL_CreateRenderer(win, nullptr);
+    // Scale the fixed 1020x1000 UI proportionally into whatever size the window is
+    // resized to (letterboxed, aspect preserved).  Event/mouse coords come back in
+    // window pixels, so they are converted to this logical space below.
+    SDL_SetRenderLogicalPresentation(ren, WINW, WINH, SDL_LOGICAL_PRESENTATION_LETTERBOX);
     font_init();
 
     bool run = true;
     while (run) {
         SDL_Event e;
-        if (!SDL_WaitEvent(&e)) break;
+        // While animating, wake on a timer to advance the frame; otherwise block.
+        const bool got = sprite_anim ? SDL_WaitEventTimeout(&e, 120) : SDL_WaitEvent(&e);
+        if (!got) {
+            if (sprite_anim) { sprite_step_frame(+1); draw(); continue; }   // timeout tick
+            break;                                                          // real failure
+        }
+
+        // Map mouse/wheel event coords from window pixels into the 1020x1000 logical
+        // space the UI is laid out in (see SDL_SetRenderLogicalPresentation above).
+        SDL_ConvertEventToRenderCoordinates(ren, &e);
 
         switch (e.type) {
         case SDL_EVENT_QUIT:
@@ -1346,7 +1727,7 @@ int main(int argc, char** argv)
         case SDL_EVENT_MOUSE_WHEEL:
             if (mode == Mode::Normal) {
                 float mmx = 0, mmy = 0;
-                SDL_GetMouseState(&mmx, &mmy);
+                mouse_logical(&mmx, &mmy);
                 const bool over_wad = !wad.empty() && mmx >= PAD && mmx < PAD + LIST_W
                                    && mmy >= WADLIST_Y && mmy < WADLIST_Y + WADLIST_H;
                 if (over_wad) {
@@ -1365,17 +1746,19 @@ int main(int argc, char** argv)
         case SDL_EVENT_TEXT_INPUT:
             if (mode != Mode::Normal) {
                 const std::string in = e.text.text;
-                if (editbuf.size() + in.size() <= editbuf_max) {
-                    const size_t at = editbuf.size();
-                    editbuf += in;
-                    // Sprite bases and lump names are stored upper-case in the WAD
-                    // directory; fold as the user types so "fran" and "FRAN" can't
-                    // produce two different lumps.
-                    const bool upper = (mode == Mode::RenameLump)
-                                    || (active >= 0 && FIELDS[(size_t)active].kind == Kind::Sprite);
-                    if (upper)
-                        for (size_t i = at; i < editbuf.size(); i++)
-                            editbuf[i] = (char)toupper((unsigned char)editbuf[i]);
+                // Sprite bases and lump names are stored upper-case in the WAD directory;
+                // fold as the user types so "fran" and "FRAN" can't make two lumps.
+                const bool is_int   = (mode == Mode::EditField && active >= 0
+                                       && FIELDS[(size_t)active].num);
+                const bool is_upper = (mode == Mode::RenameLump)
+                                    || (mode == Mode::EditField && active >= 0
+                                        && FIELDS[(size_t)active].kind == Kind::Sprite);
+                for (char c : in) {
+                    if (editbuf.size() >= editbuf_max) break;
+                    if (is_int && !((c >= '0' && c <= '9') || (c == '-' && editbuf.empty())))
+                        continue;                       // numeric field: digits (and a leading -)
+                    if (is_upper) c = (char)toupper((unsigned char)c);
+                    editbuf += c;
                 }
             }
             break;
@@ -1393,6 +1776,9 @@ int main(int argc, char** argv)
                 if (e.key.key == SDLK_ESCAPE) run = false;
                 else if (e.key.key == SDLK_S && (e.key.mod & SDL_KMOD_CTRL)) save_wad("");
                 else if (e.key.key == SDLK_O && (e.key.mod & SDL_KMOD_CTRL)) open_dialog();
+                else if (e.key.key == SDLK_Z && (e.key.mod & SDL_KMOD_CTRL) && (e.key.mod & SDL_KMOD_SHIFT)) do_redo();
+                else if (e.key.key == SDLK_Z && (e.key.mod & SDL_KMOD_CTRL)) do_undo();
+                else if (e.key.key == SDLK_Y && (e.key.mod & SDL_KMOD_CTRL)) do_redo();
                 else if (e.key.key == SDLK_UP)   { if (sel > 0) { sel--; sprite_invalidate(); } }
                 else if (e.key.key == SDLK_DOWN) { if (sel < (int)buddies.size() - 1) { sel++; sprite_invalidate(); } }
             }
@@ -1416,6 +1802,7 @@ int main(int argc, char** argv)
     }
 
     sprite_free();
+    if (snd_stream) SDL_DestroyAudioStream(snd_stream);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Quit();
