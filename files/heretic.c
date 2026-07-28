@@ -215,9 +215,50 @@ void A_MinotaurAtk2 (mobj_t* actor)			// melee, else hurl a mace ball
     P_SpawnMissile (actor, actor->target, MT_HMINOTAURFX);
 }
 
+// (H) Whirlwind flight thinker (crispy A_WhirlwindSeek): the whirlwind lives on a
+// countdown stored in `health` (this engine's mobj_t has no special2), fading to its
+// death state when it expires; meanwhile it homes toward its tracer via the engine's
+// A_Tracer and whirs periodically.  Wired into the S_HIRX* flight loop below.
+extern int	leveltime;
+
+void A_WhirlwindSeek (mobj_t* actor)
+{
+    actor->health -= 3;				// lifetime countdown (~9s from spawnhealth)
+    if (actor->health < 0)
+    {
+	actor->momx = actor->momy = actor->momz = 0;
+	P_SetMobjState (actor, mobjinfo[actor->type].deathstate);
+	actor->flags &= ~MF_MISSILE;		// stop being a missile -> fades in place
+	return;
+    }
+    if (!(leveltime & 31))
+	S_StartSound (actor, sfx_h_hedat3);	// periodic whir
+    A_Tracer (actor);				// homing seek toward tracer
+}
+
+// (H) The whirlwind engulfs whatever it overlaps (crispy P_TouchWhirlwind): it buffets
+// the victim (spin + shove + updraft) and does 3 damage every 8 tics, WITHOUT exploding
+// -- so it lingers.  Called from the MT_HWHIRLWIND branch of PIT_CheckThing (p_map.c).
+void P_TouchWhirlwind (mobj_t* target)
+{
+    int	r;
+    target->angle += (P_Random() - P_Random()) << 20;
+    target->momx  += (P_Random() - P_Random()) << 10;
+    target->momy  += (P_Random() - P_Random()) << 10;
+    if (leveltime & 16)
+    {
+	r = P_Random();
+	if (r > 160) r = 160;
+	target->momz += r << 10;
+	if (target->momz > 12*FRACUNIT) target->momz = 12*FRACUNIT;
+    }
+    if (!(leveltime & 7))
+	P_DamageMobj (target, NULL, NULL, 3);
+}
+
 // Iron lich: melee HITDICE(6), else lob an ice ball or release a HOMING whirlwind.  The
-// whirlwind's tracer is set to the target so the engine's A_Tracer (revenant homing) steers
-// it -- the lich's signature seeking attack.  (The fire-column third attack is omitted.)
+// whirlwind's tracer is set to the target so A_WhirlwindSeek (above) steers + times it
+// out -- the lich's signature seeking attack.  (The fire-column third attack is omitted.)
 void A_LichAttack (mobj_t* actor)
 {
     mobj_t*	t = actor->target;
@@ -727,9 +768,9 @@ void Heretic_Init (void)
     ST (S_HIRX2, SPR_HIRX, 4, 3, NULL,                  S_HIRX3);
     ST (S_HIRX3, SPR_HIRX, 5, 3, NULL,                  S_HIRX4);
     ST (S_HIRX4, SPR_HIRX, 6, 3, NULL,                  S_HIRX5);
-    ST (S_HIRX5, SPR_HIRX, 0, 3, (actionf_p1)A_Tracer,  S_HIRX6);
-    ST (S_HIRX6, SPR_HIRX, 1, 3, (actionf_p1)A_Tracer,  S_HIRX7);
-    ST (S_HIRX7, SPR_HIRX, 2, 3, (actionf_p1)A_Tracer,  S_HIRX5);
+    ST (S_HIRX5, SPR_HIRX, 0, 3, (actionf_p1)A_WhirlwindSeek,  S_HIRX6);
+    ST (S_HIRX6, SPR_HIRX, 1, 3, (actionf_p1)A_WhirlwindSeek,  S_HIRX7);
+    ST (S_HIRX7, SPR_HIRX, 2, 3, (actionf_p1)A_WhirlwindSeek,  S_HIRX5);
     ST (S_HIRXX1, SPR_HIRX, 6, 4, NULL, S_HIRXX2);
     ST (S_HIRXX2, SPR_HIRX, 6, 4, NULL, S_NULL);
 

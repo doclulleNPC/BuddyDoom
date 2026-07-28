@@ -412,6 +412,19 @@ boolean PIT_CheckThing (mobj_t* thing)
 	if (tmthing->z+tmthing->height < thing->z)
 	    return true;		// underneath
 
+	// (H) The iron-lich whirlwind engulfs the player: buffet + periodic damage
+	// (P_TouchWhirlwind) and pass THROUGH everything, never exploding, so it lingers.
+	{
+	    extern int  heretic_mode;
+	    extern void P_TouchWhirlwind (mobj_t*);
+	    if (heretic_mode && tmthing->type == MT_HWHIRLWIND)
+	    {
+		if (thing->player)
+		    P_TouchWhirlwind (thing);
+		return true;		// pass through (monsters unaffected)
+	    }
+	}
+
 	// A friendly missile (the buddy's Security Drone laser) passes harmlessly
 	// through the human, the buddy and any other friend instead of exploding on
 	// them, so it carries on to the enemy behind.
