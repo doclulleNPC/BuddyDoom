@@ -66,7 +66,7 @@ void HU_Buddy_SetRes (void) {}
 
 // ---------------------------------------------------------------------------
 //  Buddy mugshot faces (BUF*) -- a distinct set from the player's STF*, packed
-//  into buddydoom.wad (tools/bake_buddy_face.py).  Loaded lazily: the WAD is added at
+//  into buddydoom.wad (from tools/wad.gfx via tools/bake_buddy_voice.py).  Loaded lazily: the WAD is added at
 //  startup (I_Voice_Init), so the lumps exist by the time the HUD ticks/draws; if
 //  buddydoom.wad is absent the faces stay unloaded and the HUD falls back to a text
 //  label.  The face is ANIMATED exactly like the player's (st_stuff.c): a flat

@@ -339,32 +339,25 @@ def cfg_value(cfg_path, key):
     return None
 
 
-def load_face_lumps():
-    """Buddy HUD mugshots (tools/buddyface/BUF*.lmp -- the source of truth).  ALWAYS
-    packed into buddydoom.wad so a voice re-bake never drops the BUF* faces the HUD needs
-    (hu_buddy.c); you don't have to run bake_buddy_face.py separately."""
-    faces_dir = Path(__file__).resolve().parent / "buddyface"
-    lumps = [(f.stem.upper(), f.read_bytes()) for f in sorted(faces_dir.glob("BUF*.lmp"))]
-    if not lumps:
-        print(f"WARNING: no BUF*.lmp in {faces_dir} -- buddy HUD faces will be MISSING!",
+def load_gfx_lumps():
+    """ALL buddy graphic lumps, as true-colour PNGs from tools/wad.gfx/ -- the single
+    source of truth for buddy art.  Covers the world SPRITES (MNDR*/MTUR*/SHT1*/POW1*
+    drone + turret, LICS*/LICF*/LICE* Lichling), the HUD mugshots (BUF*) and the UI
+    compass arrows (RARR*).  Everything is packed between S_START/S_END so R_InitSprites
+    picks up the sprite frames; the HUD/UI lumps are still found by name regardless.
+    (The old per-asset bakers -- bake_buddy_face / bake_secdrone sprites / bake_lichling
+    / patch_turret_sprites -- are gone; drop a PNG in wad.gfx and re-bake.)  Lump name =
+    filename stem, upper-cased."""
+    gfx_dir = Path(__file__).resolve().parent / "wad.gfx"
+    pngs = sorted(gfx_dir.glob("*.png"))
+    if not pngs:
+        print(f"WARNING: no *.png in {gfx_dir} -- buddy sprites/faces/arrows will be MISSING!",
               file=sys.stderr)
-    else:
-        print(f"  + {len(lumps)} BUF* HUD face lumps")
-    return lumps
-
-
-def load_arrow_lumps():
-    """UI compass arrows (tools/arrows/*.png).  Packed RAW (PNG bytes) into buddydoom.wad;
-    the engine decodes them via V_CachePNG (light PNG->patch support, v_png.c).  Used by
-    hu_buddy.c to point the player at a downed buddy.  Lump name = filename stem upper
-    (e.g. RARRA0)."""
-    arrows_dir = Path(__file__).resolve().parent / "arrows"
-    lumps = [(f.stem.upper(), f.read_bytes()) for f in sorted(arrows_dir.glob("*.png"))]
-    if not lumps:
-        print(f"WARNING: no *.png in {arrows_dir} -- the buddy-down compass will be MISSING!",
-              file=sys.stderr)
-    else:
-        print(f"  + {len(lumps)} UI arrow PNG lumps ({', '.join(n for n,_ in lumps)})")
+        return []
+    lumps = [("S_START", b"")]
+    lumps += [(f.stem.upper(), f.read_bytes()) for f in pngs]
+    lumps += [("S_END", b"")]
+    print(f"  + {len(pngs)} PNG gfx lumps from wad.gfx (S_START..S_END)")
     return lumps
 
 
@@ -580,7 +573,7 @@ def main():
             lumps.append((name, data))
             manifest_lines.append(f"{name}\t{phrase}\toffline-sine({freq}Hz)\t{len(data)}\n")
             print(f"  [{i:2d}/{len(PHRASES)}] {name}  '{phrase}' -> {freq} Hz")
-        lumps += load_face_lumps()	# buddy HUD mugshots -- always included
+        lumps += load_gfx_lumps()	# all buddy graphics (sprites + HUD faces + arrows)
         manifest_txt = (f"OFFLINE-TEST MODE (sine tones)\n"
                         f"generated={time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                         + "".join(manifest_lines))
@@ -648,8 +641,7 @@ def main():
         persona = "director" if name.startswith("DD") else "buddy"
         manifest_lines.append(f"{name}\t{persona}\t{voice}\t{phrase}\t{src}\t{len(data)}\n")
 
-    lumps += load_face_lumps()		# buddy HUD mugshots -- always included
-    lumps += load_arrow_lumps()		# UI compass arrows -- always included
+    lumps += load_gfx_lumps()		# all buddy graphics (sprites + HUD faces + arrows)
 
     # Pack the lump<->phrase mapping INTO the WAD as a text lump ("VOICEMAP") so the
     # WAD is self-documenting -- no external file needed to know what each lump says.

@@ -317,7 +317,7 @@ typedef enum
     // psprites (CRBW/BLSR/HROD/PHNX/MACE/GAUN) + their projectiles/puffs (FX*/PUF1)
     SPR_CRBW, SPR_BLSR, SPR_HROD, SPR_PHNX, SPR_MACE, SPR_GAUN,
     SPR_FX03, SPR_FX17, SPR_FX00, SPR_FX04, SPR_FX08, SPR_FX02, SPR_PUF1,
-    SPR_LICS, SPR_LICF, SPR_LICE,	// Lichling body / fire / ice (lichling.wad) -- buddy special
+    SPR_LICS, SPR_LICF, SPR_LICE,	// Lichling body / fire / ice (buddydoom.wad) -- buddy special
     NUMSPRITES
 
 } spritenum_t;

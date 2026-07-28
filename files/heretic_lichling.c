@@ -13,7 +13,7 @@
 //	ranged bolt -- ICE for a single target, FIRE (small AOE) when several enemies
 //	are clustered around the target, with a small random flip.  A toned-down take
 //	on the Iron Lich, NOT its full ice-ball + homing-whirlwind set.  Sprites are
-//	the scaled true-colour PNGs in lichling.wad (LICS body, LICF fire, LICE ice).
+//	the scaled true-colour PNGs in buddydoom.wad (LICS body, LICF fire, LICE ice).
 //
 //-----------------------------------------------------------------------------
 

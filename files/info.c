@@ -127,7 +127,7 @@ char *sprnames_builtin[NUMSPRITES] = {
     // (H) Heretic weapons phase 2-4: psprites + projectiles/puffs
     "CRBW","BLSR","HROD","PHNX","MACE","GAUN",
     "FX03","FX17","FX00","FX04","FX08","FX02","PUF1",
-    "LICS","LICF","LICE"		// Lichling body / fire / ice (lichling.wad)
+    "LICS","LICF","LICE"		// Lichling body / fire / ice (buddydoom.wad)
 };
 
 
