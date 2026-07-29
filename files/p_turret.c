@@ -218,9 +218,13 @@ const char* P_TurretDeploy (player_t* player)
     t->angle  = ang;
     t->target = NULL;
 
-    // Toss it in the facing direction with a little arc; steeper if looking up.
-    t->momx = FixedMul (TURRET_THROW, finecosine[fine]);
-    t->momy = FixedMul (TURRET_THROW, finesine[fine]);
+    // Toss it in the facing direction with a little arc; steeper if looking up.  INHERIT
+    // the player's own velocity first: airborne things get no friction, so a plain
+    // TURRET_THROW (18) is slower than a forward-running marine (~25+/tic) -- the player
+    // would overtake it in mid-air and it lands BEHIND them.  Adding p->mom* makes the
+    // throw relative to the player, so it always flies out ahead regardless of run speed.
+    t->momx = p->momx + FixedMul (TURRET_THROW, finecosine[fine]);
+    t->momy = p->momy + FixedMul (TURRET_THROW, finesine[fine]);
     ld = player->lookdir;
     if (ld >  90) ld =  90;
     if (ld < -90) ld = -90;
