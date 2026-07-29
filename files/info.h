@@ -318,6 +318,8 @@ typedef enum
     SPR_CRBW, SPR_BLSR, SPR_HROD, SPR_PHNX, SPR_MACE, SPR_GAUN,
     SPR_FX03, SPR_FX17, SPR_FX00, SPR_FX04, SPR_FX08, SPR_FX02, SPR_PUF1,
     SPR_LICS, SPR_LICF, SPR_LICE,	// Lichling body / fire / ice (buddydoom.wad) -- buddy special
+    // (S) Strife sprite reservations (see strife_spr.inc, strife-ve order)
+#include "strife_spr.inc"
     NUMSPRITES
 
 } spritenum_t;
@@ -1796,6 +1798,8 @@ typedef enum
     S_LICL_DIE1, S_LICL_DIE2, S_LICL_DIE3, S_LICL_DIE4, S_LICL_DIE5, S_LICL_DIE6, S_LICL_DIE7,
     S_LICF_FLY1, S_LICF_FLY2, S_LICF_BOOM1, S_LICF_BOOM2, S_LICF_BOOM3, S_LICF_BOOM4, S_LICF_BOOM5,
     S_LICE_FLY1, S_LICE_FLY2, S_LICE_BOOM1, S_LICE_BOOM2, S_LICE_BOOM3, S_LICE_BOOM4, S_LICE_BOOM5,
+    // (S) Strife state reservations (see strife_states.inc, strife-ve order)
+#include "strife_states.inc"
     NUMSTATES
 } statenum_t;
 
@@ -2154,6 +2158,8 @@ typedef enum {
     MT_HWP_CBOWFX1, MT_HWP_CBOWFX3, MT_HWP_BLSRPUFF, MT_HWP_HRODFX1,
     MT_HWP_PHNXFX1, MT_HWP_PHNXPUFF, MT_HWP_MACEFX1, MT_HWP_GAUNPUFF,
     MT_LICHLING, MT_LICHFIRE, MT_LICHICE,	// Lichling + its fire/ice projectiles (files/heretic_lichling.c)
+    // (S) Strife mobjtype reservations (see strife_mt.inc, strife-ve order)
+#include "strife_mt.inc"
     NUMMOBJTYPES
 
 } mobjtype_t;
