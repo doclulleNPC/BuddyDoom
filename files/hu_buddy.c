@@ -450,7 +450,9 @@ static void HU_Buddy_DrawStrip (player_t* bot)
     HU_Buddy_Text (tx, 22, l3);
 
     // The buddy's own artifact inventory, on a 4th line below the status line.
-    HU_Buddy_DrawInventory (bot, 32);
+    // (H) purely-native Heretic: the native player inventory bar is the only artifact
+    // readout in heretic_mode, so skip the buddy's strip there.
+    { extern int heretic_mode; if (!heretic_mode) HU_Buddy_DrawInventory (bot, 32); }
 
     // Mugshot just left of the text block (BUF* patches carry a -5/-2 offset, so
     // V_DrawPatch shifts them right/down a touch -- accounted for in the x below).
@@ -496,33 +498,85 @@ void HU_Buddy_Drawer (void)
 //  Reuses the static text helpers above (HU_Buddy_Text / HU_Buddy_TextW).
 // ===========================================================================
 
+// (J) Heretic-style artifact inventory bar (replaces the old bottom-centre text
+// readout).  Like Heretic: the SELECTED artifact sits in a box in the bottom-right
+// corner, and the full icon RIBBON pops up (centred, above the status bar) for a few
+// seconds while the player scrolls the selection -- P_InvScroll stamps hinv_show_until,
+// the SAME timer the native heretic_mode bar (st_stuff.c) uses.  Icons are the pickup
+// sprites (buddy_arti_icon[]), available from buddydoom.wad, so no Heretic HUD chrome is
+// needed and it works in plain DOOM.  heretic_mode draws its own native bar -> skipped.
 void HU_Inventory_Drawer (void)
 {
-    extern const char* P_ArtifactName (artitype_t a);
-    player_t*   pl = &players[consoleplayer];
-    artitype_t  sel;
-    char        line[48];
-    int         wb, tx;
+    extern const char*	P_ArtifactName (artitype_t a);
+    extern int		hinv_show_until;
+    extern int		statusbar_style;
+    player_t*	pl = &players[consoleplayer];
+    int		wb = SCREENWIDTH / hires;
+    artitype_t	held[NUMARTIFACTS];
+    int		cnt[NUMARTIFACTS];
+    int		n = 0, sel = -1, a, i, ln, invy;
+    patch_t*	p;
+    char	num[8];
+#define INV_SLOT 28	// px per ribbon slot
 
     if (!show_inventory_hud) return;
-    { extern int heretic_mode; if (heretic_mode) return; }	// heretic draws its own bar box (st_stuff.c)
+    { extern int heretic_mode; if (heretic_mode) return; }	// heretic draws its own native bar
     if (menuactive || paused) return;
+    { extern gamestate_t wipegamestate; if (wipegamestate != GS_LEVEL) return; }
+
+    // Compacted list of held artifacts that have an icon (overflow/ammo slots don't).
+    for (a = arti_none + 1; a < NUMARTIFACTS; a++)
+	if (pl->inventory[a] > 0 && buddy_arti_icon[a])
+	{
+	    if (a == pl->invslot) sel = n;
+	    cnt[n]    = pl->inventory[a];
+	    held[n++] = (artitype_t) a;
+	}
+    if (n == 0) return;
+    if (sel < 0) sel = 0;
+
+    // Icon row sits just above the status bar (lower when the small/alt bar is active).
+    invy = BASE_HEIGHT - (statusbar_style == 0 ? ST_HEIGHT : ST_HEIGHT/2) - 26;
+
+    if (leveltime < hinv_show_until)
     {
-	extern gamestate_t wipegamestate;
-	if (wipegamestate != GS_LEVEL) return;
+	// --- browsing: the full ribbon, centred, selected slot bracketed + named ---
+	int x0 = (wb - n*INV_SLOT) / 2;
+	if (x0 < 4) x0 = 4;
+	for (i = 0; i < n; i++)
+	{
+	    int cx = x0 + i*INV_SLOT;
+	    p = ((ln = W_CheckNumForName (buddy_arti_icon[held[i]])) >= 0)
+		? (patch_t*) W_CacheLumpNum (ln, PU_CACHE) : NULL;
+	    if (p)
+	    {
+		int il = cx + (INV_SLOT - SHORT (p->width)) / 2;
+		V_DrawPatch (il + SHORT (p->leftoffset), invy + SHORT (p->topoffset), 0, p);
+	    }
+	    else if (buddy_arti_tag[held[i]])
+		HU_Buddy_Text (cx + 2, invy + 6, buddy_arti_tag[held[i]]);
+	    if (cnt[i] > 1)
+	    { snprintf (num, sizeof num, "%d", cnt[i]); HU_Buddy_Text (cx + INV_SLOT - 10, invy + 15, num); }
+	    if (i == sel)
+	    { HU_Buddy_Text (cx - 4, invy + 2, "["); HU_Buddy_Text (cx + INV_SLOT - 5, invy + 2, "]"); }
+	}
+	{ const char* nm = P_ArtifactName (held[sel]);
+	  int nx = (wb - HU_Buddy_TextW (nm)) / 2;  if (nx < 0) nx = 0;
+	  HU_Buddy_Text (nx, invy + 17, nm); }
     }
-
-    sel = (artitype_t) pl->invslot;
-    if (sel <= arti_none || sel >= NUMARTIFACTS || pl->inventory[sel] <= 0)
-	return;					// nothing selected/held -> draw nothing
-
-    snprintf (line, sizeof line, "%s X%d", P_ArtifactName (sel), pl->inventory[sel]);
-
-    wb = SCREENWIDTH / hires;			// wide-base width = the V_ coordinate space
-    tx = (wb - HU_Buddy_TextW (line)) / 2;	// centre horizontally
-    if (tx < 0) tx = 0;
-    // Just above the status bar (BASE_HEIGHT - ST_HEIGHT), one line up.
-    { extern int statusbar_style;   // vanilla: above the full bar; small/alt: lower (small/no bar)
-      int invy = BASE_HEIGHT - (statusbar_style == 0 ? ST_HEIGHT : ST_HEIGHT/2) - 10;
-      HU_Buddy_Text (tx, invy, line); }
+    else
+    {
+	// --- idle: just the selected artifact, in a box in the bottom-right corner ---
+	int cx = wb - INV_SLOT - 6;
+	p = ((ln = W_CheckNumForName (buddy_arti_icon[held[sel]])) >= 0)
+	    ? (patch_t*) W_CacheLumpNum (ln, PU_CACHE) : NULL;
+	if (p)
+	    V_DrawPatch (cx + (INV_SLOT - SHORT (p->width))/2 + SHORT (p->leftoffset),
+			 invy + SHORT (p->topoffset), 0, p);
+	else if (buddy_arti_tag[held[sel]])
+	    HU_Buddy_Text (cx + 2, invy + 6, buddy_arti_tag[held[sel]]);
+	if (cnt[sel] > 1)
+	{ snprintf (num, sizeof num, "%d", cnt[sel]); HU_Buddy_Text (cx + INV_SLOT - 10, invy + 15, num); }
+    }
+#undef INV_SLOT
 }

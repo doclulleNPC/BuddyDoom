@@ -43,6 +43,8 @@ extern mobjinfo_t *mobjinfo;
 
 // engine pieces we call (declared by hand, like hexen.c/revmarine.c)
 extern boolean	P_GiveBody (player_t* player, int num);
+extern boolean	P_HoardHealth (player_t* player);	// (buddy) >75% HP -> bank heal pickups (p_inter.c)
+extern boolean	P_AICoop_Active (void);
 extern void	A_Scream (mobj_t*);
 extern void	A_Explode (mobj_t*);
 extern void	P_SpawnPlayerMissile (mobj_t* source, mobjtype_t type);
@@ -334,6 +336,16 @@ boolean P_TouchHereticArtifact (player_t* player, mobj_t* special)
       case MT_HARTI_FLECHETTE: a = h_arti_flechette; player->message = "PICKED UP A FLECHETTE"; break;
       default:
 	return false;				// not ours
+    }
+
+    // (buddy) DOOM heal rule: below 75% HP a picked-up healing artifact (Quartz Flask /
+    // Mystic Urn) is used at once instead of banked; at/above 75% it goes to the inventory
+    // for later (P_HoardHealth).  Solo Heretic banks every artifact as usual.
+    if ((a == h_arti_flask || a == h_arti_urn)
+	&& P_AICoop_Active () && !P_HoardHealth (player))
+    {
+	ApplyHereticArtifact (player, a);	// heal now (flask +25 / urn +100)
+	return true;				// consumed, not banked
     }
 
     // (H) Artifact inventory of this type full -> leave it on the ground (crispy:

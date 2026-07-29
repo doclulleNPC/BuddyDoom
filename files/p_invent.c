@@ -98,6 +98,9 @@ boolean P_StoreOverflow (player_t* player, artitype_t a, int amount)
 {
     ammotype_t	at;
 
+    // (H) purely-native Heretic: no DOOM-style overflow pocketing in heretic_mode
+    // (the native Heretic inventory owns the artifact store there).
+    { extern int heretic_mode; if (heretic_mode) return false; }
     if (!P_AICoop_Active ())			// no buddy -> no DOOM inventory; pickup stays vanilla
 	return false;
     if (a <= arti_none || a >= NUMARTIFACTS)
@@ -177,6 +180,12 @@ void P_InvScroll (player_t* player, int dir)
 static int ApplyArtifact (player_t* player, artitype_t a)
 {
     mobj_t*	mo = player->mo;
+
+    // (S) Strife inventory items (effects in files/p_inv_strife.c).  Must be tested
+    // BEFORE the Heretic range below -- the s_arti_* slots are also >= h_arti_flask.
+    { extern boolean ApplyStrifeArtifact (player_t*, artitype_t);
+      if (a >= s_arti_medpatch)
+	return ApplyStrifeArtifact (player, a) ? 1 : 0; }
 
     // (H) Heretic artifacts: effects live in files/p_inv_heretic.c.  They consume
     // exactly one on success (it sets ->message either way).
@@ -324,6 +333,11 @@ boolean P_DropArtifact (player_t* player)
 	return false;
     }
 
+    if (a >= s_arti_medpatch)		// (S) Strife items aren't droppable in this port
+    {
+	player->message = "CAN'T DROP THAT";
+	return false;
+    }
     if (a == h_arti_flechette)		// (X) non-contiguous MT slot -> map explicitly
 	t = MT_HARTI_FLECHETTE;
     else if (a >= h_arti_flask)		// Heretic artifacts map 1:1 to MT_HARTI_*
@@ -378,7 +392,9 @@ boolean P_InventorySelfRevive (player_t* player)
     int		heal;
     if (!mo) return false;
     if      (player->inventory[arti_medikit]  > 0) { player->inventory[arti_medikit]--;  heal = 25; }
+    else if (player->inventory[h_arti_flask]  > 0) { player->inventory[h_arti_flask]--;  heal = 25; }	// (H) Quartz Flask
     else if (player->inventory[arti_stimpack] > 0) { player->inventory[arti_stimpack]--; heal = 10; }
+    else if (player->inventory[h_arti_urn]    > 0) { player->inventory[h_arti_urn]--;    heal = 100; }	// (H) Mystic Urn
     else return false;
 
     mo->flags |=  (MF_SOLID | MF_SHOOTABLE);

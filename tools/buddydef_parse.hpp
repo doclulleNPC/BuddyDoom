@@ -5,9 +5,9 @@
 // byte-for-byte reloadable by the engine.  When the engine's parser changes, change
 // this with it.
 //
-// A buddy is player 2 -- a record supplies properties, never an actor.  Some keys are
-// therefore parsed but no longer do anything in game (`attack`, `ednum`); they stay in
-// the format so existing lumps keep loading.  See docs/BUDDY_MODDING.md.
+// A buddy is player 2 -- a record supplies properties, never an actor.  `ednum` is
+// therefore parsed but does nothing in game; it stays in the format so existing lumps
+// keep loading.  See docs/BUDDY_MODDING.md.
 
 #ifndef BUDDYDEF_PARSE_HPP
 #define BUDDYDEF_PARSE_HPP
@@ -24,9 +24,10 @@ namespace buddy {
 // the identity of a row in the editor -- the C version matched on the UI's label
 // strings, which silently broke whenever a label was reworded.
 enum class Key {
-    Name, Desc, Special, Ability, Color, Sprite,
+    Name, Desc, Ability, Color, Sprite,
     Health, Speed, Radius, Height, Mass, PainChance, ReactionTime,
-    Attack, SeeSound, PainSound, DeathSound, ActiveSound, Ednum,
+    MeleeAttack, RangedAttack,
+    SeeSound, PainSound, DeathSound, ActiveSound, Ednum,
     COUNT
 };
 
@@ -34,8 +35,7 @@ struct Buddy {
     // Identity
     std::string name    = "Buddy";
     std::string desc;
-    std::string special;                 // free-text blurb for the select screen
-    std::string ability = "none";        // none | drone | poisoncloud | turret
+    std::string ability = "none";        // the "Special" power: turret | drone | lichling | poisoncloud
     std::string color;                   // player-colour name, empty = none declared
 
     // Appearance
@@ -50,9 +50,14 @@ struct Buddy {
     int painchance   = 120;
     int reactiontime = 8;
 
-    // Retired: parsed, ignored by the game.
-    std::string attack = "melee";
-    int         ednum  = -1;
+    // Combat: the buddy borrows an existing actor's attack.  Two slots, because a
+    // monster's close and far attacks are separate things -- see docs/BUDDYDEF.md.
+    // (The old single `attack` key is gone; a lump that still has it is ignored like
+    // any other unknown key, and saving drops it.)
+    std::string melee  = "none";         // close range
+    std::string ranged = "none";         // at distance
+
+    int         ednum  = -1;             // retired: a player is not map-placeable
 
     // Sounds (lump names, empty = silent)
     std::string seesnd, painsnd, deathsnd, activesnd;

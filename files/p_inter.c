@@ -370,8 +370,9 @@ P_GivePower
 
 //
 // (mod) In buddy co-op, once the human is comfortably healed (>75% HP) a picked-up health item
-// is pocketed into the DOOM inventory for later instead of being wasted on a near-full bar.
-static boolean P_HoardHealth (player_t* player)
+// is pocketed into the inventory for later instead of being wasted on a near-full bar.
+// Non-static: the Heretic heal pickups (heretic_items.c / p_inv_heretic.c) reuse this same rule.
+boolean P_HoardHealth (player_t* player)
 {
     return P_AICoop_Active () && player->health > MAXHEALTH*3/4;
 }
@@ -474,6 +475,25 @@ P_TouchSpecialThing
 	player->bonuscount += BONUSADD;
 	if (player == &players[consoleplayer])
 	    S_StartSound (NULL, sound);
+	return;
+    }
+
+    // (S) Strife pickup (ammo/weapon/armor/health/keys/inventory): dispatched by sprite
+    // in files/strife_items.c.  In strife_mode EVERY special is a Strife item, so handle
+    // it here and always return -- never fall through to the DOOM sprite switch (whose
+    // default I_Errors on an unknown sprite).  false = couldn't take it -> leave on ground.
+    if (strife_mode)
+    {
+	extern boolean P_TouchStrifeItem (player_t*, mobj_t*);
+	if (P_TouchStrifeItem (player, special))
+	{
+	    if (special->flags & MF_COUNTITEM)
+		player->itemcount++;
+	    P_RemoveMobj (special);
+	    player->bonuscount += BONUSADD;
+	    if (player == &players[consoleplayer])
+		S_StartSound (NULL, sound);
+	}
 	return;
     }
 
@@ -1188,7 +1208,9 @@ P_DamageMobj
 	// dead -> P_InventorySelfRevive).  Hint at it.
 	else if (target->player && P_AICoop_Active ()
 		 && (target->player->inventory[arti_medikit] > 0
-		     || target->player->inventory[arti_stimpack] > 0))
+		     || target->player->inventory[arti_stimpack] > 0
+		     || target->player->inventory[h_arti_flask] > 0	// (H) Quartz Flask
+		     || target->player->inventory[h_arti_urn] > 0))	// (H) Mystic Urn
 	    target->player->message = "USE a health item to patch yourself up!";
 	return;
     }

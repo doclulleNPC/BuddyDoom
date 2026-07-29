@@ -324,11 +324,15 @@ void P_ZMovement (mobj_t* mo)
 	    // the skull slammed into something
 	    mo->momz = -mo->momz;
 	}
-	
+
+	// (H) liquid-terrain splash when a thing lands on / a missile strikes water/lava/sludge
+	{ extern int P_HitFloor (mobj_t*);
+	  if (heretic_mode && mo->momz < 0) P_HitFloor (mo); }
+
 	if (mo->momz < 0)
 	{
 	    if (mo->player
-		&& mo->momz < -GRAVITY*8)	
+		&& mo->momz < -GRAVITY*8)
 	    {
 		// Squat down.
 		// Decrease viewheight for a moment
@@ -823,6 +827,14 @@ void P_SpawnMapThing (mapthing_t* mthing)
 	// Heretic maps use Heretic doomednums -- resolve through the Heretic table.
 	// Unported Heretic things (-1) are silently skipped instead of I_Error'd.
 	i = P_HereticThingType (mthing->type);
+	if (i < 0)
+	    return;
+    }
+    else if (strife_mode)
+    {
+	// Strife maps use Strife doomednums -- resolve through the Strife table.
+	extern int P_StrifeThingType (int doomednum);
+	i = P_StrifeThingType (mthing->type);
 	if (i < 0)
 	    return;
     }

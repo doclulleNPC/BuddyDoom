@@ -89,8 +89,9 @@ buddy {
   painsound   FRANKN
   deathsound  FRANKN
   activesound FRANKN
-  special     "Tanky bruiser"       # blurb shown on the Buddy screen
-  ability     poisoncloud           # NAMED power: none | drone | poisoncloud | turret
+  meleeattack demon                 # close range, borrowed from an actor
+  rangedattack imp                  # at distance
+  ability     poisoncloud           # the "Special" power (table below)
 }
 ```
 
@@ -102,8 +103,9 @@ buddy {
 | `desc` / `about` / `info` | Description (wrapped) | *(empty)* | yes |
 | `sprite` | 4-char sprite base name | `PLAY` | select-screen preview; as the in-game skin *(pending)* |
 | `color` / `colour` | Default menu colour: `Green Gray Brown Red Blue Orange Purple White`, or 0–7 | *(none)* | yes |
-| `special` / `abilities` | Free-text blurb (shown on the Buddy screen) | *(empty)* | yes |
-| `ability` | **Named** special ability the buddy actually uses (table below) | `none` | yes |
+| `ability` | The **Special** power the buddy actually uses (table below) | `none` | yes |
+| `meleeattack` / `melee` | Close-range attack, borrowed from an actor | `none` | *(pending)* |
+| `rangedattack` / `ranged` / `missile` | Attack used at distance | `none` | *(pending)* |
 | `health` / `hp` | Spawn health | `200` | shown on the stats panel; on the body *(pending)* |
 | `speed` | Move speed, map units | `8` | as above *(pending)* — becomes a ticcmd speed, players don't use `info->speed` |
 | `radius` | Collision radius, map units | `20` | as above *(pending)* |
@@ -115,8 +117,12 @@ buddy {
 | `painsound` | Hurt sound | *(none)* | *(pending)* |
 | `deathsound` | Death sound | *(none)* | *(pending)* |
 | `activesound` | Idle grunt | *(none)* | *(pending)* |
-| `attack` | Attack style (table below) | `melee` | **retired** — player 2 fights with weapons |
 | `ednum` / `doomednum` | Map editor number | `-1` | **retired** — a player is not map-placeable |
+
+`attack` (the old single key) and `special` / `abilities` (a second prose field beside
+`desc`) are **gone**. A lump that still has them loads fine — unknown keys are ignored —
+and MyBuddy folds an old `special` blurb into the description when it saves, so the text
+is not lost. Use `meleeattack` + `rangedattack` for combat and `desc` for all prose.
 
 The two **retired** keys are still accepted so old lumps load without complaint;
 they no longer do anything. `attack` is expected to be replaced by a weapon loadout.
@@ -144,6 +150,7 @@ for whichever buddy you have selected:
 | `none` (default) | No special power |
 | `poisoncloud` | Every 2 s, a cloud of gas around the buddy damages every enemy monster within 160 map units (4 damage, same-ish floor height) and puffs visible smoke. Players, other friendlies and corpses are never touched. |
 | `drone` | Deploys a friendly **Security Drone** (`MT_SECDRONE`, `p_secdrone.c`) when an enemy is within 1024 units and none of ours is already out; at most one per 20 s. |
+| `lichling` | Summons a **Lichling** (`MT_LICHLING`, `files/heretic_lichling.c`) — the Heretic counterpart of the drone: a little floating Lich that claws up close and throws ice at one target or fire at a cluster. Same gate and cap as the drone. |
 | `turret` | Tosses out a **sentry turret** exactly like the player's `key_turret` deploy (`MT_TURRET`, `p_turret.c`): spawned at the buddy, nudged forward so a wall can't swallow it, then thrown with a little arc. Same gate as the drone — an enemy within 1024 units, none of ours already out, at most one per 30 s. Costs no ammo, so the cap and cooldown are the balance instead. |
 
 An unknown value is refused at load time with a console warning and falls back to

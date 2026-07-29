@@ -423,6 +423,12 @@ typedef enum
     sfx_hw_gnthit,	// GNTHIT  gauntlet hit
     sfx_hw_gntpow,	// GNTPOW  gauntlet (tomed) hit
     sfx_hw_wpnup,	// WPNUP   weapon pickup
+    // ---- (H) Heretic liquid-terrain splash sounds (files/heretic_splash.c) ----
+    sfx_h_gloop,	// GLOOP  water splash
+    sfx_h_burn,		// BURN   lava sizzle
+    // ---- (S) Strife SFX -- native lump names (files/sounds_strife.c Sounds_Strife_Init).
+    // Contiguous block, in enum order from sfx_s_swish.  (strife_sfx.inc, generated.)
+#include "strife_sfx.inc"
     NUMSFX
 } sfxenum_t;
 

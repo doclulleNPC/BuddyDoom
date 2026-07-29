@@ -122,11 +122,11 @@ static int		nroster = 0;
 // text for the select screen; THIS is the mechanic the buddy actually uses, run
 // once per tic by P_Buddy_AbilityTicker.
 // ---------------------------------------------------------------------------
-enum { BA_NONE = 0, BA_DRONE, BA_POISONCLOUD, BA_TURRET, BA_NUM };
+enum { BA_NONE = 0, BA_DRONE, BA_POISONCLOUD, BA_TURRET, BA_LICHLING, BA_NUM };
 
 static const char* const buddy_ability_name[BA_NUM] =
 {
-    "none", "drone", "poisoncloud", "turret"
+    "none", "drone", "poisoncloud", "turret", "lichling"
 };
 
 // Ability name -> id, or -1 when the name isn't one we know.  "" counts as none, so a
@@ -472,7 +472,7 @@ extern void		P_MobjThinker (mobj_t*);
 #define BA_DRONE_RANGE		(1024*FRACUNIT)		// ...and only with an enemy this close
 #define BA_TURRET_PERIOD	(30*TICRATE)		// at most one turret per 30 s
 #define BA_TURRET_RANGE		(1024*FRACUNIT)
-#define BA_TURRET_THROW		(11*FRACUNIT)		// same toss as the player's (p_turret.c)
+#define BA_TURRET_THROW		(18*FRACUNIT)		// same toss as the player's (p_turret.c)
 #define BA_TURRET_ARC		(6*FRACUNIT)
 
 extern void	P_DamageMobj (mobj_t*, mobj_t*, mobj_t*, int);
@@ -562,6 +562,39 @@ static void Buddy_DeployDrone (mobj_t* mo)
     players[consoleplayer].message = "[Buddy] Deploying security drone!";
 }
 
+// lichling: the Heretic counterpart of the drone -- a little floating Lich the buddy
+// summons (files/heretic_lichling.c; its look/chase come from the shared companion AI
+// in p_companion.c).  Same gate and cap as the drone, one at a time.
+static void Buddy_SummonLichling (mobj_t* mo)
+{
+    thinker_t*	th;
+    mobj_t*	l;
+    angle_t	ang;
+    unsigned	fine;
+
+    for (th = thinkercap.next; th != &thinkercap; th = th->next)	// one at a time
+    {
+	mobj_t* o;
+	if (th->function.acp1 != (actionf_p1)P_MobjThinker) continue;
+	o = (mobj_t*)th;
+	if (o->type == MT_LICHLING && o->health > 0)
+	    return;
+    }
+    if (!Buddy_EnemyWithin (mo, BA_DRONE_RANGE))
+	return;
+
+    ang  = mo->angle;
+    fine = ang >> ANGLETOFINESHIFT;
+    l = P_SpawnMobj (mo->x + FixedMul (mo->radius + 32*FRACUNIT, finecosine[fine]),
+		     mo->y + FixedMul (mo->radius + 32*FRACUNIT, finesine[fine]),
+		     mo->z + 48*FRACUNIT, MT_LICHLING);
+    if (!l)
+	return;
+    l->angle  = ang;
+    l->flags |= MF_FRIEND;
+    players[consoleplayer].message = "[Buddy] Summoning a lichling!";
+}
+
 // turret: toss out a sentry turret exactly like the player's `key_turret` deploy
 // (p_turret.c P_TurretDeploy) -- MT_TURRET, spawned at the buddy and nudged forward so a
 // wall can't swallow it, then thrown with a little arc.  No ammo cost: an mobj buddy has
@@ -595,7 +628,8 @@ static void Buddy_DeployTurret (mobj_t* mo)
     t = P_SpawnMobj (mo->x, mo->y, z, MT_TURRET);
     if (!t)
 	return;
-    P_TryMove (t, x, y);			// blocked by a wall -> stays at the buddy's feet
+    t->height = 16*FRACUNIT;			// low flight profile: fits window openings (p_turret.c)
+    P_TryMove (t, x, y);			// a solid wall still stops it (ledges/windows don't)
 
     t->angle  = ang;
     t->target = NULL;
@@ -649,6 +683,11 @@ void P_Buddy_AbilityTicker (void)
       case BA_TURRET:
 	if (!(gametic % BA_TURRET_PERIOD))
 	    Buddy_DeployTurret (mo);
+	break;
+
+      case BA_LICHLING:
+	if (!(gametic % BA_DRONE_PERIOD))
+	    Buddy_SummonLichling (mo);
 	break;
 
       default:

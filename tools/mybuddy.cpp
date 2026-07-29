@@ -38,6 +38,7 @@
 #include "font_atlas.h"
 #include "buddydef_wad.hpp"
 #include "buddydef_parse.hpp"
+#include "sprnames_reserved.h"	// RESERVED_SPRITES[] -- every engine sprite base (all games)
 #include "../files/buddydoom_icon.h"
 
 // OGG decode for the sound preview: the engine's stb_vorbis (files/stb_vorbis.c, added
@@ -53,11 +54,12 @@ using buddy::Wad;
 // Left column, top to bottom: the WAD's lump directory + its edit buttons, the buddy
 // list + its buttons, then the sprite preview.  Right column: the field editor above
 // the BUDDYDEF text preview.
-// A wide, landscape 1280x800 design (fits comfortably inside 1080p with room for the
-// title bar / taskbar).  The window is resizable and the whole UI is letterboxed to fit
-// (SDL_SetRenderLogicalPresentation), so it also scales down on smaller displays.
+// A wide, landscape 1330x800 design (fits comfortably inside 1080p with room for the
+// title bar / taskbar).  The window is resizable and the whole UI scales with it: the
+// layout is written in this fixed logical space and letterboxed into the real window
+// size (SDL_SetRenderLogicalPresentation), so it works on smaller displays too.
 enum {
-    WINW      = 1280,
+    WINW      = 1330,   // the editor column carries the widest content, so width goes here
     WINH      = 800,
     HEADER_H  = 36,
     FOOTER_H  = 36,     // one row: status line on the left, Quit on the right
@@ -77,10 +79,13 @@ enum {
     SPRITE_H  = WINH - FOOTER_H - PAD - SPRITE_Y,
 
     EDIT_Y    = HEADER_H + PAD,
-    EDIT_H    = 340,
+    // Tall enough for 30px of chrome + ceil(short/2) grid rows + the full-width rows +
+    // the help line.  With 21 fields (19 short, 2 long) that is 30 + 10*26 + 6 + 2*26 +
+    // 26 = 374; the assert at the end of layout_fields() catches the next overflow.
+    EDIT_H    = 384,
     PREV_Y    = EDIT_Y + EDIT_H + PAD,
     PREV_H    = WINH - FOOTER_H - PAD - PREV_Y,
-    LABEL_W   = 130,    // fits the longest labels ("Special blurb", "Reactiontime")
+    LABEL_W   = 150,    // fits the longest label ("Ranged attack") plus a gap
 };
 
 // ----- fields -----
@@ -112,14 +117,93 @@ struct Field {
 // The value sets the engine actually knows.  Keep in step with p_buddydef.c: ATTACK ->
 // Buddy_AttackPtr's table (retired, still parsed), ABILITY -> buddy_ability_name[],
 // COLOR -> vp_buddycol_name[] in files/v_png.c.
-static const std::vector<std::string> ATTACK_CHOICES = {
-    "melee", "none", "baron", "bruiser", "hellknight", "knight",
-    "imp", "troop", "poss", "zombie", "pistol", "zombieman",
-    "spos", "shotgun", "shotgunguy", "cpos", "chaingun", "chaingunner",
-    "sarg", "demon", "bite", "head", "caco", "cacodemon",
-    "skel", "revenant", "fatt", "mancubus", "bspi", "arachnotron",
+// An entry names the ACTOR whose attack is borrowed; which half is used follows from
+// the list it sits in.  So the melee list below only ever produces a close-range hit and
+// the ranged list only ever a projectile or hitscan -- several actors (imp, baron,
+// weredragon, wraith, ...) appear in both because their attack codepointer does both,
+// and the two halves are separate things.
+//
+// Every entry is verified against the engine: the melee ones damage inside
+// P_CheckMeleeRange, the ranged ones spawn a missile or fire hitscans (p_enemy.c,
+// heretic.c, hexen.c, p_mbf.c).  Nothing here is aspirational.
+//
+// STRIFE IS NOT LISTED, because this engine has no Strife actors: files/info.h holds 504
+// MT_ types and not one of them is from Strife.  "Strife" occurs only in IWAD
+// identification (w_iwadid.h), a netcode comment and the UDMF namespace list -- there is
+// no Acolyte, Reaver or Templar whose attack could be borrowed.  (The Stalker below is
+// Hexen's MT_XSTALKER, not Strife's.)
+static const std::vector<std::string> MELEE_CHOICES = {
+    "none",
+    // --- Doom ---
+    "demon",          // A_SargAttack        bite 4d10
+    "revenant",       // A_SkelFist          punch 6d10
+    "imp",            // A_TroopAttack       claw 3d8
+    "cacodemon",      // A_HeadAttack        claw 10d6
+    "baron",          // A_BruisAttack       claw 10d8
+    "hellknight",     // A_BruisAttack       claw, on a lighter body
+    "archvile",       // A_VileAttack        point-blank burn
+    "scratch",        // A_Scratch           MBF21 generic melee
+    // --- Heretic ---
+    "golem",          // A_MummyAttack
+    "sabreclaw",      // A_ClinkAttack
+    "gargoyle",       // A_ImpMeAttack
+    "minotaur",       // A_MinotaurAtk1      hammer
+    "weredragon",     // A_BeastAttack       bite
+    "undeadwarrior",  // A_KnightAttack      axe swing
+    "disciple",       // A_WizardAttack      claw
+    "dsparil",        // A_DsparilAttack     staff
+    // --- Hexen ---
+    "ettin",          // A_EttinAttack
+    "centaur",        // A_CentaurAttack     sword
+    "serpent",        // A_DemonAttack1
+    "wraith",         // A_WraithMelee
+    "stalker",        // A_StalkerMelee
+    "bishop",         // A_BishopAttack
 };
-static const std::vector<std::string> ABILITY_CHOICES = { "none", "drone", "poisoncloud", "turret" };
+
+// Attacks used at distance: projectiles and hitscans only.  No melee swing appears here,
+// just as no projectile appears in the melee list above.
+static const std::vector<std::string> RANGED_CHOICES = {
+    "none",
+    // --- Doom ---
+    "zombieman",      // A_PosAttack         hitscan
+    "shotgunguy",     // A_SPosAttack        hitscan spread
+    "chaingunner",    // A_CPosAttack        hitscan
+    "imp",            // A_TroopAttack       fireball
+    "cacodemon",      // A_HeadAttack        fireball
+    "baron",          // A_BruisAttack       green plasma
+    "hellknight",     // A_BruisAttack
+    "revenant",       // A_SkelMissile       homing
+    "mancubus",       // A_FatAttack1        triple fireball
+    "arachnotron",    // A_BspiAttack        plasma
+    "cyberdemon",     // A_CyberAttack       rocket
+    "lostsoul",       // A_SkullAttack       ramming charge
+    "painelemental",  // A_PainAttack        spits lost souls
+    // --- Heretic ---
+    "gargoyle",       // A_ImpMsAttack
+    "weredragon",     // A_BeastAttack       puff ball
+    "undeadwarrior",  // A_KnightAttack      axe volley
+    "disciple",       // A_WizardAttack
+    "ironlich",       // A_LichAttack        ice / fire / whirlwind
+    "ophidian",       // A_SnakeAttack
+    "minotaur",       // A_MinotaurAtk2      fire
+    "dsparil",        // A_DsparilAttack
+    // --- Hexen ---
+    "centaurleader",  // A_CentaurAttack2
+    "serpent",        // A_DemonAttack2
+    "wraith",         // A_WraithMissile
+    "bishop",         // A_BishopAttack
+    "iceguy",         // A_IceGuyAttack
+    "firedemon",      // A_FiredAttack
+    "dragon",         // A_DragonAttack
+    "stalker",        // A_StalkerMissile
+};
+
+// The named power, shown as "Special" in the editor (BUDDYDEF key `ability`).  Keep in
+// step with buddy_ability_name[] in files/p_buddydef.c.
+static const std::vector<std::string> ABILITY_CHOICES = {
+    "none", "turret", "drone", "lichling", "poisoncloud"
+};
 static const std::vector<std::string> COLOR_CHOICES   = { "", "Green", "Gray", "Brown", "Red",
                                                           "Blue", "Orange", "Purple", "White" };
 
@@ -133,14 +217,10 @@ static const std::vector<Field> FIELDS = {
       "Shown big on the Buddy select screen." },
     { "Sprite base",   Kind::Sprite,   Key::Sprite,  &Buddy::sprite,  nullptr, 0, 0, nullptr, 4, Status::Live,
       "4-char sprite base, e.g. FRAN -> needs FRANA1.. in the WAD. Frame A is the preview." },
-    { "Ability",       Kind::Choice,   Key::Ability, &Buddy::ability, nullptr, 0, 0, &ABILITY_CHOICES, 24, Status::Live,
-      "The power the buddy really uses in play. Runs on the buddy's body each tic." },
     { "Color",         Kind::Choice,   Key::Color,   &Buddy::color,   nullptr, 0, 0, &COLOR_CHOICES, 24, Status::Live,
       "Default player-colour on the Buddy screen. Empty = no default (menu picks Green)." },
-    { "Special blurb", Kind::TextLong, Key::Special, &Buddy::special, nullptr, 0, 0, nullptr, 96, Status::Live,
-      "Free text for the SPECIAL: line on the select screen. Not a mechanic." },
-    { "Description",   Kind::TextLong, Key::Desc,    &Buddy::desc,    nullptr, 0, 0, nullptr, 160, Status::Live,
-      "Flavour text, word-wrapped into the ABOUT panel of the select screen." },
+    { "Description",   Kind::TextLong, Key::Desc,    &Buddy::desc,    nullptr, 0, 0, nullptr, 240, Status::Live,
+      "All the prose the select screen shows, word-wrapped into the ABOUT panel." },
 
     { "Health",        Kind::Int, Key::Health,       nullptr, &Buddy::health,       1, 99999, nullptr, 0, Status::Pending,
       "Spawn health. Marine: 100. Needs the G_PlayerReborn hook, or a revive resets it." },
@@ -166,8 +246,13 @@ static const std::vector<Field> FIELDS = {
     { "Active sound",  Kind::Text, Key::ActiveSound, &Buddy::activesnd, nullptr, 0, 0, nullptr, 16, Status::Pending,
       "Idle grunt, lump name." },
 
-    { "Attack",        Kind::Choice, Key::Attack,    &Buddy::attack, nullptr, 0, 0, &ATTACK_CHOICES, 24, Status::Retired,
-      "RETIRED: player 2 fights with weapons. Parsed so old lumps still load; does nothing." },
+    { "Melee attack",  Kind::Choice, Key::MeleeAttack,  &Buddy::melee,  nullptr, 0, 0, &MELEE_CHOICES, 24, Status::Pending,
+      "Close-range attack, borrowed from a Doom/Heretic/Hexen actor. Melee only." },
+    { "Ranged attack", Kind::Choice, Key::RangedAttack, &Buddy::ranged, nullptr, 0, 0, &RANGED_CHOICES, 24, Status::Pending,
+      "Attack used at distance. Projectiles and hitscans only, never a melee swing." },
+    { "Special",       Kind::Choice, Key::Ability, &Buddy::ability, nullptr, 0, 0, &ABILITY_CHOICES, 24, Status::Live,
+      "The power the buddy really uses in play. Runs on the buddy's body each tic." },
+
     { "Ednum",         Kind::Int,    Key::Ednum,     nullptr, &Buddy::ednum, -1, 65535, nullptr, 0, Status::Retired,
       "RETIRED: a player is not map-placeable. Parsed, ignored." },
 };
@@ -207,6 +292,11 @@ static void layout_fields()
         LAY[i] = { x + 8, x + 8 + LABEL_W + 2, wide_y, w - 16 - LABEL_W - 2 };
         wide_y += ROWH;
     }
+
+    // The panel has to be tall enough for the grid, the full-width rows and the help
+    // line, or the last row lands under the help text / outside the panel and reads as
+    // "this field does nothing".  Adding fields is what trips this, so assert it here.
+    SDL_assert(wide_y <= EDIT_Y + EDIT_H - 24);
 }
 
 // ----- app state -----
@@ -520,6 +610,42 @@ static void sprite_free()
 static std::string cur_sprite_base()
 {
     return (sel >= 0 && sel < (int)buddies.size()) ? buddies[sel].sprite : std::string();
+}
+
+// A sprite base is "taken" if any game actor already uses it (RESERVED_SPRITES, the
+// merged all-engines table generated from info.c) or another buddy in this roster
+// claims it.  Picking a taken base makes the engine REUSE that sprite slot at load
+// (p_buddydef.c) and silently OVERRIDE the existing actor's frames -- exactly what a
+// fresh buddy must avoid.  Case-insensitive, first 4 chars (the base length).
+static bool sprite_base_taken(const std::string& base, int skip_buddy = -1)
+{
+    if (base.size() < 4) return true;			// too short -> treat as unusable
+    for (int i = 0; i < RESERVED_SPRITE_COUNT; i++)
+        if (SDL_strncasecmp(base.c_str(), RESERVED_SPRITES[i], 4) == 0) return true;
+    for (int i = 0; i < (int)buddies.size(); i++)
+        if (i != skip_buddy && buddies[i].sprite.size() >= 4
+            && SDL_strncasecmp(base.c_str(), buddies[i].sprite.c_str(), 4) == 0) return true;
+    return false;
+}
+
+// A fresh, unused 4-letter sprite base (A-Z).  26^4 = 456,976 combos vs a few hundred
+// reserved names, so a free one is found almost immediately; the bounded retry just
+// guarantees termination.  Falls back to a fixed base only if the space is somehow full.
+static std::string random_sprite_base()
+{
+    static uint32_t s = 0;
+    if (!s) s = (uint32_t)SDL_GetPerformanceCounter() | 1u;
+    for (int tries = 0; tries < 100000; tries++)
+    {
+        std::string b(4, 'A');
+        for (int i = 0; i < 4; i++)
+        {
+            s = s * 1103515245u + 12345u;
+            b[i] = char('A' + ((s >> 16) % 26));
+        }
+        if (!sprite_base_taken(b)) return b;
+    }
+    return "BUDX";					// space exhausted (shouldn't happen)
 }
 
 // The lump for (base, frame, rot).  Sprite lumps are base(4)+frame+rot, with an
@@ -1010,7 +1136,7 @@ static void delete_lump()
 
 // ----------------------------------------------------------------- UI layout
 struct Buttons {
-    SDL_FRect file, quit;                            // footer: File v dropdown + Quit
+    SDL_FRect file, quit;                            // File v dropdown (header) + Quit (footer)
     SDL_FRect mi_open, mi_new, mi_save, mi_saveas;   // File-menu items (drawn when open)
     SDL_FRect add, del, dup;
     SDL_FRect marine;                   // seed the stat rows from the built-in Marine
@@ -1024,15 +1150,19 @@ static bool     file_menu_open = false;              // the File v dropdown is s
 
 static void recompute_layout()
 {
-    // File dropdown lives in the top bar (where menus belong) and drops DOWN; Quit sits
-    // alone at the bottom-right, the status line fills the rest of the footer row.
-    btn.file = { PAD, 5, 100, 26 };
+    // File sits in the HEADER, top-left (where the title text used to be -- the window
+    // caption already says what this is), so its menu pops DOWN over the panels.
+    btn.file = { PAD, 5, 110, 26 };
     const float mw = 150, ih = 26;
-    btn.mi_open   = { PAD, HEADER_H + 0 * ih, mw, ih };
-    btn.mi_new    = { PAD, HEADER_H + 1 * ih, mw, ih };
-    btn.mi_save   = { PAD, HEADER_H + 2 * ih, mw, ih };
-    btn.mi_saveas = { PAD, HEADER_H + 3 * ih, mw, ih };
-    btn.quit = { WINW - PAD - 90, WINH - 31, 90, 26 };
+    const float my = btn.file.y + btn.file.h + 1;
+    btn.mi_open   = { PAD, my + 0 * ih, mw, ih };
+    btn.mi_new    = { PAD, my + 1 * ih, mw, ih };
+    btn.mi_save   = { PAD, my + 2 * ih, mw, ih };
+    btn.mi_saveas = { PAD, my + 3 * ih, mw, ih };
+
+    // Footer: the status line gets its own full-width row (WINH-FOOTER_H+6); Quit sits
+    // on the row below it so the status text is never drawn under a button.
+    btn.quit = { WINW - PAD - 90, WINH - 30, 90, 26 };
 
     btn.add = { PAD,       BUDBTN_Y, 60,  BUDBTN_H };
     btn.del = { PAD + 70,  BUDBTN_Y, 80,  BUDBTN_H };
@@ -1059,12 +1189,11 @@ static void recompute_layout()
 }
 
 // ----------------------------------------------------------------- drawing
+// The header carries the File button (drawn later, with its dropdown) on the left and
+// the open-WAD state on the right.  No title text: the window caption already has it.
 static void draw_header()
 {
     rect(0, 0, WINW, HEADER_H, 32, 32, 40);
-    // File dropdown button (top-left, menu-bar style); the title is in the window title.
-    rect(btn.file.x, btn.file.y, btn.file.w, btn.file.h, file_menu_open ? 70 : 50, 80, 110);
-    text(btn.file.x + 14, btn.file.y + 6, "File  v", 230, 240, 255);
     const std::string right = (wad_path.empty() ? "(unsaved)" : wad_path)
                             + (wad_modified ? " *" : "")
                             + "   " + std::to_string(buddies.size()) + " buddy(ies)";
@@ -1300,6 +1429,12 @@ static std::string issues_line(const Buddy& b)
     if (b.name.empty()) out.push_back("no name");
     if (b.sprite.size() != 4)
         out.push_back("sprite base is " + std::to_string(b.sprite.size()) + " chars, needs 4");
+    else                                        // warn on a base that shadows an engine actor
+        for (int i = 0; i < RESERVED_SPRITE_COUNT; i++)
+            if (SDL_strncasecmp(b.sprite.c_str(), RESERVED_SPRITES[i], 4) == 0) {
+                out.push_back("sprite base '" + b.sprite + "' overrides an existing actor");
+                break;
+            }
     if (!b.ability.empty() && !known(ABILITY_CHOICES, b.ability, 0))
         out.push_back("unknown ability '" + b.ability + "' (engine falls back to none)");
     if (!b.color.empty() && !known(COLOR_CHOICES, b.color, 1))
@@ -1340,37 +1475,41 @@ static void draw_footer()
 {
     rect(0, WINH - FOOTER_H, WINW, FOOTER_H, 32, 32, 40);
     rect(0, WINH - FOOTER_H, WINW, 1, 60, 60, 80);
+    // Status / rename prompt on its own full-width row, above the button row.
+    if (mode == Mode::RenameLump)
+        text(PAD, WINH - FOOTER_H + 6, "Rename lump: " + editbuf + "_", 255, 235, 160,
+             WINW - 2 * PAD);
+    else if (!status.empty())
+        text(PAD, WINH - FOOTER_H + 6, status, 200, 220, 200, WINW - 2 * PAD);
+
     rect(btn.quit.x, btn.quit.y, btn.quit.w, btn.quit.h, 110, 50, 50);
     text(btn.quit.x + 28, btn.quit.y + 6, "Quit", 255, 230, 230);
-
-    // Status / rename prompt on the left of the same row, clipped before the Quit button.
-    const float smaxw = btn.quit.x - PAD - 8;
-    if (mode == Mode::RenameLump)
-        text(PAD, WINH - FOOTER_H + 10, "Rename lump: " + editbuf + "_", 255, 235, 160, smaxw);
-    else if (!status.empty())
-        text(PAD, WINH - FOOTER_H + 10, status, 200, 220, 200, smaxw);
 }
 
-// The File dropdown, drawn last of all (after every panel) so it overlays them.  It hangs
-// DOWN from the File button in the top bar.
+// The File button and its dropdown.  Drawn LAST, after every panel, so the open menu
+// overlays them instead of being painted over.
 static void draw_file_menu()
 {
-    if (!file_menu_open) return;
-    float hx = 0, hy = 0;
-    mouse_logical(&hx, &hy);
-    struct Item { const SDL_FRect& r; const char* label; };
-    const Item items[4] = {
-        { btn.mi_open,   "Open WAD..." },
-        { btn.mi_new,    "New WAD" },
-        { btn.mi_save,   "Save" },
-        { btn.mi_saveas, "Save As..." },
-    };
-    const SDL_FRect& top = btn.mi_open;
-    rect(top.x, top.y, top.w, 4 * top.h, 30, 34, 44);              // menu background
-    rect_outline(top.x, top.y, top.w, 4 * top.h, 90, 110, 150);
-    for (const Item& it : items) {
-        if (hit(hx, hy, it.r)) rect(it.r.x, it.r.y, it.r.w, it.r.h, 55, 75, 110);
-        text(it.r.x + 10, it.r.y + 6, it.label, 225, 235, 245);
+    rect(btn.file.x, btn.file.y, btn.file.w, btn.file.h, file_menu_open ? 70 : 50, 80, 110);
+    text(btn.file.x + 18, btn.file.y + 6, "File  v", 230, 240, 255);
+
+    if (file_menu_open) {
+        float hx = 0, hy = 0;
+        mouse_logical(&hx, &hy);
+        struct Item { const SDL_FRect& r; const char* label; };
+        const Item items[4] = {
+            { btn.mi_open,   "Open WAD..." },
+            { btn.mi_new,    "New WAD" },
+            { btn.mi_save,   "Save" },
+            { btn.mi_saveas, "Save As..." },
+        };
+        const SDL_FRect& top = btn.mi_open;
+        rect(top.x, top.y, top.w, 4 * top.h, 30, 34, 44);              // menu background
+        rect_outline(top.x, top.y, top.w, 4 * top.h, 90, 110, 150);
+        for (const Item& it : items) {
+            if (hit(hx, hy, it.r)) rect(it.r.x, it.r.y, it.r.w, it.r.h, 55, 75, 110);
+            text(it.r.x + 10, it.r.y + 6, it.label, 225, 235, 245);
+        }
     }
 }
 
@@ -1385,7 +1524,7 @@ static void draw()
     draw_editor();
     draw_preview();
     draw_footer();
-    draw_file_menu();       // on top of everything
+    draw_file_menu();		// last: the open dropdown must overlay the panels
     SDL_RenderPresent(ren);
 }
 
@@ -1578,10 +1717,15 @@ static void click_main(float mx, float my)
         push_undo();
         buddies.emplace_back();
         buddies.back().set(Key::Name);
+        // Default the sprite base to a random, UNUSED 4-letter code instead of "PLAY"
+        // (the player's own sprite) -- so a fresh buddy can't silently override an
+        // existing actor's sprites.  The user renames it to whatever art they add.
+        buddies.back().sprite = random_sprite_base();
+        buddies.back().set(Key::Sprite);
         sel = (int)buddies.size() - 1;
         sprite_invalidate();
         record_change();
-        set_status("Added new buddy.");
+        set_status("Added new buddy (sprite base %s).", buddies.back().sprite.c_str());
         return;
     }
     if (hit(mx, my, btn.del)) {
@@ -1710,7 +1854,7 @@ int main(int argc, char** argv)
         return 1;
     }
     SDL_InitSubSystem(SDL_INIT_AUDIO);      // sound preview -- optional, ignore failure
-    win = SDL_CreateWindow("BUDDY Editor", WINW, WINH, SDL_WINDOW_RESIZABLE);
+    win = SDL_CreateWindow("MyBuddy - Buddy Editor", WINW, WINH, SDL_WINDOW_RESIZABLE);
     if (!win) { printf("SDL_CreateWindow: %s\n", SDL_GetError()); return 1; }
     {
         SDL_Surface* icon = SDL_CreateSurfaceFrom(BUDDYDOOM_ICON_W, BUDDYDOOM_ICON_H,
@@ -1719,10 +1863,15 @@ int main(int argc, char** argv)
                                                   BUDDYDOOM_ICON_W * 4);
         if (icon) { SDL_SetWindowIcon(win, icon); SDL_DestroySurface(icon); }
     }
+    // Below this the text stops being legible, and the layout is a fixed grid that
+    // cannot reflow -- so put a floor under it rather than allow a useless window.
+    SDL_SetWindowMinimumSize(win, WINW / 2, WINH / 2);
     ren = SDL_CreateRenderer(win, nullptr);
-    // Scale the fixed 1020x1000 UI proportionally into whatever size the window is
-    // resized to (letterboxed, aspect preserved).  Event/mouse coords come back in
-    // window pixels, so they are converted to this logical space below.
+    // The whole UI is laid out in a fixed WINW x WINH logical space and scaled into
+    // whatever size the window is dragged to, aspect preserved (bars on the odd side).
+    // Mouse/event coords arrive in window pixels and are converted back into this space
+    // (SDL_ConvertEventToRenderCoordinates below, mouse_logical() for hover), so nothing
+    // in the layout has to know the window was resized.
     SDL_SetRenderLogicalPresentation(ren, WINW, WINH, SDL_LOGICAL_PRESENTATION_LETTERBOX);
     font_init();
 
@@ -1747,7 +1896,11 @@ int main(int argc, char** argv)
 
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             if (e.button.button == SDL_BUTTON_LEFT) {
-                if (mode == Mode::EditField)       commit_edit_text();
+                // An open edit commits, and the click still reaches its target -- so
+                // moving from one field to the next is one click, not two.  (Swallowing
+                // it made the long Special blurb / Description rows look uneditable:
+                // click one, click the other, nothing appears to happen.)
+                if (mode == Mode::EditField)       { commit_edit_text(); click_main(e.button.x, e.button.y); }
                 else if (mode == Mode::RenameLump) commit_rename_lump();
                 else                               click_main(e.button.x, e.button.y);
             }

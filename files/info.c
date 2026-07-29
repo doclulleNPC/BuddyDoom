@@ -127,7 +127,10 @@ char *sprnames_builtin[NUMSPRITES] = {
     // (H) Heretic weapons phase 2-4: psprites + projectiles/puffs
     "CRBW","BLSR","HROD","PHNX","MACE","GAUN",
     "FX03","FX17","FX00","FX04","FX08","FX02","PUF1",
-    "LICS","LICF","LICE"		// Lichling body / fire / ice (buddydoom.wad)
+    "LICS","LICF","LICE",		// Lichling body / fire / ice (buddydoom.wad)
+    "SPSH","LVAS","SLDG",		// (H) liquid splash: water / lava / sludge (native heretic.wad codes)
+    // (S) Strife native 4-char sprite codes (see strife_sprnames.inc, strife-ve order)
+#include "strife_sprnames.inc"
 };
 
 
@@ -4875,7 +4878,7 @@ mobjinfo_t mobjinfo_builtin[NUMMOBJTYPES] = {
 	1000000,		// mass (effectively immovable -- no knockback when shot)
 	0,			// damage
 	sfx_None,		// activesound
-	MF_SOLID|MF_SHOOTABLE|MF_NOBLOOD,	// flags
+	MF_SOLID|MF_SHOOTABLE|MF_NOBLOOD|MF_DROPOFF,	// flags -- DROPOFF: thrown over ledges (p_turret.c)
 	S_NULL			// raisestate
     },
     [MT_SECDRONE] = {		// Security Drone -- buddy-spawned flying friendly laser drone
@@ -4930,25 +4933,26 @@ mobjinfo_t mobjinfo_builtin[NUMMOBJTYPES] = {
     },
     [MT_LICHLING] = {		// Lichling -- buddy-spawned little Lich (Heretic special)
 	-1,			// doomednum (buddy-spawned, not map-placed)
-	S_LICL_LOOK, 200, S_LICL_CHASE, sfx_None, 8, sfx_None,
-	S_LICL_PAIN, 64, sfx_None,
+	// mini Iron Lich: reuse the lich SFX (heretic_mode only, so the lumps are present)
+	S_LICL_LOOK, 200, S_LICL_CHASE, sfx_h_hedsit, 8, sfx_h_hedat1,
+	S_LICL_PAIN, 64, sfx_h_hedpai,
 	S_NULL,			// meleestate (melee is inside A_LichlingAttack)
-	S_LICL_ATK1, S_LICL_DIE1, S_NULL, sfx_None,
+	S_LICL_ATK1, S_LICL_DIE1, S_NULL, sfx_h_heddth,
 	10, 20*FRACUNIT, 40*FRACUNIT, 300,
 	0,			// damage
-	sfx_None,
+	sfx_h_hedact,
 	MF_SHOOTABLE|MF_FLOAT|MF_NOGRAVITY|MF_NOBLOOD,	// MF_FRIEND added on spawn; not solid (like the drone)
 	S_NULL
     },
-    [MT_LICHFIRE] = {		// Lichling fire ball (AOE on impact)
-	-1, S_LICF_FLY1, 1000, S_NULL, sfx_None, 8, sfx_None,
+    [MT_LICHFIRE] = {		// Lichling fire ball (AOE on impact) -- seesound = firing whoosh
+	-1, S_LICF_FLY1, 1000, S_NULL, sfx_h_hedat1, 8, sfx_None,
 	S_NULL, 0, sfx_None, S_NULL, S_NULL, S_LICF_BOOM1, S_NULL, sfx_None,
 	12*FRACUNIT, 11*FRACUNIT, 8*FRACUNIT, 100,
 	3,			// direct-hit damage (small; AOE added by A_LichFireImpact)
 	sfx_None, MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY, S_NULL
     },
-    [MT_LICHICE] = {		// Lichling ice ball (single-target)
-	-1, S_LICE_FLY1, 1000, S_NULL, sfx_None, 8, sfx_None,
+    [MT_LICHICE] = {		// Lichling ice ball (single-target) -- seesound = firing whoosh
+	-1, S_LICE_FLY1, 1000, S_NULL, sfx_h_hedat2, 8, sfx_None,
 	S_NULL, 0, sfx_None, S_NULL, S_NULL, S_LICE_BOOM1, S_NULL, sfx_None,
 	14*FRACUNIT, 11*FRACUNIT, 8*FRACUNIT, 100,
 	5,			// direct-hit damage (a bit higher than fire, no AOE)

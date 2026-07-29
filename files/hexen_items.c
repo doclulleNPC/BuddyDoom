@@ -252,6 +252,20 @@ void Hexen_Items_Init (void)
 // the item is not one of ours.  See the EFFECTS note in the file header:
 // health/armor get the clean DOOM equivalent; everything else is a no-op pocket.
 // ---------------------------------------------------------------------------
+// Pocket a Hexen artifact into the SHARED artifact inventory (player_t.inventory[] /
+// invslot -- the same store the native Heretic bar (st_stuff.c) and the HU_Inventory_Drawer
+// show, and that P_UseArtifact/ApplyHereticArtifact act on).  Hexen's core artifacts are
+// the same items as Heretic's, so they map onto the existing artitype_t slots; used later
+// with the inventory key.  (Mirrors P_TouchHereticArtifact's pocket logic.)
+static boolean Pocket (player_t* player, artitype_t a)
+{
+    if (player->inventory[a] < MAXARTICOUNT)
+	player->inventory[a]++;
+    if (player->invslot == arti_none)
+	player->invslot = a;
+    return true;
+}
+
 boolean P_TouchHexenItem (player_t* player, mobj_t* special)
 {
     if (!player)
@@ -299,24 +313,19 @@ boolean P_TouchHexenItem (player_t* player, mobj_t* special)
       case MT_ZKEYA: player->message = "SWAMP KEY";     return true;
       case MT_ZKEYB: player->message = "CASTLE KEY";    return true;
 
-      // ---- health -> DOOM +HP equivalent ----
-      case MT_ZHEALBOTTLE:
-	P_GiveBody (player, 25);
-	player->message = "QUARTZ FLASK";
-	return true;
-      case MT_ZHEALFLASK:
-	P_GiveBody (player, 25);
-	player->message = "HEALTH FLASK";
-	return true;
-      case MT_ZSUPERHEAL:
-	P_GiveBody (player, 100);
-	player->message = "MYSTIC URN";
-	return true;
+      // ---- inventory artifacts -> pocketed into the shared inventory[] (used later
+      //      with the inventory key), mapped onto the equivalent Heretic artitype_t
+      //      slot.  Hexen's Quartz Flask/Mystic Urn/Torch/Icon-of-Defender/Chaos Device
+      //      ARE the same items as Heretic's flask/urn/torch/ring/chaos. ----
+      case MT_ZHEALBOTTLE:    player->message = "QUARTZ FLASK";         return Pocket (player, h_arti_flask);
+      case MT_ZHEALFLASK:     player->message = "HEALTH FLASK";         return Pocket (player, h_arti_flask);
+      case MT_ZSUPERHEAL:     player->message = "MYSTIC URN";           return Pocket (player, h_arti_urn);
+      case MT_ZINVUL:         player->message = "ICON OF THE DEFENDER"; return Pocket (player, h_arti_ring);
+      case MT_ZTORCH:         player->message = "TORCH";                return Pocket (player, h_arti_torch);
+      case MT_ZTELEPORT:      player->message = "CHAOS DEVICE";         return Pocket (player, h_arti_chaos);
 
-      // ---- artifacts (no Hexen inventory -> cosmetic pickup) ----
-      case MT_ZINVUL:         player->message = "ICON OF THE DEFENDER"; return true;
-      case MT_ZTORCH:         player->message = "TORCH";                return true;
-      case MT_ZTELEPORT:      player->message = "CHAOS DEVICE";         return true;
+      // ---- Hexen-unique artifacts (no matching artitype_t slot / effect yet) --
+      //      still pocket the ones with a usable analog; the rest are cosmetic. ----
       case MT_ZTELEPORTOTHER: player->message = "BANISHMENT DEVICE";    return true;
       case MT_ZSPEEDBOOTS:    player->message = "BOOTS OF SPEED";       return true;
       case MT_ZBOOSTMANA:     player->message = "KRATER OF MIGHT";      return true;

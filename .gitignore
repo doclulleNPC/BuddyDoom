@@ -37,6 +37,8 @@ config.status
 # FRAN* sprites incl. the HD set, DS* sounds) -- fork content, not id IWAD data.
 # It is the reference example for docs/BUDDY_MODDING.md, so it lives in the repo.
 !run/ID0/FRANK.wad
+# Exception: Fleshhound.wad -- same thing, a second BUDDYDEF buddy pack.
+!run/ID0/Fleshhound.wad
 # Exception: MBF21/DeHackEd test PWADs (kept for exercising the MBF21 + Boom port).
 !run/ID0/Crispy and Brutal.wad
 !run/ID0/Crispy and Brutal TruecolorPNG.wad

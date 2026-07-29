@@ -530,6 +530,21 @@ static boolean P_Director_PointInMap (fixed_t x, fixed_t y)
     return true;
 }
 
+// A director spawn spot is only usable when the monster fits with TWICE its radius of
+// clearance to every wall AND other thing, and the local opening is tall enough -- so it
+// never lands wedged against an edge or crammed into a too-small sector (e.g. a window)
+// and gets stuck.  Tested by running P_CheckPosition with a doubled radius (which samples
+// blockmap lines + things + sector openings out to radius*2), then restoring the real one.
+static boolean Director_SpotClear (mobj_t* mo)
+{
+    fixed_t	r0 = mo->radius;
+    boolean	ok;
+    mo->radius = r0 * 2;			// require radius*2 clearance from walls + things
+    ok = P_CheckPosition (mo, mo->x, mo->y) && (tmceilingz - tmfloorz >= mo->height);
+    mo->radius = r0;				// restore before the monster goes live
+    return ok;
+}
+
 static boolean P_Director_SpawnMonsterNear (mobjtype_t mt, fixed_t cx, fixed_t cy)
 {
     mobj_t*	sv;
@@ -556,7 +571,7 @@ static boolean P_Director_SpawnMonsterNear (mobjtype_t mt, fixed_t cx, fixed_t c
 	    continue;			// in the void (outside the walls) -- never spawn there
 	mo = P_SpawnMobj (x, y, ONFLOORZ, mt);
 	// Fits where it landed (no wall/thing overlap, enough head room)?
-	if (!P_CheckPosition (mo, x, y) || tmceilingz - tmfloorz < mo->height)
+	if (!Director_SpotClear (mo))
 	    { P_RemoveMobj (mo); continue; }
 	// The Hexen Serpent/Stalker only lurks in the toxic pools (nukage/slime) -- if it
 	// landed anywhere else, swap it for an ordinary trash monster (don't waste the spawn).
@@ -567,7 +582,7 @@ static boolean P_Director_SpawnMonsterNear (mobjtype_t mt, fixed_t cx, fixed_t c
 	    P_RemoveMobj (mo);
 	    mt = repl;				// stick with the dry-land monster from here on
 	    mo = P_SpawnMobj (x, y, ONFLOORZ, mt);
-	    if (!P_CheckPosition (mo, x, y) || tmceilingz - tmfloorz < mo->height)
+	    if (!Director_SpotClear (mo))
 		{ P_RemoveMobj (mo); continue; }
 	}
 	// Must be hidden from every survivor (L4D: spawn in the dark behind you).
@@ -614,7 +629,7 @@ static boolean P_Director_SpawnGuard (mobjtype_t mt, fixed_t cx, fixed_t cy)
 	if (!P_Director_PointInMap (x, y))
 	    continue;			// in the void -- skip
 	mo = P_SpawnMobj (x, y, ONFLOORZ, mt);
-	if (!P_CheckPosition (mo, x, y) || tmceilingz - tmfloorz < mo->height)
+	if (!Director_SpotClear (mo))
 	    { P_RemoveMobj (mo); continue; }
 	// Liquid-only monsters (Stalker/Serpent) may only guard from a nukage/slime pool;
 	// on any other floor swap them for a trash monster (same as the near-spawn path).
@@ -625,7 +640,7 @@ static boolean P_Director_SpawnGuard (mobjtype_t mt, fixed_t cx, fixed_t cy)
 	    P_RemoveMobj (mo);
 	    mt = repl;
 	    mo = P_SpawnMobj (x, y, ONFLOORZ, mt);
-	    if (!P_CheckPosition (mo, x, y) || tmceilingz - tmfloorz < mo->height)
+	    if (!Director_SpotClear (mo))
 		{ P_RemoveMobj (mo); continue; }
 	}
 	for (i = 0; i < MAXPLAYERS; i++)

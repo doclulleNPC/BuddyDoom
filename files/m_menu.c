@@ -1869,13 +1869,23 @@ void M_QuitResponse(int ch)
 
 void M_QuitDOOM(int choice)
 {
+  // (H) Heretic has no random funny quit quotes -- just the single fixed prompt
+  // ("ARE YOU SURE YOU WANT TO QUIT?", crispy heretic/mn_menu.c QuitEndMsg[0]).
+  { extern int heretic_mode;
+    if (heretic_mode)
+    {
+      sprintf (endstring, "ARE YOU SURE YOU WANT TO QUIT?\n\npress any key.");
+      M_StartMessage (endstring, M_QuitResponse, true);
+      return;
+    }
+  }
   // We pick index 0 which is language sensitive,
   //  or one at random, between 1 and maximum number.
   if (language != english )
     sprintf(endstring,"%s\n\n"DOSY, endmsg[0] );
   else
     sprintf(endstring,"%s\n\n"DOSY, endmsg[ (gametic%(NUM_QUITMESSAGES-2))+1 ]);
-  
+
   M_StartMessage(endstring,M_QuitResponse,true);
 }
 

@@ -1478,8 +1478,11 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    // Fixed size.  Every panel here is placed in absolute WINW/WINH coordinates and
+    // there is no logical presentation to scale them, so a resized window only left the
+    // UI sitting in the corner of a bigger frame (or clipped it).
     win = SDL_CreateWindow("BuddyDoom Launcher", WINW, WINH,
-                           SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+                           SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!win) {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         SDL_Quit();

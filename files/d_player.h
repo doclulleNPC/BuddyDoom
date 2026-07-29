@@ -92,6 +92,17 @@ typedef enum
     h_arti_egg,			// Morph Ovum     (fires egg missiles -> morph to chicken)
     // (X) Hexen artifact -- effect in files/p_inv_heretic.c, actors in files/hexen.c.
     h_arti_flechette,		// Flechette      (throws a poison bag -> poison cloud)
+    // (S) Strife inventory items -- effects in files/p_inv_strife.c, pickups in
+    // files/strife_items.c.  Appended after the Hexen slot; do NOT reorder above.
+    s_arti_medpatch,		// Med Patch      (+10 HP)
+    s_arti_medkit,		// Medical Kit    (+25 HP)
+    s_arti_stamina,		// Stamina Implant(+ max health / full heal)
+    s_arti_targeter,		// Targeter       (pw_infrared aim aid)
+    s_arti_shadowarmor,		// Shadow Armor   (pw_invisibility + MF_SHADOW)
+    s_arti_envirosuit,		// Environmental Suit (pw_ironfeet)
+    s_arti_beacon,		// Teleporter Beacon (spawns a friendly rebel)
+    s_arti_degninore,		// Degnin Ore     (throwable explosive)
+    s_arti_coin,		// Gold coins     (currency counter)
     NUMARTIFACTS
 
 } artitype_t;

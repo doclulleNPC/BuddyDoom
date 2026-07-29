@@ -48,6 +48,7 @@ extern mobjinfo_t *mobjinfo;
 extern boolean	P_GiveBody  (player_t* player, int num);
 extern boolean	P_GiveArmor (player_t* player, int armortype);
 extern boolean	P_GiveWeapon (player_t* player, weapontype_t weapon, boolean dropped);
+extern boolean	P_HoardHealth (player_t* player);	// (buddy) >75% HP -> bank heal pickups (p_inter.c)
 
 
 // ---------------------------------------------------------------------------
@@ -218,6 +219,18 @@ boolean P_TouchHereticItem (player_t* player, mobj_t* special)
 
       // ---- health -> +10 HP (Crystal Vial); left on the ground at full health ----
       case MT_HCRYSTALVIAL:
+	// (buddy) DOOM heal rule: at/above 75% HP the vial is banked (as a Quartz Flask) for
+	// later instead of wasted on a near-full bar; below it, heal now.  Solo = vanilla heal.
+	if (P_HoardHealth (player))
+	{
+	    if (player->inventory[h_arti_flask] >= MAXARTICOUNT)
+		return false;			// bank full -> leave it on the ground
+	    player->inventory[h_arti_flask]++;
+	    if (player->invslot == arti_none)
+		player->invslot = h_arti_flask;
+	    player->message = "CRYSTAL VIAL";
+	    return true;
+	}
 	if (!P_GiveBody (player, 10))
 	    return false;
 	player->message = "CRYSTAL VIAL";
