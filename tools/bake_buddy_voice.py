@@ -361,6 +361,30 @@ def load_gfx_lumps():
     return lumps
 
 
+def load_snd_lumps():
+    """ALL buddy sound lumps, from tools/wad.snd/ -- OGG/Vorbis (OggS magic) or raw DMX.
+    The engine's getsfx (i_sound.c) sniffs 'OggS' and decodes OGG via stb_vorbis, else
+    treats the bytes as a DMX effect; a BUDDYDEF see/pain/death/active field (or any
+    actor sound) references the lump by name -- I_SfxLumpFor tries 'DS'+name first, then
+    the bare name, so a lump DOG1 answers to sound "DOG1" or "dog1".  Not inside
+    S_START/S_END (that namespace is only for sprites); sound lumps are found by name.
+    Lump name = filename stem, upper-cased.  Drop a file in wad.snd and re-bake."""
+    snd_dir = Path(__file__).resolve().parent / "wad.snd"
+    files = (sorted(snd_dir.glob("*.ogg")) + sorted(snd_dir.glob("*.dmx"))
+             + sorted(snd_dir.glob("*.lmp")))
+    if not files:
+        return []
+    lumps = []
+    for f in files:
+        name = f.stem.upper()
+        if len(name) > 8:                       # WAD lump names are 8 bytes max
+            print(f"  ! wad.snd/{f.name}: lump name '{name}' >8 chars, truncating to '{name[:8]}'")
+            name = name[:8]
+        lumps.append((name, f.read_bytes()))
+    print(f"  + {len(files)} sound lumps from wad.snd")
+    return lumps
+
+
 def env_file_value(path, *names):
     """Read KEY=VALUE from a dotenv file (e.g. ~/.hermes/.env), trying each name.
     Secrets (the ElevenLabs key) live HERE, never in buddydoom.cfg."""
@@ -574,6 +598,7 @@ def main():
             manifest_lines.append(f"{name}\t{phrase}\toffline-sine({freq}Hz)\t{len(data)}\n")
             print(f"  [{i:2d}/{len(PHRASES)}] {name}  '{phrase}' -> {freq} Hz")
         lumps += load_gfx_lumps()	# all buddy graphics (sprites + HUD faces + arrows)
+        lumps += load_snd_lumps()  # all buddy sounds from wad.snd
         manifest_txt = (f"OFFLINE-TEST MODE (sine tones)\n"
                         f"generated={time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                         + "".join(manifest_lines))
@@ -642,6 +667,7 @@ def main():
         manifest_lines.append(f"{name}\t{persona}\t{voice}\t{phrase}\t{src}\t{len(data)}\n")
 
     lumps += load_gfx_lumps()		# all buddy graphics (sprites + HUD faces + arrows)
+    lumps += load_snd_lumps()  # all buddy sounds from wad.snd
 
     # Pack the lump<->phrase mapping INTO the WAD as a text lump ("VOICEMAP") so the
     # WAD is self-documenting -- no external file needed to know what each lump says.
