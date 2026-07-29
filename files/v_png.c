@@ -107,9 +107,12 @@ const byte* V_HealthTrans (int hp)
 // Index 0 ("Green") is the marine's own colour: identity (V_BuddyColorTable
 // returns NULL so callers fall through to a plain, untranslated draw).
 
-#define VP_NBUDDYCOL	8
+// "None" (last index) is like Green: identity -- no recolour, the sprite's own colours.
+// It is appended AFTER White so the existing 0..7 config values keep their meaning.
+#define VP_NBUDDYCOL	9
+#define VP_BUDDYCOL_NONE (VP_NBUDDYCOL - 1)
 static const char* vp_buddycol_name[VP_NBUDDYCOL] =
-    { "Green", "Gray", "Brown", "Red", "Blue", "Orange", "Purple", "White" };
+    { "Green", "Gray", "Brown", "Red", "Blue", "Orange", "Purple", "White", "None" };
 static const byte vp_buddycol_rgb[VP_NBUDDYCOL][3] =
 {
     {   0,   0,   0 },		// Green  -- identity, table unused
@@ -120,6 +123,7 @@ static const byte vp_buddycol_rgb[VP_NBUDDYCOL][3] =
     { 232, 120,  24 },		// Orange
     { 152,  48, 192 },		// Purple
     { 240, 240, 240 },		// White
+    {   0,   0,   0 },		// None   -- identity, table unused (plain draw)
 };
 static byte	vp_buddycol[VP_NBUDDYCOL][256];
 static boolean	vp_buddycol_ready;
@@ -132,7 +136,7 @@ static void VP_BuildBuddyCols (void)
     {
 	for (i = 0; i < 256; i++)
 	{
-	    if (c != 0 && i >= 0x70 && i <= 0x7f)
+	    if (c != 0 && c != VP_BUDDYCOL_NONE && i >= 0x70 && i <= 0x7f)
 	    {
 		int r = vp_pal[i][0], g = vp_pal[i][1], b = vp_pal[i][2];
 		int L = (r*77 + g*150 + b*29) >> 8;			// luminance 0..255
@@ -153,6 +157,7 @@ const char* V_BuddyColorName  (int i)     { return (i >= 0 && i < VP_NBUDDYCOL) 
 const byte* V_BuddyColorTable (int i)
 {
     if (i <= 0 || i >= VP_NBUDDYCOL) return NULL;	// 0 = Green = identity (plain draw)
+    if (i == VP_BUDDYCOL_NONE)       return NULL;	// "None" = identity too (plain draw)
     if (!vp_buddycol_ready) VP_BuildBuddyCols ();
     return vp_buddycol[i];
 }
