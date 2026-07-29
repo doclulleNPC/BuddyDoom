@@ -181,6 +181,12 @@ static int ApplyArtifact (player_t* player, artitype_t a)
 {
     mobj_t*	mo = player->mo;
 
+    // (S) Strife inventory items (effects in files/p_inv_strife.c).  Must be tested
+    // BEFORE the Heretic range below -- the s_arti_* slots are also >= h_arti_flask.
+    { extern boolean ApplyStrifeArtifact (player_t*, artitype_t);
+      if (a >= s_arti_medpatch)
+	return ApplyStrifeArtifact (player, a) ? 1 : 0; }
+
     // (H) Heretic artifacts: effects live in files/p_inv_heretic.c.  They consume
     // exactly one on success (it sets ->message either way).
     if (a >= h_arti_flask)
@@ -327,6 +333,11 @@ boolean P_DropArtifact (player_t* player)
 	return false;
     }
 
+    if (a >= s_arti_medpatch)		// (S) Strife items aren't droppable in this port
+    {
+	player->message = "CAN'T DROP THAT";
+	return false;
+    }
     if (a == h_arti_flechette)		// (X) non-contiguous MT slot -> map explicitly
 	t = MT_HARTI_FLECHETTE;
     else if (a >= h_arti_flask)		// Heretic artifacts map 1:1 to MT_HARTI_*

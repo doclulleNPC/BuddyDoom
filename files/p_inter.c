@@ -478,6 +478,25 @@ P_TouchSpecialThing
 	return;
     }
 
+    // (S) Strife pickup (ammo/weapon/armor/health/keys/inventory): dispatched by sprite
+    // in files/strife_items.c.  In strife_mode EVERY special is a Strife item, so handle
+    // it here and always return -- never fall through to the DOOM sprite switch (whose
+    // default I_Errors on an unknown sprite).  false = couldn't take it -> leave on ground.
+    if (strife_mode)
+    {
+	extern boolean P_TouchStrifeItem (player_t*, mobj_t*);
+	if (P_TouchStrifeItem (player, special))
+	{
+	    if (special->flags & MF_COUNTITEM)
+		player->itemcount++;
+	    P_RemoveMobj (special);
+	    player->bonuscount += BONUSADD;
+	    if (player == &players[consoleplayer])
+		S_StartSound (NULL, sound);
+	}
+	return;
+    }
+
     // Identify by sprite.
     switch (special->sprite)
     {
