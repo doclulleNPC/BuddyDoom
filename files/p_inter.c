@@ -370,8 +370,9 @@ P_GivePower
 
 //
 // (mod) In buddy co-op, once the human is comfortably healed (>75% HP) a picked-up health item
-// is pocketed into the DOOM inventory for later instead of being wasted on a near-full bar.
-static boolean P_HoardHealth (player_t* player)
+// is pocketed into the inventory for later instead of being wasted on a near-full bar.
+// Non-static: the Heretic heal pickups (heretic_items.c / p_inv_heretic.c) reuse this same rule.
+boolean P_HoardHealth (player_t* player)
 {
     return P_AICoop_Active () && player->health > MAXHEALTH*3/4;
 }
