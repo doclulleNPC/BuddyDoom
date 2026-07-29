@@ -73,6 +73,11 @@ extern int		doom2_overlay;
 // 1 when the resolved IWAD is heretic.wad (Heretic game mode -- phase 1).
 extern int		heretic_mode;
 
+// 1 when the resolved IWAD is strife1.wad (Strife game mode).  Like heretic_mode:
+// resolves map things through the Strife doomednum table (P_StrifeThingType) and
+// remaps the S* sprite codes to Strife's native art.  (gametype == GT_STRIFE.)
+extern int		strife_mode;
+
 // -----------------------------------------------------
 // Game family (set ONCE from the IWAD at startup, in D_DoomMain).
 //

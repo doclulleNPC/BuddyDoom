@@ -142,7 +142,7 @@ extern int stb_vorbis_decode_memory (const unsigned char* mem, int len,
 //
 static int I_SfxLumpFor (const char* sfxname)
 {
-    extern int	heretic_mode;
+    extern int	heretic_mode, strife_mode;
     char	namebuf[16];
     int		l, n;
 
@@ -152,8 +152,8 @@ static int I_SfxLumpFor (const char* sfxname)
     if (n > 8)
 	return -1;					// can't name a lump that long
 
-    if (heretic_mode && (l = W_CheckNumForName ((char*)sfxname)) >= 0)
-	return l;					// native Heretic sound, no "ds"
+    if ((heretic_mode || strife_mode) && (l = W_CheckNumForName ((char*)sfxname)) >= 0)
+	return l;					// native Heretic/Strife sound, no "ds"
 
     if (n <= 6)
     {

@@ -288,7 +288,9 @@ static iwid_t IWID_Identify (const char* path, char* out, int cap, int* by_md5)
 	    // boot Hexen as Heretic).  Hexen is the only one with MAP01; Blasphemer's own
 	    // marker lump is BLASPHEM, with the name check as the fallback for a build that
 	    // lacks it.
-	    if      (iwid_dir_has (dir, numl, "MAP01") && iwid_dir_has (dir, numl, "SNDCURVE"))
+	    if      (iwid_dir_has (dir, numl, "MAP01") && iwid_dir_has (dir, numl, "INVBACK"))
+		{ id = IWID_STRIFE;   label = "Strife"; }	// MAP01 + Strife inventory-HUD lump
+	    else if (iwid_dir_has (dir, numl, "MAP01") && iwid_dir_has (dir, numl, "SNDCURVE"))
 		{ id = IWID_HEXEN;    label = "Hexen"; }
 	    else if (iwid_dir_has (dir, numl, "BLASPHEM")
 		     || ((iwid_dir_has (dir, numl, "M_HTIC") || iwid_dir_has (dir, numl, "MUS_E1M1"))

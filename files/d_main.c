@@ -137,6 +137,7 @@ int		vanilla_mode = 0;
 // Set when the resolved IWAD is heretic.wad (Heretic game mode -- phase 1):
 // resolves map things through the Heretic doomednum table and skips unported ones.
 int		heretic_mode = 0;
+int		strife_mode  = 0;	// resolved IWAD is strife1.wad (gametype == GT_STRIFE)
 gametype_t	gametype = GT_DOOM;	// game family; set from the IWAD in D_DoomMain
 
 
@@ -1183,6 +1184,14 @@ void IdentifyVersion (void)
 		printf ("%s IWAD detected -- heretic mode\n",
 			lbl[0] ? lbl : (strstr(low, "blasphem") ? "Blasphemer" : "Heretic"));
 	    }
+	    else if (iwid == IWID_STRIFE
+		     || (iwid == IWID_NONE && strstr (low, "strife")))
+	    {
+		strife_mode = 1;
+		gametype = GT_STRIFE;
+		mode = commercial;		// Strife uses the Doom II MAPxx format
+		printf ("%s IWAD detected -- strife mode\n", lbl[0] ? lbl : "Strife");
+	    }
 	}
 	// doom.wad is BOTH the registered (3-episode) and the Ultimate/retail (4-episode) IWAD --
 	// same filename, only the content differs.  If a "registered" doom.wad actually has an
@@ -1673,8 +1682,10 @@ void D_DoomMain (void)
 		    Heretic_Weapons_Init(void);
 	extern void Hexen_Deco_Init(void), Hexen_Items_Init(void), Hexen_Mon_Init(void);
 	extern void Sounds_Heretic_Init(void), Sounds_Hexen_Init(void), Sounds_HWeapons_Init(void);
+	extern void Strife_Init(void);
 	Heretic_Init (); Heretic_Deco_Init (); Heretic_MVar_Init ();	// (H) monsters + scenery + variants
 	Hexen_Init (); Hexen_Deco_Init (); Hexen_Items_Init (); Hexen_Mon_Init ();	// (X) full Hexen pack
+	Strife_Init ();							// (S) Strife core (deco/items/mon fill the rest)
 	Freedoom_Init ();
 	RevMarine_Init (); Morph_Init (); HereticInv_Init ();
 	Heretic_Items_Init ();		// (H) map-placeable Heretic keys/ammo/weapons/shields/vial
@@ -1786,6 +1797,7 @@ printf("added\n");
 
     Heretic_RemapNativeSprites ();	// heretic_mode: point H* sprites at heretic.wad's native codes
 					//   (must run BEFORE R_Init builds sprites[] from sprnames[])
+    { extern void Strife_RemapNativeSprites(void); Strife_RemapNativeSprites (); }	// strife_mode: S* -> native
     printf ("R_Init: Init DOOM refresh daemon - ");
     R_Init ();
     {   // ID24 SKYDEFS: parse the sky-definition lump (needs the texture table from R_Init)

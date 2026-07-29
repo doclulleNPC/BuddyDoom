@@ -826,6 +826,14 @@ void P_SpawnMapThing (mapthing_t* mthing)
 	if (i < 0)
 	    return;
     }
+    else if (strife_mode)
+    {
+	// Strife maps use Strife doomednums -- resolve through the Strife table.
+	extern int P_StrifeThingType (int doomednum);
+	i = P_StrifeThingType (mthing->type);
+	if (i < 0)
+	    return;
+    }
     else
     {
 	for (i=0 ; i< num_mobjtypes ; i++)
