@@ -1683,10 +1683,10 @@ void D_DoomMain (void)
 	extern void Hexen_Deco_Init(void), Hexen_Items_Init(void), Hexen_Mon_Init(void);
 	extern void Sounds_Heretic_Init(void), Sounds_Hexen_Init(void), Sounds_HWeapons_Init(void);
 	extern void Sounds_Strife_Init(void);
-	extern void Strife_Init(void);
+	extern void Strife_Init(void), Strife_Deco_Init(void);
 	Heretic_Init (); Heretic_Deco_Init (); Heretic_MVar_Init ();	// (H) monsters + scenery + variants
 	Hexen_Init (); Hexen_Deco_Init (); Hexen_Items_Init (); Hexen_Mon_Init ();	// (X) full Hexen pack
-	Strife_Init ();							// (S) Strife core (deco/items/mon fill the rest)
+	Strife_Init (); Strife_Deco_Init ();				// (S) Strife core + scenery
 	Freedoom_Init ();
 	RevMarine_Init (); Morph_Init (); HereticInv_Init ();
 	Heretic_Items_Init ();		// (H) map-placeable Heretic keys/ammo/weapons/shields/vial

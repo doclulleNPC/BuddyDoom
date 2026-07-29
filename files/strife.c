@@ -53,21 +53,29 @@ void Strife_RemapNativeSprites (void)
 
 //
 // Strife_Available
-// True once strife1.wad's sprites are loaded.  Phase 1: always false.
+// True once strife1.wad's sprites are loaded (the player sprite has frames).
 //
 int Strife_Available (void)
 {
-    return 0;
+    return sprites[SPR_S_PLAY].numframes > 0;
 }
 
 //
 // P_StrifeThingType
 // Map a Strife map-thing doomednum to a BuddyDoom mobjtype, or -1 to skip it.
-// Phase 1: everything unported -> -1 (Strife maps load with only the player start,
-// which P_SpawnMapThing handles before this table).
+// The per-category installers (strife_deco/items/mon/...) set mobjinfo[MT_S_*].doomednum
+// to the real Strife editor numbers, so we just scan the reserved Strife mobjtype range
+// for a match -- no central switch to keep in sync (mirrors the DOOM lookup, scoped to
+// MT_S_FIELDGUARD..NUMMOBJTYPES).  doomednum 0 never matches an (unfilled) slot.
 //
 int P_StrifeThingType (int doomednum)
 {
-    (void)doomednum;
+    int	i;
+
+    if (doomednum <= 0)
+	return -1;
+    for (i = MT_S_FIELDGUARD; i < NUMMOBJTYPES; i++)
+	if (mobjinfo[i].doomednum == doomednum)
+	    return i;
     return -1;
 }
