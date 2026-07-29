@@ -79,10 +79,10 @@ enum {
     SPRITE_H  = WINH - FOOTER_H - PAD - SPRITE_Y,
 
     EDIT_Y    = HEADER_H + PAD,
-    // Tall enough for 30px of chrome + ceil(short/2) grid rows + the full-width rows +
-    // the help line.  With 21 fields (19 short, 2 long) that is 30 + 10*26 + 6 + 2*26 +
-    // 26 = 374; the assert at the end of layout_fields() catches the next overflow.
-    EDIT_H    = 384,
+    // Tall enough for 30px of chrome + ceil(short/2) grid rows + the full-width rows
+    // (Description is now a multi-line textarea, DESC_VH tall) + the help line; the
+    // assert at the end of layout_fields() catches the next overflow.
+    EDIT_H    = 440,
     PREV_Y    = EDIT_Y + EDIT_H + PAD,
     PREV_H    = WINH - FOOTER_H - PAD - PREV_Y,
     LABEL_W   = 150,    // fits the longest label ("Ranged attack") plus a gap
@@ -261,8 +261,11 @@ static const std::vector<Field> FIELDS = {
 // fields fill a balanced 2-column grid, full-width fields go underneath it.  (Deriving
 // this incrementally is what once drew the rows below Description on top of the rows
 // above it.)
-struct FieldLay { float lx, vx, ry, vw; };
+struct FieldLay { float lx, vx, ry, vw, vh; };
 static std::vector<FieldLay> LAY;
+
+// Description is a word-wrapped textarea: tall enough for four wrapped lines.
+static const float DESC_VH = 4 * (FONT_CH + 2) + 4;
 
 static void layout_fields()
 {
@@ -282,15 +285,15 @@ static void layout_fields()
         if (FIELDS[i].kind == Kind::TextLong) continue;
         const int   col = r / rows, row = r % rows;
         const float rx  = x + 8 + col * colw;
-        LAY[i] = { rx, rx + LABEL_W + 2, top + row * ROWH, colw - LABEL_W - 16 };
+        LAY[i] = { rx, rx + LABEL_W + 2, top + row * ROWH, colw - LABEL_W - 16, (float)ROWH };
         r++;
     }
 
     float wide_y = top + rows * ROWH + 6;
     for (size_t i = 0; i < FIELDS.size(); i++) {
         if (FIELDS[i].kind != Kind::TextLong) continue;
-        LAY[i] = { x + 8, x + 8 + LABEL_W + 2, wide_y, w - 16 - LABEL_W - 2 };
-        wide_y += ROWH;
+        LAY[i] = { x + 8, x + 8 + LABEL_W + 2, wide_y, w - 16 - LABEL_W - 2, DESC_VH };
+        wide_y += DESC_VH + 6;
     }
 
     // The panel has to be tall enough for the grid, the full-width rows and the help
@@ -451,6 +454,32 @@ static std::string ellipsize(const std::string& s, int max_pixels)
 }
 
 static float textw(const std::string& s) { return (float)s.size() * FONT_CW; }
+
+// Greedy word-wrap `s` into lines of at most `cols` monospace chars (an over-long word
+// is hard-split).  Used to draw the Description as a textarea; the font is fixed-width,
+// so column counting is exact.
+static std::vector<std::string> wrap_text(const std::string& s, int cols)
+{
+    std::vector<std::string> lines;
+    if (cols < 1) cols = 1;
+    std::string line;
+    size_t i = 0;
+    while (i < s.size()) {
+        size_t sp = s.find(' ', i);
+        std::string word = s.substr(i, sp == std::string::npos ? std::string::npos : sp - i);
+        i = (sp == std::string::npos) ? s.size() : sp + 1;
+        while ((int)word.size() > cols) {                 // a single word wider than a line
+            if (!line.empty()) { lines.push_back(line); line.clear(); }
+            lines.push_back(word.substr(0, (size_t)cols));
+            word = word.substr((size_t)cols);
+        }
+        if (line.empty())                             line = word;
+        else if ((int)(line.size() + 1 + word.size()) <= cols) line += " " + word;
+        else { lines.push_back(line); line = word; }
+    }
+    lines.push_back(line);
+    return lines;
+}
 
 // ----------------------------------------------------------------- field access
 static void record_change() { wad_modified = true; }
@@ -646,6 +675,50 @@ static std::string random_sprite_base()
         if (!sprite_base_taken(b)) return b;
     }
     return "BUDX";					// space exhausted (shouldn't happen)
+}
+
+// (A) Scan the loaded WAD's lumps for a plausible buddy sprite base: a 4-char prefix
+// with real sprite-frame lumps (name >= 6 chars, frame letter + rotation digit, data
+// bigger than a bare header), ideally including frame 'A' (the preview frame).  Used
+// when a WAD has NO BUDDYDEF so the lone default buddy adopts whatever sprite set the
+// pack actually ships instead of "PLAY".  Prefers a base that ISN'T already an engine
+// actor (the pack's own art) and, among those, the one with the most frames.  Returns
+// "" if the WAD has no sprite-looking lumps.
+static std::string guess_sprite_base()
+{
+    if (!wad_loaded) return {};
+    struct Cand { std::string base; int frames = 0; bool hasA = false; bool reserved = false; };
+    std::vector<Cand> cands;
+    auto is_reserved = [](const std::string& b) {
+        for (int i = 0; i < RESERVED_SPRITE_COUNT; i++)
+            if (SDL_strncasecmp(b.c_str(), RESERVED_SPRITES[i], 4) == 0) return true;
+        return false;
+    };
+    auto bump = [&](const std::string& base, char fr) {
+        const bool a = (toupper((unsigned char)fr) == 'A');
+        for (auto& c : cands) if (c.base == base) { c.frames++; c.hasA |= a; return; }
+        cands.push_back({ base, 1, a, is_reserved(base) });
+    };
+    auto framechar = [](char f){ f=(char)toupper((unsigned char)f); return f>='A'&&f<='Z'; };
+    auto rotchar   = [](char r){ return r>='0'&&r<='8'; };
+    for (size_t k = 0; k < wad.size(); k++) {
+        const buddy::Lump& L = wad[k];
+        if (L.name.size() < 6 || L.data.size() <= 8) continue;      // not a real sprite lump
+        if (!framechar(L.name[4]) || !rotchar(L.name[5])) continue;
+        std::string base = L.name.substr(0, 4);
+        for (char& ch : base) ch = (char)toupper((unsigned char)ch);
+        bump(base, L.name[4]);
+        if (L.name.size() >= 8 && framechar(L.name[6]) && rotchar(L.name[7]))
+            bump(base, L.name[6]);                                  // second (mirrored) frame
+    }
+    const Cand* best = nullptr;
+    for (const auto& c : cands) {
+        if (!c.hasA) continue;                                      // need at least frame A
+        if (!best) { best = &c; continue; }
+        if (c.reserved != best->reserved) { if (!c.reserved) best = &c; continue; }
+        if (c.frames > best->frames) best = &c;
+    }
+    return best ? best->base : std::string();
 }
 
 // The lump for (base, frame, rot).  Sprite lumps are base(4)+frame+rot, with an
@@ -940,8 +1013,12 @@ static bool load_wad(const std::string& path)
 
     buddies = buddy::load_from_wad(wad);
     if (buddies.empty()) {
+        // (A) No BUDDYDEF: seed one buddy and, if the WAD ships sprites, adopt their
+        // base (so the pack's art previews immediately) instead of defaulting to PLAY.
         buddies.assign(1, Buddy());
         buddies[0].set(Key::Name);
+        const std::string guess = guess_sprite_base();
+        if (!guess.empty()) { buddies[0].sprite = guess; buddies[0].set(Key::Sprite); }
     }
     sel = 0;
     wad_scroll = 0;
@@ -1376,12 +1453,29 @@ static void draw_editor()
 
         const bool hot = (active == (int)i);
         if (hot || hover == (int)i) {
-            const SDL_FRect bg = { L.vx - 4, L.ry + 1, L.vw + 4, ROWH - 4 };
+            const SDL_FRect bg = { L.vx - 4, L.ry + 1, L.vw + 4, L.vh - 4 };
             if (mode == Mode::EditField && hot) rect(bg.x, bg.y, bg.w, bg.h, 60, 60, 90);
             else if (hot)                       rect(bg.x, bg.y, bg.w, bg.h, 50, 50, 70);
             else                                rect(bg.x, bg.y, bg.w, bg.h, 34, 34, 46);
         }
-        if (mode == Mode::EditField && hot) {
+        if (f.kind == Kind::TextLong) {
+            // Description: a word-wrapped textarea.  Draw the value (or the live editbuf)
+            // across as many wrapped lines as the box holds, cursor after the last char.
+            const int   cols    = std::max(1, (int)(L.vw / FONT_CW));
+            const int   maxrows = std::max(1, (int)(L.vh / (FONT_CH + 2)));
+            const std::string val = (mode == Mode::EditField && hot) ? editbuf : format_value(b, f);
+            const std::vector<std::string> lines = wrap_text(val, cols);
+            float ly = L.ry + 4;
+            int drawn = 0;
+            for (; drawn < (int)lines.size() && drawn < maxrows; drawn++) {
+                text(L.vx, ly, lines[(size_t)drawn], vr, vg, vb);
+                ly += FONT_CH + 2;
+            }
+            if (mode == Mode::EditField && hot) {
+                const std::string last = (drawn > 0) ? lines[(size_t)drawn - 1] : std::string();
+                text(L.vx + textw(last), ly - (FONT_CH + 2), "_", 255, 255, 160);
+            }
+        } else if (mode == Mode::EditField && hot) {
             text(L.vx, L.ry + 4, editbuf, 255, 235, 160);
             text(L.vx + textw(editbuf), L.ry + 4, "_", 255, 255, 160);
         } else {
@@ -1547,7 +1641,7 @@ static int field_at(float mx, float my)
 {
     if (sel < 0 || sel >= (int)buddies.size()) return -1;
     for (size_t i = 0; i < FIELDS.size(); i++)
-        if (my >= LAY[i].ry && my < LAY[i].ry + ROWH
+        if (my >= LAY[i].ry && my < LAY[i].ry + LAY[i].vh
             && mx >= LAY[i].lx && mx < LAY[i].vx + LAY[i].vw + 4)
             return (int)i;
     return -1;
