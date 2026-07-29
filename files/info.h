@@ -318,6 +318,7 @@ typedef enum
     SPR_CRBW, SPR_BLSR, SPR_HROD, SPR_PHNX, SPR_MACE, SPR_GAUN,
     SPR_FX03, SPR_FX17, SPR_FX00, SPR_FX04, SPR_FX08, SPR_FX02, SPR_PUF1,
     SPR_LICS, SPR_LICF, SPR_LICE,	// Lichling body / fire / ice (buddydoom.wad) -- buddy special
+    SPR_HSPSH, SPR_HLVAS, SPR_HSLDG,	// (H) liquid-terrain splash: water / lava / sludge (heretic.wad)
     // (S) Strife sprite reservations (see strife_spr.inc, strife-ve order)
 #include "strife_spr.inc"
     NUMSPRITES
@@ -1798,6 +1799,13 @@ typedef enum
     S_LICL_DIE1, S_LICL_DIE2, S_LICL_DIE3, S_LICL_DIE4, S_LICL_DIE5, S_LICL_DIE6, S_LICL_DIE7,
     S_LICF_FLY1, S_LICF_FLY2, S_LICF_BOOM1, S_LICF_BOOM2, S_LICF_BOOM3, S_LICF_BOOM4, S_LICF_BOOM5,
     S_LICE_FLY1, S_LICE_FLY2, S_LICE_BOOM1, S_LICE_BOOM2, S_LICE_BOOM3, S_LICE_BOOM4, S_LICE_BOOM5,
+    // (H) liquid-terrain splash states (files/heretic_splash.c)
+    S_HSPLASH1, S_HSPLASH2, S_HSPLASH3, S_HSPLASH4, S_HSPLASHX,
+    S_HSPLASHBASE1, S_HSPLASHBASE2, S_HSPLASHBASE3, S_HSPLASHBASE4, S_HSPLASHBASE5, S_HSPLASHBASE6, S_HSPLASHBASE7,
+    S_HLAVASPLASH1, S_HLAVASPLASH2, S_HLAVASPLASH3, S_HLAVASPLASH4, S_HLAVASPLASH5, S_HLAVASPLASH6,
+    S_HLAVASMOKE1, S_HLAVASMOKE2, S_HLAVASMOKE3, S_HLAVASMOKE4, S_HLAVASMOKE5,
+    S_HSLUDGECHUNK1, S_HSLUDGECHUNK2, S_HSLUDGECHUNK3, S_HSLUDGECHUNK4, S_HSLUDGECHUNKX,
+    S_HSLUDGESPLASH1, S_HSLUDGESPLASH2, S_HSLUDGESPLASH3, S_HSLUDGESPLASH4,
     // (S) Strife state reservations (see strife_states.inc, strife-ve order)
 #include "strife_states.inc"
     NUMSTATES
@@ -2158,6 +2166,8 @@ typedef enum {
     MT_HWP_CBOWFX1, MT_HWP_CBOWFX3, MT_HWP_BLSRPUFF, MT_HWP_HRODFX1,
     MT_HWP_PHNXFX1, MT_HWP_PHNXPUFF, MT_HWP_MACEFX1, MT_HWP_GAUNPUFF,
     MT_LICHLING, MT_LICHFIRE, MT_LICHICE,	// Lichling + its fire/ice projectiles (files/heretic_lichling.c)
+    // (H) liquid-terrain splash actors (files/heretic_splash.c)
+    MT_HSPLASH, MT_HSPLASHBASE, MT_HLAVASPLASH, MT_HLAVASMOKE, MT_HSLUDGECHUNK, MT_HSLUDGESPLASH,
     // (S) Strife mobjtype reservations (see strife_mt.inc, strife-ve order)
 #include "strife_mt.inc"
     NUMMOBJTYPES

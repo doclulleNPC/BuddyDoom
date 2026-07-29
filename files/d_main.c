@@ -1684,6 +1684,7 @@ void D_DoomMain (void)
 	extern void Sounds_Heretic_Init(void), Sounds_Hexen_Init(void), Sounds_HWeapons_Init(void);
 	extern void Sounds_Strife_Init(void);
 	extern void Strife_Init(void), Strife_Deco_Init(void);
+	{ extern void Heretic_Splash_Init(void); Heretic_Splash_Init (); }	// (H) liquid-terrain splash actors
 	Heretic_Init (); Heretic_Deco_Init (); Heretic_MVar_Init ();	// (H) monsters + scenery + variants
 	Hexen_Init (); Hexen_Deco_Init (); Hexen_Items_Init (); Hexen_Mon_Init ();	// (X) full Hexen pack
 	Strife_Init (); Strife_Deco_Init ();				// (S) Strife core + scenery
@@ -1802,6 +1803,7 @@ printf("added\n");
     { extern void Strife_RemapNativeSprites(void); Strife_RemapNativeSprites (); }	// strife_mode: S* -> native
     printf ("R_Init: Init DOOM refresh daemon - ");
     R_Init ();
+    { extern void P_InitTerrainTypes(void); P_InitTerrainTypes (); }	// (H) floorpic->liquid table (needs flats from R_Init)
     {   // ID24 SKYDEFS: parse the sky-definition lump (needs the texture table from R_Init)
 	extern void R_LoadSkyDefs (void);
 	R_LoadSkyDefs ();

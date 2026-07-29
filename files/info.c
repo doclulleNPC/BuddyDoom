@@ -128,6 +128,7 @@ char *sprnames_builtin[NUMSPRITES] = {
     "CRBW","BLSR","HROD","PHNX","MACE","GAUN",
     "FX03","FX17","FX00","FX04","FX08","FX02","PUF1",
     "LICS","LICF","LICE",		// Lichling body / fire / ice (buddydoom.wad)
+    "SPSH","LVAS","SLDG",		// (H) liquid splash: water / lava / sludge (native heretic.wad codes)
     // (S) Strife native 4-char sprite codes (see strife_sprnames.inc, strife-ve order)
 #include "strife_sprnames.inc"
 };
