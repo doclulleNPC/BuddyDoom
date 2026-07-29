@@ -472,7 +472,7 @@ extern void		P_MobjThinker (mobj_t*);
 #define BA_DRONE_RANGE		(1024*FRACUNIT)		// ...and only with an enemy this close
 #define BA_TURRET_PERIOD	(30*TICRATE)		// at most one turret per 30 s
 #define BA_TURRET_RANGE		(1024*FRACUNIT)
-#define BA_TURRET_THROW		(11*FRACUNIT)		// same toss as the player's (p_turret.c)
+#define BA_TURRET_THROW		(18*FRACUNIT)		// same toss as the player's (p_turret.c)
 #define BA_TURRET_ARC		(6*FRACUNIT)
 
 extern void	P_DamageMobj (mobj_t*, mobj_t*, mobj_t*, int);
@@ -595,7 +595,8 @@ static void Buddy_DeployTurret (mobj_t* mo)
     t = P_SpawnMobj (mo->x, mo->y, z, MT_TURRET);
     if (!t)
 	return;
-    P_TryMove (t, x, y);			// blocked by a wall -> stays at the buddy's feet
+    t->height = 16*FRACUNIT;			// low flight profile: fits window openings (p_turret.c)
+    P_TryMove (t, x, y);			// a solid wall still stops it (ledges/windows don't)
 
     t->angle  = ang;
     t->target = NULL;

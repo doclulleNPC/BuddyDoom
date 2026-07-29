@@ -41,7 +41,7 @@ void A_FaceTarget (mobj_t* actor);
 #define TURRET_SHELL_COST	25		// shells consumed per turret
 #define TURRET_CLIP_COST	50		// or bullets, if no shells
 #define TURRET_RANGE		(1280*FRACUNIT)	// acquisition + fire range (== buddy sight)
-#define TURRET_THROW		(11*FRACUNIT)	// horizontal toss speed
+#define TURRET_THROW		(18*FRACUNIT)	// horizontal toss speed (flat/far -- clears ledges + windows)
 #define TURRET_ARC		(6*FRACUNIT)	// base upward toss speed
 
 //
@@ -82,13 +82,33 @@ static mobj_t* Turret_FindTarget (mobj_t* self)
 }
 
 //
+// Turret_Settle
+// The thrown turret flies its normal gravity arc at a low 16u collision profile so it fits
+// through window openings; MF_DROPOFF lets the arc carry it OUT over ledges instead of the
+// momentum being killed at the lip.  Gravity always brings it back down (it never floats,
+// even if it grazed a monster) -- once it lands it rises to full deployed height and plants.
+// Called from both codepointers (idle S_TURRET_STND / fire loop).
+//
+static void Turret_Settle (mobj_t* self)
+{
+    if (self->height < self->info->height
+	&& self->z <= self->floorz && self->momz <= 0)
+    {
+	self->height = self->info->height;	// deployed height restored
+	self->momx = self->momy = 0;		// plant it where it landed
+    }
+}
+
 // A_TurretLook
 // Idle codepointer: scan for a target; when found, latch it and switch to the
 // fire loop (info->missilestate).
 //
 void A_TurretLook (mobj_t* self)
 {
-    mobj_t*	targ = Turret_FindTarget (self);
+    mobj_t*	targ;
+
+    Turret_Settle (self);
+    targ = Turret_FindTarget (self);
 
     if (targ)
     {
@@ -109,6 +129,8 @@ void A_TurretFire (mobj_t* self)
     angle_t	angle;
     fixed_t	slope;
     int		damage;
+
+    Turret_Settle (self);
 
     // Still a valid target?  If not, try to re-acquire, else go back to looking.
     if (!targ || targ->health <= 0 || !(targ->flags & MF_SHOOTABLE)
@@ -183,7 +205,8 @@ const char* P_TurretDeploy (player_t* player)
     t = P_SpawnMobj (p->x, p->y, z, MT_TURRET);
     if (!t)
 	return "";
-    {   // nudge to the spot in front; if blocked by a wall it stays at the player's feet
+    t->height = 16*FRACUNIT;	// low flight profile: fits window openings (restored on land)
+    {   // nudge to the spot in front; a solid WALL still stops it (ledges/windows don't)
 	extern boolean P_TryMove (mobj_t* thing, fixed_t x, fixed_t y);
 	P_TryMove (t, x, y);
     }
