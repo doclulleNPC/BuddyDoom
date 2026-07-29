@@ -132,12 +132,22 @@ std::vector<Buddy> parse(const std::string& text)
         else if (key == "meleeattack" || key == "melee")     str(cur.melee, Key::MeleeAttack);
         else if (key == "rangedattack" || key == "ranged" || key == "missile")
                                                              str(cur.ranged, Key::RangedAttack);
-        else if (key == "attack")                            str(cur.attack, Key::Attack);
+        // `attack` (the old combined key) is deliberately absent: it falls through to
+        // the ignore-everything-else branch, so old lumps still load and lose it on save.
         else if (key == "seesound")                          str(cur.seesnd, Key::SeeSound);
         else if (key == "painsound")                         str(cur.painsnd, Key::PainSound);
         else if (key == "deathsound")                        str(cur.deathsnd, Key::DeathSound);
         else if (key == "activesound")                       str(cur.activesnd, Key::ActiveSound);
-        else if (key == "special" || key == "abilities")     str(cur.special, Key::Special);
+        // `special`/`abilities` was a second prose field beside `desc`.  It is gone --
+        // the select screen shows one block of text now -- so fold an old lump's blurb
+        // into the description instead of dropping it on the next save.
+        else if (key == "special" || key == "abilities") {
+            if (!v.empty()) {
+                if (!cur.desc.empty()) cur.desc += " ";
+                cur.desc += v;
+                cur.set(Key::Desc);
+            }
+        }
         else if (key == "ability")                           str(cur.ability, Key::Ability);
         else if (key == "color" || key == "colour")          str(cur.color, Key::Color);
         else if (key == "health" || key == "hp")             num(cur.health, Key::Health);
@@ -170,8 +180,6 @@ std::string serialize(const Buddy& b)
     emit_int(out, "reactiontime", b.reactiontime, b.has(Key::ReactionTime), 8);
     emit    (out, "meleeattack",  b.melee,    b.has(Key::MeleeAttack),  "none");
     emit    (out, "rangedattack", b.ranged,   b.has(Key::RangedAttack), "none");
-    emit    (out, "attack",      b.attack,    b.has(Key::Attack),      "melee");
-    emit    (out, "special",     b.special,   b.has(Key::Special));
     emit    (out, "ability",     b.ability,   b.has(Key::Ability),      "none");
     emit    (out, "color",       b.color,     b.has(Key::Color),            "");
     emit    (out, "seesound",    b.seesnd,    b.has(Key::SeeSound),         "");

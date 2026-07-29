@@ -116,76 +116,76 @@ struct Field {
 // The value sets the engine actually knows.  Keep in step with p_buddydef.c: ATTACK ->
 // Buddy_AttackPtr's table (retired, still parsed), ABILITY -> buddy_ability_name[],
 // COLOR -> vp_buddycol_name[] in files/v_png.c.
-static const std::vector<std::string> ATTACK_CHOICES = {
-    "melee", "none", "baron", "bruiser", "hellknight", "knight",
-    "imp", "troop", "poss", "zombie", "pistol", "zombieman",
-    "spos", "shotgun", "shotgunguy", "cpos", "chaingun", "chaingunner",
-    "sarg", "demon", "bite", "head", "caco", "cacodemon",
-    "skel", "revenant", "fatt", "mancubus", "bspi", "arachnotron",
-};
-// Close-range attacks, by the actor they come from.  Every entry is an attack
-// codepointer that actually exists in this engine and does its damage in melee range
-// (P_CheckMeleeRange + P_DamageMobj) -- verified against p_enemy.c / heretic.c /
-// hexen.c / p_mbf.c.  Entries marked (+r) also fire a missile when out of range; pick
-// them when you want the actor's full behaviour, and pair with a ranged choice below.
+// An entry names the ACTOR whose attack is borrowed; which half is used follows from
+// the list it sits in.  So the melee list below only ever produces a close-range hit and
+// the ranged list only ever a projectile or hitscan -- several actors (imp, baron,
+// weredragon, wraith, ...) appear in both because their attack codepointer does both,
+// and the two halves are separate things.
 //
-// STRIFE IS NOT LISTED: this engine has no Strife actors.  "Strife" appears only in
-// IWAD identification (files/w_iwadid.h) and the UDMF namespace list -- there is no
-// Acolyte, Reaver or Templar to borrow an attack from.  (files/hexen.c's Stalker is
-// Hexen's swamp Stalker, MT_XSTALKER, not Strife's.)
+// Every entry is verified against the engine: the melee ones damage inside
+// P_CheckMeleeRange, the ranged ones spawn a missile or fire hitscans (p_enemy.c,
+// heretic.c, hexen.c, p_mbf.c).  Nothing here is aspirational.
+//
+// STRIFE IS NOT LISTED, because this engine has no Strife actors: files/info.h holds 504
+// MT_ types and not one of them is from Strife.  "Strife" occurs only in IWAD
+// identification (w_iwadid.h), a netcode comment and the UDMF namespace list -- there is
+// no Acolyte, Reaver or Templar whose attack could be borrowed.  (The Stalker below is
+// Hexen's MT_XSTALKER, not Strife's.)
 static const std::vector<std::string> MELEE_CHOICES = {
     "none",
     // --- Doom ---
-    "demon",          // A_SargAttack   -- bite 4d10
-    "revenant",       // A_SkelFist     -- punch 6d10
-    "imp",            // A_TroopAttack  (+r) claw 3d8
-    "cacodemon",      // A_HeadAttack   (+r) claw 10d6
-    "baron",          // A_BruisAttack  (+r) claw 10d8
-    "hellknight",     // A_BruisAttack  (+r) same, weaker body
-    "scratch",        // A_Scratch      -- MBF21 generic melee
+    "demon",          // A_SargAttack        bite 4d10
+    "revenant",       // A_SkelFist          punch 6d10
+    "imp",            // A_TroopAttack       claw 3d8
+    "cacodemon",      // A_HeadAttack        claw 10d6
+    "baron",          // A_BruisAttack       claw 10d8
+    "hellknight",     // A_BruisAttack       claw, on a lighter body
+    "archvile",       // A_VileAttack        point-blank burn
+    "scratch",        // A_Scratch           MBF21 generic melee
     // --- Heretic ---
     "golem",          // A_MummyAttack
     "sabreclaw",      // A_ClinkAttack
     "gargoyle",       // A_ImpMeAttack
-    "minotaur",       // A_MinotaurAtk1 -- hammer
-    "weredragon",     // A_BeastAttack  (+r)
-    "undeadwarrior",  // A_KnightAttack (+r) axe
-    "disciple",       // A_WizardAttack (+r)
+    "minotaur",       // A_MinotaurAtk1      hammer
+    "weredragon",     // A_BeastAttack       bite
+    "undeadwarrior",  // A_KnightAttack      axe swing
+    "disciple",       // A_WizardAttack      claw
+    "dsparil",        // A_DsparilAttack     staff
     // --- Hexen ---
     "ettin",          // A_EttinAttack
-    "centaur",        // A_CentaurAttack
+    "centaur",        // A_CentaurAttack     sword
     "serpent",        // A_DemonAttack1
     "wraith",         // A_WraithMelee
     "stalker",        // A_StalkerMelee
-    "bishop",         // A_BishopAttack (+r)
+    "bishop",         // A_BishopAttack
 };
 
-// Attacks used at distance -- the missile half of the same actors, plus the pure
-// shooters.  Same verification: each one spawns a missile or fires hitscans.
+// Attacks used at distance: projectiles and hitscans only.  No melee swing appears here,
+// just as no projectile appears in the melee list above.
 static const std::vector<std::string> RANGED_CHOICES = {
     "none",
     // --- Doom ---
-    "zombieman",      // A_PosAttack    -- hitscan
-    "shotgunguy",     // A_SPosAttack   -- hitscan spread
-    "chaingunner",    // A_CPosAttack   -- hitscan
-    "imp",            // A_TroopAttack  -- fireball
-    "cacodemon",      // A_HeadAttack   -- fireball
-    "baron",          // A_BruisAttack  -- green plasma
+    "zombieman",      // A_PosAttack         hitscan
+    "shotgunguy",     // A_SPosAttack        hitscan spread
+    "chaingunner",    // A_CPosAttack        hitscan
+    "imp",            // A_TroopAttack       fireball
+    "cacodemon",      // A_HeadAttack        fireball
+    "baron",          // A_BruisAttack       green plasma
     "hellknight",     // A_BruisAttack
-    "revenant",       // A_SkelMissile  -- homing
-    "mancubus",       // A_FatAttack1
-    "arachnotron",    // A_BspiAttack   -- plasma
-    "cyberdemon",     // A_CyberAttack  -- rocket
-    "lostsoul",       // A_SkullAttack  -- charge
-    "painelemental",  // A_PainAttack   -- spawns lost souls
-    "archvile",       // A_VileAttack   -- line-of-sight burn
+    "revenant",       // A_SkelMissile       homing
+    "mancubus",       // A_FatAttack1        triple fireball
+    "arachnotron",    // A_BspiAttack        plasma
+    "cyberdemon",     // A_CyberAttack       rocket
+    "lostsoul",       // A_SkullAttack       ramming charge
+    "painelemental",  // A_PainAttack        spits lost souls
     // --- Heretic ---
-    "weredragon",     // A_BeastAttack
-    "undeadwarrior",  // A_KnightAttack -- axe volley
+    "gargoyle",       // A_ImpMsAttack
+    "weredragon",     // A_BeastAttack       puff ball
+    "undeadwarrior",  // A_KnightAttack      axe volley
     "disciple",       // A_WizardAttack
-    "ironlich",       // A_LichAttack
+    "ironlich",       // A_LichAttack        ice / fire / whirlwind
     "ophidian",       // A_SnakeAttack
-    "minotaur",       // A_MinotaurAtk2
+    "minotaur",       // A_MinotaurAtk2      fire
     "dsparil",        // A_DsparilAttack
     // --- Hexen ---
     "centaurleader",  // A_CentaurAttack2
@@ -198,7 +198,11 @@ static const std::vector<std::string> RANGED_CHOICES = {
     "stalker",        // A_StalkerMissile
 };
 
-static const std::vector<std::string> ABILITY_CHOICES = { "none", "drone", "poisoncloud", "turret" };
+// The named power, shown as "Special" in the editor (BUDDYDEF key `ability`).  Keep in
+// step with buddy_ability_name[] in files/p_buddydef.c.
+static const std::vector<std::string> ABILITY_CHOICES = {
+    "none", "turret", "drone", "lichling", "poisoncloud"
+};
 static const std::vector<std::string> COLOR_CHOICES   = { "", "Green", "Gray", "Brown", "Red",
                                                           "Blue", "Orange", "Purple", "White" };
 
@@ -212,14 +216,10 @@ static const std::vector<Field> FIELDS = {
       "Shown big on the Buddy select screen." },
     { "Sprite base",   Kind::Sprite,   Key::Sprite,  &Buddy::sprite,  nullptr, 0, 0, nullptr, 4, Status::Live,
       "4-char sprite base, e.g. FRAN -> needs FRANA1.. in the WAD. Frame A is the preview." },
-    { "Ability",       Kind::Choice,   Key::Ability, &Buddy::ability, nullptr, 0, 0, &ABILITY_CHOICES, 24, Status::Live,
-      "The power the buddy really uses in play. Runs on the buddy's body each tic." },
     { "Color",         Kind::Choice,   Key::Color,   &Buddy::color,   nullptr, 0, 0, &COLOR_CHOICES, 24, Status::Live,
       "Default player-colour on the Buddy screen. Empty = no default (menu picks Green)." },
-    { "Special blurb", Kind::TextLong, Key::Special, &Buddy::special, nullptr, 0, 0, nullptr, 96, Status::Live,
-      "Free text for the SPECIAL: line on the select screen. Not a mechanic." },
-    { "Description",   Kind::TextLong, Key::Desc,    &Buddy::desc,    nullptr, 0, 0, nullptr, 160, Status::Live,
-      "Flavour text, word-wrapped into the ABOUT panel of the select screen." },
+    { "Description",   Kind::TextLong, Key::Desc,    &Buddy::desc,    nullptr, 0, 0, nullptr, 240, Status::Live,
+      "All the prose the select screen shows, word-wrapped into the ABOUT panel." },
 
     { "Health",        Kind::Int, Key::Health,       nullptr, &Buddy::health,       1, 99999, nullptr, 0, Status::Pending,
       "Spawn health. Marine: 100. Needs the G_PlayerReborn hook, or a revive resets it." },
@@ -246,12 +246,12 @@ static const std::vector<Field> FIELDS = {
       "Idle grunt, lump name." },
 
     { "Melee attack",  Kind::Choice, Key::MeleeAttack,  &Buddy::melee,  nullptr, 0, 0, &MELEE_CHOICES, 24, Status::Pending,
-      "Close-range attack, borrowed from an actor (Doom/Heretic/Hexen). No Strife actors exist." },
+      "Close-range attack, borrowed from a Doom/Heretic/Hexen actor. Melee only." },
     { "Ranged attack", Kind::Choice, Key::RangedAttack, &Buddy::ranged, nullptr, 0, 0, &RANGED_CHOICES, 24, Status::Pending,
-      "Attack used at distance. Set both: melee when close, this one otherwise." },
+      "Attack used at distance. Projectiles and hitscans only, never a melee swing." },
+    { "Special",       Kind::Choice, Key::Ability, &Buddy::ability, nullptr, 0, 0, &ABILITY_CHOICES, 24, Status::Live,
+      "The power the buddy really uses in play. Runs on the buddy's body each tic." },
 
-    { "Attack",        Kind::Choice, Key::Attack,    &Buddy::attack, nullptr, 0, 0, &ATTACK_CHOICES, 24, Status::Retired,
-      "RETIRED: superseded by Melee/Ranged attack. Parsed so old lumps still load." },
     { "Ednum",         Kind::Int,    Key::Ednum,     nullptr, &Buddy::ednum, -1, 65535, nullptr, 0, Status::Retired,
       "RETIRED: a player is not map-placeable. Parsed, ignored." },
 };
