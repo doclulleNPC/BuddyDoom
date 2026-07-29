@@ -38,6 +38,11 @@ boolean	Companion_IsEnemy (mobj_t* m);
 // Priority: whoever is shooting a human; else the nearest enemy.
 mobj_t*	Companion_BestTarget (mobj_t* self, fixed_t range);
 
+// Is the actual line of FIRE to `t` clear (no wall between)?  P_CheckSight can be true
+// the instant a target peeks past an inside corner, but a shot fired then just chips the
+// corner -- so gate firing on this and keep advancing until it's true.
+boolean	Companion_ClearShot (mobj_t* self, mobj_t* t);
+
 // Nearest live human (player or buddy) to escort toward.
 mobj_t*	Companion_NearestHuman (mobj_t* self);
 

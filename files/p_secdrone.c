@@ -140,7 +140,8 @@ void A_SecDroneChase (mobj_t* self)
 	return;
     }
 
-    if (P_CheckSight (self, t) && dist <= COMPANION_FIRE_RANGE)
+    if (dist <= COMPANION_FIRE_RANGE && P_CheckSight (self, t)
+	&& Companion_ClearShot (self, t))	// wall (L-corner) in the line of fire -> close in first
     {
 	P_SetMobjState (self, self->info->missilestate);	// attack now
 	return;

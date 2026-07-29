@@ -70,6 +70,17 @@ mobj_t* Companion_BestTarget (mobj_t* self, fixed_t range)
     return bestPrim ? bestPrim : bestSec;
 }
 
+boolean Companion_ClearShot (mobj_t* self, mobj_t* t)
+{
+    // P_AimLineAttack traces the real firing line at the target's bearing: it yields a
+    // linetarget ONLY when a shootable thing is reached with no wall in the way.  If the
+    // inside corner of an L-bend sits between us, the trace stops at the wall and
+    // linetarget stays NULL -> hold fire, keep advancing until the shot can connect.
+    angle_t	an = R_PointToAngle2 (self->x, self->y, t->x, t->y);
+    P_AimLineAttack (self, an, COMPANION_FIRE_RANGE);
+    return linetarget != NULL;
+}
+
 mobj_t* Companion_NearestHuman (mobj_t* self)
 {
     int		i;
@@ -202,7 +213,8 @@ void A_CompanionChase (mobj_t* self)
 
     A_FaceTarget (self);
     dist = P_AproxDistance (t->x - self->x, t->y - self->y);
-    if (P_CheckSight (self, t) && dist <= COMPANION_FIRE_RANGE)
+    if (dist <= COMPANION_FIRE_RANGE && P_CheckSight (self, t)
+	&& Companion_ClearShot (self, t))	// wall (L-corner) in the line of fire -> close in first
     {
 	P_SetMobjState (self, self->info->missilestate);
 	return;
