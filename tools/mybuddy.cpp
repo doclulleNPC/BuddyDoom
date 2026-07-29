@@ -53,11 +53,12 @@ using buddy::Wad;
 // Left column, top to bottom: the WAD's lump directory + its edit buttons, the buddy
 // list + its buttons, then the sprite preview.  Right column: the field editor above
 // the BUDDYDEF text preview.
-// A wide, landscape 1280x800 design (fits comfortably inside 1080p with room for the
-// title bar / taskbar).  The window is resizable and the whole UI is letterboxed to fit
-// (SDL_SetRenderLogicalPresentation), so it also scales down on smaller displays.
+// A wide, landscape 1330x800 design (fits comfortably inside 1080p with room for the
+// title bar / taskbar).  The window is resizable and the whole UI scales with it: the
+// layout is written in this fixed logical space and letterboxed into the real window
+// size (SDL_SetRenderLogicalPresentation), so it works on smaller displays too.
 enum {
-    WINW      = 1280,
+    WINW      = 1330,   // the editor column carries the widest content, so width goes here
     WINH      = 800,
     HEADER_H  = 36,
     FOOTER_H  = 56,     // two rows: a full-width status line above the button row
@@ -77,10 +78,13 @@ enum {
     SPRITE_H  = WINH - FOOTER_H - PAD - SPRITE_Y,
 
     EDIT_Y    = HEADER_H + PAD,
-    EDIT_H    = 340,
+    // Tall enough for 30px of chrome + ceil(short/2) grid rows + the full-width rows +
+    // the help line.  With 21 fields (19 short, 2 long) that is 30 + 10*26 + 6 + 2*26 +
+    // 26 = 374; the assert at the end of layout_fields() catches the next overflow.
+    EDIT_H    = 384,
     PREV_Y    = EDIT_Y + EDIT_H + PAD,
     PREV_H    = WINH - FOOTER_H - PAD - PREV_Y,
-    LABEL_W   = 130,    // fits the longest labels ("Special blurb", "Reactiontime")
+    LABEL_W   = 150,    // fits the longest label ("Ranged attack") plus a gap
 };
 
 // ----- fields -----
@@ -119,6 +123,81 @@ static const std::vector<std::string> ATTACK_CHOICES = {
     "sarg", "demon", "bite", "head", "caco", "cacodemon",
     "skel", "revenant", "fatt", "mancubus", "bspi", "arachnotron",
 };
+// Close-range attacks, by the actor they come from.  Every entry is an attack
+// codepointer that actually exists in this engine and does its damage in melee range
+// (P_CheckMeleeRange + P_DamageMobj) -- verified against p_enemy.c / heretic.c /
+// hexen.c / p_mbf.c.  Entries marked (+r) also fire a missile when out of range; pick
+// them when you want the actor's full behaviour, and pair with a ranged choice below.
+//
+// STRIFE IS NOT LISTED: this engine has no Strife actors.  "Strife" appears only in
+// IWAD identification (files/w_iwadid.h) and the UDMF namespace list -- there is no
+// Acolyte, Reaver or Templar to borrow an attack from.  (files/hexen.c's Stalker is
+// Hexen's swamp Stalker, MT_XSTALKER, not Strife's.)
+static const std::vector<std::string> MELEE_CHOICES = {
+    "none",
+    // --- Doom ---
+    "demon",          // A_SargAttack   -- bite 4d10
+    "revenant",       // A_SkelFist     -- punch 6d10
+    "imp",            // A_TroopAttack  (+r) claw 3d8
+    "cacodemon",      // A_HeadAttack   (+r) claw 10d6
+    "baron",          // A_BruisAttack  (+r) claw 10d8
+    "hellknight",     // A_BruisAttack  (+r) same, weaker body
+    "scratch",        // A_Scratch      -- MBF21 generic melee
+    // --- Heretic ---
+    "golem",          // A_MummyAttack
+    "sabreclaw",      // A_ClinkAttack
+    "gargoyle",       // A_ImpMeAttack
+    "minotaur",       // A_MinotaurAtk1 -- hammer
+    "weredragon",     // A_BeastAttack  (+r)
+    "undeadwarrior",  // A_KnightAttack (+r) axe
+    "disciple",       // A_WizardAttack (+r)
+    // --- Hexen ---
+    "ettin",          // A_EttinAttack
+    "centaur",        // A_CentaurAttack
+    "serpent",        // A_DemonAttack1
+    "wraith",         // A_WraithMelee
+    "stalker",        // A_StalkerMelee
+    "bishop",         // A_BishopAttack (+r)
+};
+
+// Attacks used at distance -- the missile half of the same actors, plus the pure
+// shooters.  Same verification: each one spawns a missile or fires hitscans.
+static const std::vector<std::string> RANGED_CHOICES = {
+    "none",
+    // --- Doom ---
+    "zombieman",      // A_PosAttack    -- hitscan
+    "shotgunguy",     // A_SPosAttack   -- hitscan spread
+    "chaingunner",    // A_CPosAttack   -- hitscan
+    "imp",            // A_TroopAttack  -- fireball
+    "cacodemon",      // A_HeadAttack   -- fireball
+    "baron",          // A_BruisAttack  -- green plasma
+    "hellknight",     // A_BruisAttack
+    "revenant",       // A_SkelMissile  -- homing
+    "mancubus",       // A_FatAttack1
+    "arachnotron",    // A_BspiAttack   -- plasma
+    "cyberdemon",     // A_CyberAttack  -- rocket
+    "lostsoul",       // A_SkullAttack  -- charge
+    "painelemental",  // A_PainAttack   -- spawns lost souls
+    "archvile",       // A_VileAttack   -- line-of-sight burn
+    // --- Heretic ---
+    "weredragon",     // A_BeastAttack
+    "undeadwarrior",  // A_KnightAttack -- axe volley
+    "disciple",       // A_WizardAttack
+    "ironlich",       // A_LichAttack
+    "ophidian",       // A_SnakeAttack
+    "minotaur",       // A_MinotaurAtk2
+    "dsparil",        // A_DsparilAttack
+    // --- Hexen ---
+    "centaurleader",  // A_CentaurAttack2
+    "serpent",        // A_DemonAttack2
+    "wraith",         // A_WraithMissile
+    "bishop",         // A_BishopAttack
+    "iceguy",         // A_IceGuyAttack
+    "firedemon",      // A_FiredAttack
+    "dragon",         // A_DragonAttack
+    "stalker",        // A_StalkerMissile
+};
+
 static const std::vector<std::string> ABILITY_CHOICES = { "none", "drone", "poisoncloud", "turret" };
 static const std::vector<std::string> COLOR_CHOICES   = { "", "Green", "Gray", "Brown", "Red",
                                                           "Blue", "Orange", "Purple", "White" };
@@ -166,8 +245,13 @@ static const std::vector<Field> FIELDS = {
     { "Active sound",  Kind::Text, Key::ActiveSound, &Buddy::activesnd, nullptr, 0, 0, nullptr, 16, Status::Pending,
       "Idle grunt, lump name." },
 
+    { "Melee attack",  Kind::Choice, Key::MeleeAttack,  &Buddy::melee,  nullptr, 0, 0, &MELEE_CHOICES, 24, Status::Pending,
+      "Close-range attack, borrowed from an actor (Doom/Heretic/Hexen). No Strife actors exist." },
+    { "Ranged attack", Kind::Choice, Key::RangedAttack, &Buddy::ranged, nullptr, 0, 0, &RANGED_CHOICES, 24, Status::Pending,
+      "Attack used at distance. Set both: melee when close, this one otherwise." },
+
     { "Attack",        Kind::Choice, Key::Attack,    &Buddy::attack, nullptr, 0, 0, &ATTACK_CHOICES, 24, Status::Retired,
-      "RETIRED: player 2 fights with weapons. Parsed so old lumps still load; does nothing." },
+      "RETIRED: superseded by Melee/Ranged attack. Parsed so old lumps still load." },
     { "Ednum",         Kind::Int,    Key::Ednum,     nullptr, &Buddy::ednum, -1, 65535, nullptr, 0, Status::Retired,
       "RETIRED: a player is not map-placeable. Parsed, ignored." },
 };
@@ -207,6 +291,11 @@ static void layout_fields()
         LAY[i] = { x + 8, x + 8 + LABEL_W + 2, wide_y, w - 16 - LABEL_W - 2 };
         wide_y += ROWH;
     }
+
+    // The panel has to be tall enough for the grid, the full-width rows and the help
+    // line, or the last row lands under the help text / outside the panel and reads as
+    // "this field does nothing".  Adding fields is what trips this, so assert it here.
+    SDL_assert(wide_y <= EDIT_Y + EDIT_H - 24);
 }
 
 // ----- app state -----
@@ -1010,7 +1099,7 @@ static void delete_lump()
 
 // ----------------------------------------------------------------- UI layout
 struct Buttons {
-    SDL_FRect file, quit;                            // footer: File v dropdown + Quit
+    SDL_FRect file, quit;                            // File v dropdown (header) + Quit (footer)
     SDL_FRect mi_open, mi_new, mi_save, mi_saveas;   // File-menu items (drawn when open)
     SDL_FRect add, del, dup;
     SDL_FRect marine;                   // seed the stat rows from the built-in Marine
@@ -1024,17 +1113,19 @@ static bool     file_menu_open = false;              // the File v dropdown is s
 
 static void recompute_layout()
 {
-    // Footer: the status line gets its own full-width row (WINH-FOOTER_H+6); the buttons
-    // sit on the row below it so the status text is never drawn under a button.
-    const float fy = WINH - 30;
-    btn.file = { PAD,             fy, 110, 26 };
-    btn.quit = { WINW - PAD - 90, fy,  90, 26 };
-    // File-menu items pop UP from the File button (footer is at the window bottom).
+    // File sits in the HEADER, top-left (where the title text used to be -- the window
+    // caption already says what this is), so its menu pops DOWN over the panels.
+    btn.file = { PAD, 5, 110, 26 };
     const float mw = 150, ih = 26;
-    btn.mi_open   = { PAD, fy - 4 * ih, mw, ih };
-    btn.mi_new    = { PAD, fy - 3 * ih, mw, ih };
-    btn.mi_save   = { PAD, fy - 2 * ih, mw, ih };
-    btn.mi_saveas = { PAD, fy - 1 * ih, mw, ih };
+    const float my = btn.file.y + btn.file.h + 1;
+    btn.mi_open   = { PAD, my + 0 * ih, mw, ih };
+    btn.mi_new    = { PAD, my + 1 * ih, mw, ih };
+    btn.mi_save   = { PAD, my + 2 * ih, mw, ih };
+    btn.mi_saveas = { PAD, my + 3 * ih, mw, ih };
+
+    // Footer: the status line gets its own full-width row (WINH-FOOTER_H+6); Quit sits
+    // on the row below it so the status text is never drawn under a button.
+    btn.quit = { WINW - PAD - 90, WINH - 30, 90, 26 };
 
     btn.add = { PAD,       BUDBTN_Y, 60,  BUDBTN_H };
     btn.del = { PAD + 70,  BUDBTN_Y, 80,  BUDBTN_H };
@@ -1061,10 +1152,11 @@ static void recompute_layout()
 }
 
 // ----------------------------------------------------------------- drawing
+// The header carries the File button (drawn later, with its dropdown) on the left and
+// the open-WAD state on the right.  No title text: the window caption already has it.
 static void draw_header()
 {
     rect(0, 0, WINW, HEADER_H, 32, 32, 40);
-    text(PAD, 10, "MyBuddy - BUDDYDEF Editor", 220, 220, 240);
     const std::string right = (wad_path.empty() ? "(unsaved)" : wad_path)
                             + (wad_modified ? " *" : "")
                             + "   " + std::to_string(buddies.size()) + " buddy(ies)";
@@ -1347,12 +1439,17 @@ static void draw_footer()
     else if (!status.empty())
         text(PAD, WINH - FOOTER_H + 6, status, 200, 220, 200, WINW - 2 * PAD);
 
-    rect(btn.file.x, btn.file.y, btn.file.w, btn.file.h, file_menu_open ? 70 : 50, 80, 110);
-    text(btn.file.x + 18, btn.file.y + 6, "File  v", 230, 240, 255);
     rect(btn.quit.x, btn.quit.y, btn.quit.w, btn.quit.h, 110, 50, 50);
     text(btn.quit.x + 28, btn.quit.y + 6, "Quit", 255, 230, 230);
+}
 
-    // File dropdown, drawn last (after every panel) so it overlays them.
+// The File button and its dropdown.  Drawn LAST, after every panel, so the open menu
+// overlays them instead of being painted over.
+static void draw_file_menu()
+{
+    rect(btn.file.x, btn.file.y, btn.file.w, btn.file.h, file_menu_open ? 70 : 50, 80, 110);
+    text(btn.file.x + 18, btn.file.y + 6, "File  v", 230, 240, 255);
+
     if (file_menu_open) {
         float hx = 0, hy = 0;
         mouse_logical(&hx, &hy);
@@ -1384,6 +1481,7 @@ static void draw()
     draw_editor();
     draw_preview();
     draw_footer();
+    draw_file_menu();		// last: the open dropdown must overlay the panels
     SDL_RenderPresent(ren);
 }
 
@@ -1708,7 +1806,7 @@ int main(int argc, char** argv)
         return 1;
     }
     SDL_InitSubSystem(SDL_INIT_AUDIO);      // sound preview -- optional, ignore failure
-    win = SDL_CreateWindow("MyBuddy - BUDDYDEF Editor", WINW, WINH, SDL_WINDOW_RESIZABLE);
+    win = SDL_CreateWindow("MyBuddy - Buddy Editor", WINW, WINH, SDL_WINDOW_RESIZABLE);
     if (!win) { printf("SDL_CreateWindow: %s\n", SDL_GetError()); return 1; }
     {
         SDL_Surface* icon = SDL_CreateSurfaceFrom(BUDDYDOOM_ICON_W, BUDDYDOOM_ICON_H,
@@ -1717,10 +1815,15 @@ int main(int argc, char** argv)
                                                   BUDDYDOOM_ICON_W * 4);
         if (icon) { SDL_SetWindowIcon(win, icon); SDL_DestroySurface(icon); }
     }
+    // Below this the text stops being legible, and the layout is a fixed grid that
+    // cannot reflow -- so put a floor under it rather than allow a useless window.
+    SDL_SetWindowMinimumSize(win, WINW / 2, WINH / 2);
     ren = SDL_CreateRenderer(win, nullptr);
-    // Scale the fixed 1020x1000 UI proportionally into whatever size the window is
-    // resized to (letterboxed, aspect preserved).  Event/mouse coords come back in
-    // window pixels, so they are converted to this logical space below.
+    // The whole UI is laid out in a fixed WINW x WINH logical space and scaled into
+    // whatever size the window is dragged to, aspect preserved (bars on the odd side).
+    // Mouse/event coords arrive in window pixels and are converted back into this space
+    // (SDL_ConvertEventToRenderCoordinates below, mouse_logical() for hover), so nothing
+    // in the layout has to know the window was resized.
     SDL_SetRenderLogicalPresentation(ren, WINW, WINH, SDL_LOGICAL_PRESENTATION_LETTERBOX);
     font_init();
 
@@ -1745,7 +1848,11 @@ int main(int argc, char** argv)
 
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             if (e.button.button == SDL_BUTTON_LEFT) {
-                if (mode == Mode::EditField)       commit_edit_text();
+                // An open edit commits, and the click still reaches its target -- so
+                // moving from one field to the next is one click, not two.  (Swallowing
+                // it made the long Special blurb / Description rows look uneditable:
+                // click one, click the other, nothing appears to happen.)
+                if (mode == Mode::EditField)       { commit_edit_text(); click_main(e.button.x, e.button.y); }
                 else if (mode == Mode::RenameLump) commit_rename_lump();
                 else                               click_main(e.button.x, e.button.y);
             }

@@ -26,6 +26,7 @@ namespace buddy {
 enum class Key {
     Name, Desc, Special, Ability, Color, Sprite,
     Health, Speed, Radius, Height, Mass, PainChance, ReactionTime,
+    MeleeAttack, RangedAttack,
     Attack, SeeSound, PainSound, DeathSound, ActiveSound, Ednum,
     COUNT
 };
@@ -50,7 +51,13 @@ struct Buddy {
     int painchance   = 120;
     int reactiontime = 8;
 
-    // Retired: parsed, ignored by the game.
+    // Combat: the buddy borrows an existing actor's attack.  Two slots, because a
+    // monster's close and far attacks are separate codepointers (A_SargAttack vs
+    // A_TroopAttack's missile half, and so on) -- see docs/BUDDYDEF.md.
+    std::string melee  = "none";         // close range
+    std::string ranged = "none";         // at distance
+
+    // Retired: the single combined key, superseded by melee/ranged above.
     std::string attack = "melee";
     int         ednum  = -1;
 

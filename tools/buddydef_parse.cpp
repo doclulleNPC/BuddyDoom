@@ -129,6 +129,9 @@ std::vector<Buddy> parse(const std::string& text)
         else if (key == "desc" || key == "about" || key == "info")
                                                              str(cur.desc, Key::Desc);
         else if (key == "sprite")                            str(cur.sprite, Key::Sprite);
+        else if (key == "meleeattack" || key == "melee")     str(cur.melee, Key::MeleeAttack);
+        else if (key == "rangedattack" || key == "ranged" || key == "missile")
+                                                             str(cur.ranged, Key::RangedAttack);
         else if (key == "attack")                            str(cur.attack, Key::Attack);
         else if (key == "seesound")                          str(cur.seesnd, Key::SeeSound);
         else if (key == "painsound")                         str(cur.painsnd, Key::PainSound);
@@ -165,6 +168,8 @@ std::string serialize(const Buddy& b)
     emit_int(out, "mass",        b.mass,      b.has(Key::Mass),          100);
     emit_int(out, "painchance",  b.painchance, b.has(Key::PainChance),   120);
     emit_int(out, "reactiontime", b.reactiontime, b.has(Key::ReactionTime), 8);
+    emit    (out, "meleeattack",  b.melee,    b.has(Key::MeleeAttack),  "none");
+    emit    (out, "rangedattack", b.ranged,   b.has(Key::RangedAttack), "none");
     emit    (out, "attack",      b.attack,    b.has(Key::Attack),      "melee");
     emit    (out, "special",     b.special,   b.has(Key::Special));
     emit    (out, "ability",     b.ability,   b.has(Key::Ability),      "none");
