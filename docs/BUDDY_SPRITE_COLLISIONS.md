@@ -71,7 +71,10 @@ not something a buddy borrows from a monster.
    and the engine has a real `SPR_STLK` -- so the Stalker buddy renders in Doom, Heretic
    and Hexen too, and never touches the Spider Mastermind. Its sounds took the same
    treatment (`STLKSIT`/`STLKACT`/`STLKATK`/`STLKDTH`/`STLKFIR`), since `DSSPISIT` &
-   friends would otherwise shadow strife1.wad's own lumps.
+   friends would otherwise shadow strife1.wad's own lumps. `STLKFIR` is Freedoom's
+   pistol rather than a Strife lump: the Stalker never fired, so there was no original
+   gunshot to borrow, and a BSD-licensed asset is the better default for one we
+   invented.
 3. **Tool:** update `MONSTERS[]` in `tools/mybuddy.cpp` to hand out the placeholder
    base (e.g. Strife Stalker sprite `SPID` -> `STLK`) once the engine remap lands.
 

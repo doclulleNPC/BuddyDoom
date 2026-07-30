@@ -407,13 +407,17 @@ typedef enum
     sfx_secdr_death,	// SECDRON4
     // (S) Strife Stalker buddy (files/strife_stalker.c) -- lumps STLK* in buddydoom.wad.
     // 7-char names, so I_SfxLumpFor finds them by the BARE name ("ds"+7 no longer fits
-    // in 8 bytes); they are copies of strife1.wad's stalker/rifle SFX under a
-    // collision-free name, so the buddy is audible in every game, not just Strife.
+    // in 8 bytes); renamed rather than shipped as DSSPISIT & co. so the pack cannot
+    // shadow strife1.wad's own lumps, and so the buddy is audible in every game.
+    // The Stalker's own voice, from strife1.wad:
     sfx_stlk_sight,	// STLKSIT
     sfx_stlk_active,	// STLKACT
     sfx_stlk_atk,	// STLKATK (claw / pain)
     sfx_stlk_death,	// STLKDTH
-    sfx_stlk_fire,	// STLKFIR (the burst it fires -- Strife's assault rifle)
+    // The burst has no original: Strife's Stalker never fired, so there is no stalker
+    // gunshot to borrow.  Freedoom's pistol (BSD-licensed, freedoom2.wad DSPISTOL)
+    // fills it -- a free asset for the one sound we invented anyway.
+    sfx_stlk_fire,	// STLKFIR
     // ---- (H) Heretic WEAPON sounds -- native lump names (files/sounds_heretic.c
     // Sounds_HWeapons_Init).  Contiguous block, in enum order from sfx_hw_gldhit.
     sfx_hw_gldhit,	// GLDHIT  gold wand / dragon claw

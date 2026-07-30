@@ -20,7 +20,9 @@
 //
 //	Art: the frames ship as STLK* PNGs in buddydoom.wad rather than under their
 //	native SPID* names, because SPID is Doom's Spider Mastermind -- see
-//	docs/BUDDY_SPRITE_COLLISIONS.md.  Sounds likewise (STLK*).
+//	docs/BUDDY_SPRITE_COLLISIONS.md.  Sounds likewise (STLK*).  The gunshot is the
+//	one asset with no original -- a Stalker that never fired has no firing sound --
+//	so it is Freedoom's pistol (BSD-licensed), not a borrowed Strife lump.
 //
 //-----------------------------------------------------------------------------
 
