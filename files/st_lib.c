@@ -54,14 +54,21 @@ extern boolean		automapactive;
 // Hack display negative frags.
 //  Loads and store the stminus lump.
 //
+extern int	strife_mode;
+
 patch_t*		sttminus;
 
 void STlib_init(void)
 {
-    // heretic.wad has no STTMINUS -- substitute a present Heretic patch (phase 1).
+    // Neither heretic.wad nor strife1.wad has STTMINUS -- substitute a patch that game
+    // is guaranteed to have (same reasoning as ST_CachePatch in st_stuff.c: get through
+    // init; the DOOM bar is never drawn in those games anyway).
     const char* nm = "STTMINUS";
-    if (heretic_mode && W_CheckNumForName ("STTMINUS") < 0)
-	nm = "FONTA01";
+    if (W_CheckNumForName ("STTMINUS") < 0)
+    {
+	if (heretic_mode)	nm = "FONTA01";
+	else if (strife_mode)	nm = "STCFN033";
+    }
     sttminus = (patch_t *) W_CacheLumpName((char*)nm, PU_STATIC);
 }
 

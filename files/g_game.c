@@ -513,11 +513,25 @@ void G_DoLoadLevel (void)
     //  a flat. The data is in the WAD only because
     //  we look for an actual index, instead of simply
     //  setting one.
-    skyflatnum = R_FlatNumForName ( SKYFLATNAME );
+    // (S) Strife's sky flat is F_SKY001, not DOOM's F_SKY1.  Without this the lookup
+    // falls back to flat 0 and every sector using that flat would be drawn as sky.
+    if (strife_mode && W_CheckNumForName ("F_SKY001") >= 0)
+	skyflatnum = R_FlatNumForName ("F_SKY001");
+    else
+	skyflatnum = R_FlatNumForName ( SKYFLATNAME );
 
     // DOOM determines the sky texture to be used
     // depending on the current episode, and the game version.
-    if ( (gamemode == commercial)
+    if (strife_mode)
+    {
+	// (S) strife1.wad has no SKY1/SKY2/SKY3 -- its only sky textures are SKYMNT01
+	// and SKYMNT02, so the DOOM lookup below fell through to texture 0 and every
+	// Strife map got a garbage sky.  Which map takes the second one is not settled
+	// here yet; SKYMNT01 is the common one, so use it throughout for now.
+	if (R_CheckTextureNumForName ("SKYMNT01") >= 0)
+	    skytexture = R_TextureNumForName ("SKYMNT01");
+    }
+    else if ( (gamemode == commercial)
 	 || ( gamemode == pack_tnt )
 	 || ( gamemode == pack_plut ) )
     {
@@ -1797,7 +1811,13 @@ G_InitNew
     viewactive = true;
     
     // set the sky map for the episode
-    if ( gamemode == commercial)
+    if (strife_mode)
+    {
+	// (S) see G_DoLoadLevel: Strife's only skies are SKYMNT01/02.
+	if (R_CheckTextureNumForName ("SKYMNT01") >= 0)
+	    skytexture = R_TextureNumForName ("SKYMNT01");
+    }
+    else if ( gamemode == commercial)
     {
 	skytexture = R_TextureNumForName ("SKY3");
 	if (gamemap < 12)

@@ -1125,6 +1125,7 @@ void ST_diffDraw(void)
 //  weapon's ammo until the Heretic weapon set is ported.
 // ===========================================================================
 extern int	heretic_mode;
+extern int	strife_mode;
 
 static patch_t*	h_barback;
 static patch_t*	h_statbar;
@@ -1412,6 +1413,12 @@ void ST_Drawer (boolean fullscreen, boolean refresh)
 	return;
     }
 
+    // Strife: same situation, but it has no bar of its own here yet.  Draw nothing --
+    // the substituted patches from ST_CachePatch would be a wall of garbage, and a
+    // missing bar is the honest placeholder until a Strife bar exists.
+    if (strife_mode)
+	return;
+
     // ID24 SBARDEF (opt-in via -sbardef): draw the data-driven bar instead.
     if (ST_SBARDEF_Active ()) { ST_SBARDEF_Draw (fullscreen); return; }
 
@@ -1422,15 +1429,20 @@ void ST_Drawer (boolean fullscreen, boolean refresh)
 
 }
 
-// Cache a status-bar patch by name.  In heretic_mode the DOOM status-bar lumps
-// (STTNUM*, STBAR, STF*, ...) don't exist in heretic.wad and W_CacheLumpName would
-// I_Error; substitute a guaranteed-present Heretic patch (FONTA01) so the engine
-// boots and draws a (wrong but harmless) bar.  The real Heretic status bar is a
-// later phase.  DOOM behaviour is unchanged (the lump is always present).
+// Cache a status-bar patch by name.  Heretic and Strife have none of the DOOM
+// status-bar lumps (STTNUM*, STBAR, STF*, ...) and W_CacheLumpName would I_Error on
+// the first one -- which is where strife1.wad used to stop booting, at STTNUM0.
+// Substitute a patch the game is guaranteed to have (Heretic FONTA01, Strife
+// STCFN033) so the engine gets through ST_Init; neither game then draws the DOOM bar
+// (see ST_Drawer), so the substitute is never actually rendered.  DOOM behaviour is
+// unchanged -- the lump is always present there.
 static patch_t* ST_CachePatch (const char* name)
 {
-    if (heretic_mode && W_CheckNumForName ((char*)name) < 0)
-	name = "FONTA01";
+    if (W_CheckNumForName ((char*)name) < 0)
+    {
+	if (heretic_mode)	name = "FONTA01";
+	else if (strife_mode)	name = "STCFN033";
+    }
     return (patch_t *) W_CacheLumpName ((char*)name, PU_STATIC);
 }
 

@@ -103,6 +103,31 @@ typedef struct
 } maptexture_t;
 
 
+// Strife stores the same two records SHORTER on disk: maptexture_t drops the obsolete
+// columndirectory (18-byte header instead of 22) and mappatch_t drops stepdir/colormap
+// (6 bytes instead of 10).  Read a Strife TEXTURE1 through the Doom structs and every
+// patchcount comes out as the old columndirectory field -- 0 for the first texture --
+// after which the walk runs off the lump and R_InitTextures segfaults, which is exactly
+// what strife1.wad did before this.  Verified against strife1.wad: all 220 entries
+// parse contiguously under this layout, none under Doom's.
+typedef struct
+{
+    short	originx;
+    short	originy;
+    short	patch;
+} mappatch_strife_t;
+
+typedef struct
+{
+    char			name[8];
+    boolean			masked;
+    short			width;
+    short			height;
+    short			patchcount;
+    mappatch_strife_t		patches[1];
+} maptexture_strife_t;
+
+
 // A single patch from a texture definition,
 //  basically a rectangular area within
 //  the texture rectangle.
@@ -604,40 +629,67 @@ void R_InitTextures (void)
 	
 	mtexture = (maptexture_t *) ( (byte *)maptex + offset);
 
-	texture = textures[i] =
-	    Z_Malloc (sizeof(texture_t)
-		      + sizeof(texpatch_t)*(SHORT(mtexture->patchcount)-1),
-		      PU_STATIC, 0);
-	
-	texture->width = SHORT(mtexture->width);
-	texture->height = SHORT(mtexture->height);
-	texture->patchcount = SHORT(mtexture->patchcount);
-
-	/* memcpy() generates a BUS error on Solaris with optimization on */
-#if 0
-	memcpy (texture->name, mtexture->name, sizeof(texture->name));
-#else
-	{ char *src; char *dst;
-	  src = (char *)mtexture->name;
-	  dst = (char *)texture->name;
-	  for (j=0; j<sizeof(texture->name); ++j )
-	    *dst++ = *src++;
-	}
-#endif
-	mpatch = &mtexture->patches[0];
-	patch = &texture->patches[0];
-
-	for (j=0 ; j<texture->patchcount ; j++, mpatch++, patch++)
+	// Pull the header fields out first, because Strife's on-disk layout is shorter
+	// (see maptexture_strife_t above).  The patch entries differ only in STRIDE --
+	// originx/originy/patch are the first three shorts either way -- so the loop
+	// below walks raw bytes and reads them through mappatch_t regardless.
 	{
-	    patch->originx = SHORT(mpatch->originx);
-	    patch->originy = SHORT(mpatch->originy);
-	    patch->patch = patchlookup[SHORT(mpatch->patch)];
-	    if (patch->patch == -1)
+	    byte* mp_raw;
+	    int   mp_stride, tex_w, tex_h, tex_pc;
+	    char* tex_name;
+
+	    if (strife_mode)
 	    {
-		I_Error ("R_InitTextures: Missing patch in texture %s",
-			 texture->name);
+		maptexture_strife_t* st = (maptexture_strife_t *) ( (byte *)maptex + offset);
+		tex_name  = st->name;
+		tex_w     = SHORT(st->width);
+		tex_h     = SHORT(st->height);
+		tex_pc    = SHORT(st->patchcount);
+		mp_raw    = (byte *) &st->patches[0];
+		mp_stride = (int) sizeof (mappatch_strife_t);
 	    }
-	}		
+	    else
+	    {
+		tex_name  = mtexture->name;
+		tex_w     = SHORT(mtexture->width);
+		tex_h     = SHORT(mtexture->height);
+		tex_pc    = SHORT(mtexture->patchcount);
+		mp_raw    = (byte *) &mtexture->patches[0];
+		mp_stride = (int) sizeof (mappatch_t);
+	    }
+
+	    texture = textures[i] =
+		Z_Malloc (sizeof(texture_t)
+			  + sizeof(texpatch_t)*(tex_pc-1),
+			  PU_STATIC, 0);
+
+	    texture->width = tex_w;
+	    texture->height = tex_h;
+	    texture->patchcount = tex_pc;
+
+	    /* memcpy() generates a BUS error on Solaris with optimization on */
+	    { char *src; char *dst;
+	      src = tex_name;
+	      dst = (char *)texture->name;
+	      for (j=0; j<sizeof(texture->name); ++j )
+		*dst++ = *src++;
+	    }
+
+	    patch = &texture->patches[0];
+
+	    for (j=0 ; j<texture->patchcount ; j++, mp_raw += mp_stride, patch++)
+	    {
+		mpatch = (mappatch_t *) mp_raw;
+		patch->originx = SHORT(mpatch->originx);
+		patch->originy = SHORT(mpatch->originy);
+		patch->patch = patchlookup[SHORT(mpatch->patch)];
+		if (patch->patch == -1)
+		{
+		    I_Error ("R_InitTextures: Missing patch in texture %s",
+			     texture->name);
+		}
+	    }
+	}
 	texturecolumnlump[i] = Z_Malloc (texture->width*sizeof(short), PU_STATIC,0);
 	texturecolumnofs[i] = Z_Malloc (texture->width*sizeof(unsigned), PU_STATIC,0);
 
