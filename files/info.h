@@ -321,6 +321,11 @@ typedef enum
     SPR_HSPSH, SPR_HLVAS, SPR_HSLDG,	// (H) liquid-terrain splash: water / lava / sludge (heretic.wad)
     // (S) Strife sprite reservations (see strife_spr.inc, strife-ve order)
 #include "strife_spr.inc"
+    // (S) Strife Stalker buddy -- the art is SPID* in strife1.wad, but SPID is Doom's
+    // Spider Mastermind (docs/BUDDY_SPRITE_COLLISIONS.md), so the buddy ships its own
+    // STLK* frames in buddydoom.wad.  Appended AFTER the Strife block so the reserved
+    // Strife sprite numbers stay put.
+    SPR_STLK,
     NUMSPRITES
 
 } spritenum_t;
@@ -1564,6 +1569,7 @@ typedef enum
     S_HPODGEN,
     S_HSND_WIND, S_HSND_WATERFALL,
     S_HSKH70, S_HSKH60, S_HSKH45, S_HSKH35,
+    S_HDEADCORVUS,	// (H) placeable dead-player (Corvus) corpse -- heretic_deco.c
     S_HCHDL1, S_HCHDL2, S_HCHDL3,
     S_HSRTC1, S_HSRTC2, S_HSRTC3,
     S_HSMALLPILLAR,
@@ -1808,6 +1814,16 @@ typedef enum
     S_HSLUDGESPLASH1, S_HSLUDGESPLASH2, S_HSLUDGESPLASH3, S_HSLUDGESPLASH4,
     // (S) Strife state reservations (see strife_states.inc, strife-ve order)
 #include "strife_states.inc"
+    // (S) Strife Stalker buddy special (files/strife_stalker.c).  Frame letters follow
+    // the SPID sheet: J/K/L ground walk, M+N the FIRING pose Strife itself never used,
+    // O..[ the death run.
+    S_STLKB_LOOK, S_STLKB_CHASE1, S_STLKB_CHASE2, S_STLKB_CHASE3,
+    S_STLKB_CHASE4, S_STLKB_CHASE5, S_STLKB_CHASE6,
+    S_STLKB_ATK1, S_STLKB_ATK2, S_STLKB_ATK3, S_STLKB_ATK4,
+    S_STLKB_PAIN,
+    S_STLKB_DIE1, S_STLKB_DIE2, S_STLKB_DIE3, S_STLKB_DIE4, S_STLKB_DIE5, S_STLKB_DIE6,
+    S_STLKB_DIE7, S_STLKB_DIE8, S_STLKB_DIE9, S_STLKB_DIE10, S_STLKB_DIE11, S_STLKB_DIE12,
+    S_STLKB_DIE13,
     NUMSTATES
 } statenum_t;
 
@@ -2094,6 +2110,7 @@ typedef enum {
     MT_HSTALAGMITESMALL, MT_HSTALAGMITELARGE, MT_HSTALACTITESMALL, MT_HSTALACTITELARGE,
     MT_HFIREBRAZIER, MT_HBARREL, MT_HBRPILLAR, MT_HMOSS1, MT_HMOSS2,
     MT_HWALLTORCH, MT_HHANGINGCORPSE,
+    MT_HDEADCORVUS,	// (H) placeable dead-player (Corvus) corpse -- heretic_deco.c
     MT_HKEYGIZMOBLUE, MT_HKEYGIZMOGREEN, MT_HKEYGIZMOYELLOW, MT_HKEYGIZMOFLOAT,
     MT_HVOLCANO, MT_HVOLCANOBLAST, MT_HVOLCANOTBLAST,
     MT_HTELEGLITGEN, MT_HTELEGLITGEN2, MT_HTELEGLITTER, MT_HTELEGLITTER2,
@@ -2170,6 +2187,7 @@ typedef enum {
     MT_HSPLASH, MT_HSPLASHBASE, MT_HLAVASPLASH, MT_HLAVASMOKE, MT_HSLUDGECHUNK, MT_HSLUDGESPLASH,
     // (S) Strife mobjtype reservations (see strife_mt.inc, strife-ve order)
 #include "strife_mt.inc"
+    MT_STALKERBUDDY,		// (S) Stalker buddy special (files/strife_stalker.c)
     NUMMOBJTYPES
 
 } mobjtype_t;

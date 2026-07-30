@@ -218,10 +218,12 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
     if (atCap && !heavyFire && !surrounded && !lowHP)
 	useClip = clipCapped;			// burning overflow -> spend the capped pool
 
-    // In Heretic the buddy summons a Lichling instead of the tech drone -- same
-    // deploy decision, different actor / message, and it costs no (DOOM) ammo.
+    // One companion special per game family -- same deploy decision, different actor and
+    // message.  Heretic gets the Lichling, Strife the Stalker; both are free, only the
+    // DOOM tech drone costs ammo.
     {
-	int ctype = heretic_mode ? MT_LICHLING : MT_SECDRONE;
+	int ctype = heretic_mode ? MT_LICHLING
+		  : (gametype == GT_STRIFE) ? MT_STALKERBUDDY : MT_SECDRONE;
 
 	if (Companion_CountActive (ctype) >= DRONE_MAX_ACTIVE)
 	    return;				// at most one companion out
@@ -236,7 +238,8 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
 	    else         bot->ammo[am_shell] -= DRONE_SHELL_COST;
 	}
 	cooldown = DRONE_COOLDOWN;
-	players[consoleplayer].message = heretic_mode
-	    ? "[Buddy] Summoning a Lichling!" : "[Buddy] Deploying security drone!";
+	players[consoleplayer].message = heretic_mode ? "[Buddy] Summoning a Lichling!"
+	    : (gametype == GT_STRIFE) ? "[Buddy] Releasing a Stalker!"
+	    : "[Buddy] Deploying security drone!";
     }
 }

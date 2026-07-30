@@ -122,11 +122,11 @@ static int		nroster = 0;
 // text for the select screen; THIS is the mechanic the buddy actually uses, run
 // once per tic by P_Buddy_AbilityTicker.
 // ---------------------------------------------------------------------------
-enum { BA_NONE = 0, BA_DRONE, BA_POISONCLOUD, BA_TURRET, BA_LICHLING, BA_NUM };
+enum { BA_NONE = 0, BA_DRONE, BA_POISONCLOUD, BA_TURRET, BA_LICHLING, BA_STALKER, BA_NUM };
 
 static const char* const buddy_ability_name[BA_NUM] =
 {
-    "none", "drone", "poisoncloud", "turret", "lichling"
+    "none", "drone", "poisoncloud", "turret", "lichling", "stalker"
 };
 
 // Ability name -> id, or -1 when the name isn't one we know.  "" counts as none, so a
@@ -276,7 +276,8 @@ static void Buddy_Register (buddyparse_t* b)
 	if (Buddy_AbilityId (r->ability) < 0)
 	{
 	    printf ("BUDDYDEF: '%s' has unknown ability \"%s\" -- ignored "
-		    "(known: none, drone, poisoncloud, turret).\n", b->name, r->ability);
+		    "(known: none, drone, poisoncloud, turret, lichling, stalker).\n",
+		    b->name, r->ability);
 	    strcpy (r->ability, "none");
 	}
 	r->spritenum    = spr;
@@ -595,6 +596,39 @@ static void Buddy_SummonLichling (mobj_t* mo)
     players[consoleplayer].message = "[Buddy] Summoning a lichling!";
 }
 
+// stalker: the Strife counterpart -- a four-legged Stalker that walks the floor and
+// fires chaingunner-strength bursts (files/strife_stalker.c).  Same gate and cap as the
+// drone/lichling.  Spawned at ground level, not floating: it is a walker.
+static void Buddy_SummonStalker (mobj_t* mo)
+{
+    thinker_t*	th;
+    mobj_t*	l;
+    angle_t	ang;
+    unsigned	fine;
+
+    for (th = thinkercap.next; th != &thinkercap; th = th->next)	// one at a time
+    {
+	mobj_t* o;
+	if (th->function.acp1 != (actionf_p1)P_MobjThinker) continue;
+	o = (mobj_t*)th;
+	if (o->type == MT_STALKERBUDDY && o->health > 0)
+	    return;
+    }
+    if (!Buddy_EnemyWithin (mo, BA_DRONE_RANGE))
+	return;
+
+    ang  = mo->angle;
+    fine = ang >> ANGLETOFINESHIFT;
+    l = P_SpawnMobj (mo->x + FixedMul (mo->radius + 40*FRACUNIT, finecosine[fine]),
+		     mo->y + FixedMul (mo->radius + 40*FRACUNIT, finesine[fine]),
+		     mo->z, MT_STALKERBUDDY);
+    if (!l)
+	return;
+    l->angle  = ang;
+    l->flags |= MF_FRIEND;
+    players[consoleplayer].message = "[Buddy] Releasing a Stalker!";
+}
+
 // turret: toss out a sentry turret exactly like the player's `key_turret` deploy
 // (p_turret.c P_TurretDeploy) -- MT_TURRET, spawned at the buddy and nudged forward so a
 // wall can't swallow it, then thrown with a little arc.  No ammo cost: an mobj buddy has
@@ -688,6 +722,11 @@ void P_Buddy_AbilityTicker (void)
       case BA_LICHLING:
 	if (!(gametic % BA_DRONE_PERIOD))
 	    Buddy_SummonLichling (mo);
+	break;
+
+      case BA_STALKER:
+	if (!(gametic % BA_DRONE_PERIOD))
+	    Buddy_SummonStalker (mo);
 	break;
 
       default:

@@ -237,6 +237,13 @@ sfxinfo_t S_sfx_builtin[NUMSFX] =
   [sfx_secdr_active] = { "secdr2", false, 78, 0, -1, -1, 0 },	// active
   [sfx_secdr_detect] = { "secdr3", false, 98, 0, -1, -1, 0 },	// detect/attack
   [sfx_secdr_death]  = { "secdr4", false, 98, 0, -1, -1, 0 },	// death
+
+  // ---- (S) Strife Stalker buddy -- bare lump names STLK* (see sounds.h) ----
+  [sfx_stlk_sight]  = { "stlksit", false, 94, 0, -1, -1, 0 },
+  [sfx_stlk_active] = { "stlkact", false, 74, 0, -1, -1, 0 },
+  [sfx_stlk_atk]    = { "stlkatk", false, 96, 0, -1, -1, 0 },
+  [sfx_stlk_death]  = { "stlkdth", false, 98, 0, -1, -1, 0 },
+  [sfx_stlk_fire]   = { "stlkfir", false, 98, 0, -1, -1, 0 },
 };
 
 // DSDHacked (M5): the sound table is growable (see dsdhacked.c dsdh_EnsureSFXCapacity).

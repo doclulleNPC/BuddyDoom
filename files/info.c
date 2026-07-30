@@ -36,6 +36,7 @@ rcsid[] = "$Id: info.c,v 1.3 1997/01/26 07:45:00 b1 Exp $";
 #include "info.h"
 
 #include "p_mobj.h"
+#include "p_pspr.h"		// FF_FULLBRIGHT (used by the Stalker Buddy frame table below)
 
 char *sprnames_builtin[NUMSPRITES] = {
     "TROO","SHTG","PUNG","PISG","PISF","SHTF","SHT2","CHGG","CHGF","MISG",
@@ -131,6 +132,7 @@ char *sprnames_builtin[NUMSPRITES] = {
     "SPSH","LVAS","SLDG",		// (H) liquid splash: water / lava / sludge (native heretic.wad codes)
     // (S) Strife native 4-char sprite codes (see strife_sprnames.inc, strife-ve order)
 #include "strife_sprnames.inc"
+    "STLK",			// (S) Stalker buddy -- SPID* renamed (buddydoom.wad)
 };
 
 
@@ -171,6 +173,8 @@ void A_TurretFire();
 void A_CompanionLook();		// files/p_companion.c -- shared buddy-special idle scan/roam
 void A_CompanionChase();	// files/p_companion.c -- shared engage (used by the Lichling)
 void A_LichlingAttack();	// files/heretic_lichling.c -- melee / ice / fire
+void A_StalkerBuddyAttack();	// files/strife_stalker.c -- claw / chaingunner-strength burst
+void A_StalkerBuddyRefire();	// ...and its mid-burst break-off check
 void A_LichFireImpact();	// files/heretic_lichling.c -- fire ball AOE on impact
 void A_SecDroneChase();
 void A_SecDroneShot();		// Security Drone laser
@@ -1248,6 +1252,36 @@ state_t	states_builtin[NUMSTATES] = {
     [S_LICL_DIE5]  = {SPR_LICS,6, 6,{NULL},             S_LICL_DIE6,  0,0},
     [S_LICL_DIE6]  = {SPR_LICS,7, 6,{NULL},             S_LICL_DIE7,  0,0},
     [S_LICL_DIE7]  = {SPR_LICS,8,-1,{NULL},             S_NULL,       0,0},
+
+    // (S) Strife Stalker buddy (files/strife_stalker.c).  Frames are the SPID sheet
+    // renamed to STLK: J/K/L walk, M+N the firing pose Strife never used, L pain,
+    // O..[ death.  Look/chase come from the shared companion AI (p_companion.c).
+    [S_STLKB_LOOK]   = {SPR_STLK, 9,10,{A_CompanionLook},      S_STLKB_LOOK,   0,0},
+    [S_STLKB_CHASE1] = {SPR_STLK, 9, 3,{A_CompanionChase},     S_STLKB_CHASE2, 0,0},
+    [S_STLKB_CHASE2] = {SPR_STLK, 9, 3,{A_CompanionChase},     S_STLKB_CHASE3, 0,0},
+    [S_STLKB_CHASE3] = {SPR_STLK,10, 3,{A_CompanionChase},     S_STLKB_CHASE4, 0,0},
+    [S_STLKB_CHASE4] = {SPR_STLK,10, 3,{A_CompanionChase},     S_STLKB_CHASE5, 0,0},
+    [S_STLKB_CHASE5] = {SPR_STLK,11, 3,{A_CompanionChase},     S_STLKB_CHASE6, 0,0},
+    [S_STLKB_CHASE6] = {SPR_STLK,11, 3,{A_CompanionChase},     S_STLKB_CHASE1, 0,0},
+    // Aim, then a three-round burst on the N frame (fullbright while it fires).
+    [S_STLKB_ATK1]   = {SPR_STLK,12, 8,{A_FaceTarget},         S_STLKB_ATK2,   0,0},
+    [S_STLKB_ATK2]   = {SPR_STLK,13|FF_FULLBRIGHT,4,{A_StalkerBuddyAttack}, S_STLKB_ATK3, 0,0},
+    [S_STLKB_ATK3]   = {SPR_STLK,12, 4,{A_StalkerBuddyRefire}, S_STLKB_ATK4,   0,0},
+    [S_STLKB_ATK4]   = {SPR_STLK,13|FF_FULLBRIGHT,4,{A_StalkerBuddyAttack}, S_STLKB_CHASE1, 0,0},
+    [S_STLKB_PAIN]   = {SPR_STLK,11, 4,{A_Pain},               S_STLKB_CHASE1, 0,0},
+    [S_STLKB_DIE1]   = {SPR_STLK,14, 4,{NULL},                 S_STLKB_DIE2,   0,0},
+    [S_STLKB_DIE2]   = {SPR_STLK,15, 4,{A_Scream},             S_STLKB_DIE3,   0,0},
+    [S_STLKB_DIE3]   = {SPR_STLK,16, 4,{NULL},                 S_STLKB_DIE4,   0,0},
+    [S_STLKB_DIE4]   = {SPR_STLK,17, 4,{NULL},                 S_STLKB_DIE5,   0,0},
+    [S_STLKB_DIE5]   = {SPR_STLK,18, 4,{NULL},                 S_STLKB_DIE6,   0,0},
+    [S_STLKB_DIE6]   = {SPR_STLK,19, 4,{NULL},                 S_STLKB_DIE7,   0,0},
+    [S_STLKB_DIE7]   = {SPR_STLK,20, 4,{A_Fall},               S_STLKB_DIE8,   0,0},
+    [S_STLKB_DIE8]   = {SPR_STLK,21, 4,{NULL},                 S_STLKB_DIE9,   0,0},
+    [S_STLKB_DIE9]   = {SPR_STLK,22, 4,{NULL},                 S_STLKB_DIE10,  0,0},
+    [S_STLKB_DIE10]  = {SPR_STLK,23|FF_FULLBRIGHT,4,{NULL},    S_STLKB_DIE11,  0,0},
+    [S_STLKB_DIE11]  = {SPR_STLK,24|FF_FULLBRIGHT,4,{NULL},    S_STLKB_DIE12,  0,0},
+    [S_STLKB_DIE12]  = {SPR_STLK,25|FF_FULLBRIGHT,4,{NULL},    S_STLKB_DIE13,  0,0},
+    [S_STLKB_DIE13]  = {SPR_STLK,26|FF_FULLBRIGHT,-1,{NULL},   S_NULL,         0,0},
     // fire projectile (bright)
     [S_LICF_FLY1]  = {SPR_LICF,32768,4,{NULL},            S_LICF_FLY2,  0,0},
     [S_LICF_FLY2]  = {SPR_LICF,32769,4,{NULL},            S_LICF_FLY1,  0,0},
@@ -4950,6 +4984,22 @@ mobjinfo_t mobjinfo_builtin[NUMMOBJTYPES] = {
 	12*FRACUNIT, 11*FRACUNIT, 8*FRACUNIT, 100,
 	3,			// direct-hit damage (small; AOE added by A_LichFireImpact)
 	sfx_None, MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY, S_NULL
+    },
+    [MT_STALKERBUDDY] = {	// (S) Strife Stalker -- the Strife co-op-buddy special
+	-1,			// doomednum (buddy-spawned, not map-placed)
+	S_STLKB_LOOK, 120, S_STLKB_CHASE1, sfx_stlk_sight, 8, sfx_stlk_fire,
+	S_STLKB_PAIN, 40, sfx_stlk_atk,
+	S_NULL,			// meleestate (the claw is inside A_StalkerBuddyAttack)
+	S_STLKB_ATK1, S_STLKB_DIE1, S_NULL, sfx_stlk_death,
+	14,			// speed -- a touch quicker than Strife's own stalker (16 there is fast for a crawler)
+	31*FRACUNIT, 25*FRACUNIT, 100,
+	0,			// damage
+	sfx_stlk_active,
+	// Walks the floor (no MF_FLOAT: this one is not the ceiling crawler) and, like the
+	// drone/Lichling, is not MF_SOLID so it can't body-block the human.  MF_FRIEND is
+	// added on spawn by P_AICoop_SpawnCompanion.
+	MF_SHOOTABLE|MF_DROPOFF|MF_NOBLOOD,
+	S_NULL
     },
     [MT_LICHICE] = {		// Lichling ice ball (single-target) -- seesound = firing whoosh
 	-1, S_LICE_FLY1, 1000, S_NULL, sfx_h_hedat2, 8, sfx_None,
