@@ -48,6 +48,8 @@ rcsid[] = "$Id: p_switch.c,v 1.3 1997/01/28 22:08:29 b1 Exp $";
 //
 // CHANGE THE TEXTURE OF A WALL SWITCH TO ITS OPPOSITE
 //
+extern int	strife_mode;
+
 switchlist_t alphSwitchList[] =
 {
     // Doom shareware episode 1 switches
@@ -136,6 +138,53 @@ void P_InitSwitchList(void)
 	    {
 		switchlist[index++] = R_TextureNumForName ((char*)her_sw[i][0]);
 		switchlist[index++] = R_TextureNumForName ((char*)her_sw[i][1]);
+	    }
+	numswitches = index/2;
+	switchlist[index] = -1;
+	return;
+    }
+
+    // (S) Strife likewise: its switch textures share no name with DOOM's, so the DOOM
+    // table matched nothing and P_InitSwitchList spent 80 "texture not found" warnings
+    // before leaving every switch inert.  Pairs taken verbatim from strife-ve's
+    // alphSwitchList (src/strife/p_switch.c; identical in chocolate-strife); the per-switch sound in that table has no
+    // home in this engine's switchlist_t, so switches use the shared toggle sound.
+    // Same R_CheckTextureNumForName guard as the Heretic branch: a texture this IWAD
+    // lacks is skipped, not fatal.
+    if (strife_mode)
+    {
+	static const char* const str_sw[][2] = {
+	    {"GLASS01","GLASS02"}, {"GLASS03","GLASS04"}, {"GLASS05","GLASS06"},
+	    {"GLASS07","GLASS08"}, {"GLASS17","GLASS18"}, {"GLASS19","GLASS20"},
+	    {"SWKNOB01","SWKNOB02"}, {"SWLITE01","SWLITE02"}, {"SWCHN01","SWCHN02"},
+	    {"COMP01","COMP04B"}, {"COMP05","COMP12B"}, {"COMP09","COMP12B"},
+	    {"COMP12","COMP04B"}, {"COMP13","COMP12B"}, {"COMP17","COMP20B"},
+	    {"COMP21","COMP28B"}, {"WALTEK09","WALTEKB1"}, {"WALTEK10","WALTEKB1"},
+	    {"WALTEK15","WALTEKB1"}, {"SWFORC01","SWFORC02"}, {"SWEXIT01","SWEXIT02"},
+	    {"DORSBK01","DORSBK02"}, {"SWSLD01","SWSLD02"}, {"DORWS04","DORWS05"},
+	    {"SWIRON01","SWIRON02"}, {"GLASS09","GLASS10"}, {"GLASS11","GLASS12"},
+	    {"GLASS13","GLASS14"}, {"GLASS15","GLASS16"}, {"SWFORC03","SWFORC04"},
+	    {"SWCIT01","SWCIT02"}, {"SWTRMG01","SWTRMG04"}, {"SWMETL01","SWMETL02"},
+	    {"SWWOOD01","SWWOOD02"}, {"SWTKBL01","SWTKBL02"}, {"AZWAL21","AZWAL22"},
+	    {"SWINDT01","SWINDT02"}, {"SWRUST01","SWRUST02"}, {"SWCHAP01","SWCHAP02"},
+	    {"SWALIN01","SWALIN02"}, {"SWWALG01","SWWALG02"}, {"SWWALG03","SWWALG04"},
+	    {"SWTRAM01","SWTRAM02"}, {"SWTRAM03","SWTRAM04"}, {"SWORC01","SWORC02"},
+	    {"SWBRIK01","SWBRIK02"}, {"SWIRON03","SWIRON04"}, {"SWIRON05","SWIRON06"},
+	    {"SWIRON07","SWIRON08"}, {"SWCARD01","SWCARD02"}, {"SWSIGN01","SWSIGN02"},
+	    {"SWLEV01","SWLEV02"}, {"SWLEV03","SWLEV04"}, {"SWLEV05","SWLEV06"},
+	    {"SWBRN01","SWBRN02"}, {"SWPIP01","SWPIP02"}, {"SWPALM01","SWPALM02"},
+	    {"SWKNOB03","SWKNOB04"}, {"ALTSW01","ALTSW02"}, {"COMP25","COMP28B"},
+	    {"COMP29","COMP20B"}, {"COMP33","COMP50"}, {"COMP42","COMP51"},
+	    {"GODSCRN1","GODSCRN2"}, {"ALIEN04","ALIEN05"}, {"CITADL04","CITADL05"},
+	    {"SWITE03","SWITE04"}, {"SWTELP01","SWTELP02"}, {"BRNSCN01","BRNSCN05"},
+	};
+	int n = (int)(sizeof(str_sw)/sizeof(str_sw[0]));
+	for (index = 0, i = 0; i < n && index < MAXSWITCHES*2 - 2; i++)
+	    if (R_CheckTextureNumForName ((char*)str_sw[i][0]) >= 0 &&
+		R_CheckTextureNumForName ((char*)str_sw[i][1]) >= 0)
+	    {
+		switchlist[index++] = R_TextureNumForName ((char*)str_sw[i][0]);
+		switchlist[index++] = R_TextureNumForName ((char*)str_sw[i][1]);
 	    }
 	numswitches = index/2;
 	switchlist[index] = -1;

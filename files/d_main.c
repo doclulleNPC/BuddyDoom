@@ -1577,7 +1577,9 @@ void D_DoomMain (void)
     // get skill / episode / map from parms
     startskill = sk_medium;
     startepisode = 1;
-    startmap = 1;
+    // (S) Strife's first level is map 2 (map01 is the town hub you come back to);
+    // strife-ve starts a new game with "map = 2".  -warp still overrides this below.
+    startmap = strife_mode ? 2 : 1;
     autostart = false;
 
 		

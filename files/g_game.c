@@ -526,10 +526,16 @@ void G_DoLoadLevel (void)
     {
 	// (S) strife1.wad has no SKY1/SKY2/SKY3 -- its only sky textures are SKYMNT01
 	// and SKYMNT02, so the DOOM lookup below fell through to texture 0 and every
-	// Strife map got a garbage sky.  Which map takes the second one is not settled
-	// here yet; SKYMNT01 is the common one, so use it throughout for now.
-	if (R_CheckTextureNumForName ("SKYMNT01") >= 0)
-	    skytexture = R_TextureNumForName ("SKYMNT01");
+	// Strife map got a garbage sky.  Split per strife-ve (G_SetSkyTexture,
+	// src/strife/g_game.c): maps 9..31 and map 35 take SKYMNT01, the rest SKYMNT02.
+	// (strife-ve also flips the whole game to SKYMNT01 once the player owns the
+	// Sigil; this engine has no wp_sigil yet, so that clause waits for it.)
+	// Vanilla only evaluates this at G_InitNew, so its sky never changes mid-game;
+	// doing it here too means it follows the map, like DOOM's does in this fork.
+	const char* sky = ((gamemap >= 9 && gamemap < 32) || gamemap == 35)
+			? "SKYMNT01" : "SKYMNT02";
+	if (R_CheckTextureNumForName ((char*)sky) >= 0)
+	    skytexture = R_TextureNumForName ((char*)sky);
     }
     else if ( (gamemode == commercial)
 	 || ( gamemode == pack_tnt )
@@ -1813,9 +1819,10 @@ G_InitNew
     // set the sky map for the episode
     if (strife_mode)
     {
-	// (S) see G_DoLoadLevel: Strife's only skies are SKYMNT01/02.
-	if (R_CheckTextureNumForName ("SKYMNT01") >= 0)
-	    skytexture = R_TextureNumForName ("SKYMNT01");
+	// (S) see G_DoLoadLevel: maps 9..31 and 35 take SKYMNT01, the rest SKYMNT02.
+	const char* sky = ((map >= 9 && map < 32) || map == 35) ? "SKYMNT01" : "SKYMNT02";
+	if (R_CheckTextureNumForName ((char*)sky) >= 0)
+	    skytexture = R_TextureNumForName ((char*)sky);
     }
     else if ( gamemode == commercial)
     {

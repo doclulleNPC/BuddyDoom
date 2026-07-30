@@ -1111,6 +1111,10 @@ static void M_StartChosenEpisode (int skill)
 {
     if (u_episodes_defined && u_num_episodes > 0 && epi < u_num_episodes)
 	G_DeferedInitNew (skill, u_episodes[epi].episode, u_episodes[epi].map);
+    else if (strife_mode)
+	// (S) A new Strife game starts on map 2, not map 1 -- map01 is the town hub the
+	// game only returns to later.  strife-ve M_ChooseSkill: "map = 2".
+	G_DeferedInitNew (skill, 1, 2);
     else
 	G_DeferedInitNew (skill, epi+1, 1);
 }
