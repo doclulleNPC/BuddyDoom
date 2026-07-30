@@ -206,6 +206,12 @@ void Heretic_Splash_Init (void)
 	MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF);
     MI (MT_HSLUDGESPLASH, S_HSLUDGESPLASH1, S_NULL,     20*FRACUNIT, 16*FRACUNIT, MF_NOBLOCKMAP);
 
+    // The thrown droplets fall with LOW gravity (crispy MF2_LOGRAV) so they arc gently
+    // and hang, instead of dropping like stones with full gravity.  BuddyDoom's
+    // P_ZMovement honours MF2_LOGRAV (mbf21); MI() leaves flags2 at 0 for the rest.
+    mobjinfo[MT_HSPLASH].flags2      = MF2_LOGRAV;
+    mobjinfo[MT_HSLUDGECHUNK].flags2 = MF2_LOGRAV;
+
     // splash SFX (native heretic.wad lump names; resolved bare in heretic_mode)
     S_sfx_builtin[sfx_h_gloop].name = "gloop"; S_sfx_builtin[sfx_h_gloop].priority = 100;
     S_sfx_builtin[sfx_h_gloop].pitch = -1; S_sfx_builtin[sfx_h_gloop].volume = -1;

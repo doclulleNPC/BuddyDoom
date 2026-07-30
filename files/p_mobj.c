@@ -325,9 +325,12 @@ void P_ZMovement (mobj_t* mo)
 	    mo->momz = -mo->momz;
 	}
 
-	// (H) liquid-terrain splash when a thing lands on / a missile strikes water/lava/sludge
+	// (H) liquid-terrain splash -- ONLY on the landing transition (crispy P_ZMovement:
+	// `mo->z - mo->momz > mo->floorz`, i.e. the thing was above the surface last tic and
+	// just reached it).  The old `mo->momz < 0` fired every tic while a thing RESTED on a
+	// liquid floor (gravity re-negates momz each tic), spamming ~35 splashes+gloops/sec.
 	{ extern int P_HitFloor (mobj_t*);
-	  if (heretic_mode && mo->momz < 0) P_HitFloor (mo); }
+	  if (heretic_mode && mo->z - mo->momz > mo->floorz) P_HitFloor (mo); }
 
 	if (mo->momz < 0)
 	{
