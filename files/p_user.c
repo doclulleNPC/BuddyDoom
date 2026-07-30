@@ -163,6 +163,9 @@ void P_CalcHeight (player_t* player)
 
 
 
+// (feature) Run Speed as a percentage (Options -> Features): 100 = vanilla, up to 300.
+int	run_speed = 100;
+
 //
 // P_MovePlayer
 //
@@ -204,6 +207,15 @@ void P_MovePlayer (player_t* player)
     // Boom variable friction (phares 3/98): on ice/mud the thrust is scaled by movefactor
     // instead of the constant 2048 (harder to get going, easier to slide).
     movefactor = P_GetMoveFactor (player->mo, NULL);
+
+    // (feature) Run Speed (Options -> Features, 100..300%): scale the human's movement
+    // thrust.  Console player only -- it's the local run-speed option; the buddy bot
+    // keeps its own pace.
+    {
+	extern int run_speed, consoleplayer; extern player_t players[];
+	if (run_speed != 100 && player == &players[consoleplayer])
+	    movefactor = movefactor * run_speed / 100;
+    }
 
     if (cmd->forwardmove && onground)
 	P_Thrust (player, player->mo->angle, cmd->forwardmove*movefactor);

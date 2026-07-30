@@ -78,6 +78,10 @@ int	clipammo[NUMAMMO] = {10, 4, 20, 1, 100, 25};	// +am_fuel (ID24) +am_mace (H)
 // the weapon you're holding).  Read in P_GiveWeapon.
 int	weapon_autoswitch = 1;
 
+// Options -> Features: player weapon-damage scale as a percentage (100 = vanilla,
+// 50..500).  Read in P_DamageMobj.
+int	weapon_power = 100;
+
 
 //
 // GET STUFF
@@ -1054,6 +1058,16 @@ P_DamageMobj
 	extern int heretic_mode;
 	if (heretic_mode && target->type == MT_HMINOTAUR && (target->flags & MF_SKULLFLY))
 	    return;
+    }
+
+    // (feature) Weapon Power (Options -> Features, 50..500%): scale the damage a PLAYER's
+    // weapon deals -- hitscan, melee and projectiles all pass source = the shooter.
+    // Splash back on the shooter itself (source == target) is left unscaled so a high
+    // setting doesn't nuke you with your own rockets.
+    {
+	extern int weapon_power;
+	if (weapon_power != 100 && source && source->player && source != target)
+	    damage = damage * weapon_power / 100;
     }
 
     // (M) Morph Ovum: the egg projectile (MT_HEGGFX) morphs the struck monster

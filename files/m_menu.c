@@ -377,6 +377,8 @@ void M_ControlsMenu(int choice);
 void M_Features(int choice);		// Options -> Features submenu
 void M_ToggleFootclip(int choice);	// Heretic liquid foot-clip on/off
 void M_ToggleAutoswitch(int choice);	// auto-raise a picked-up weapon on/off
+void M_RunSpeed(int choice);		// player run-speed 100..300%
+void M_WeaponPower(int choice);		// player weapon-damage 50..500%
 void M_DrawFeatures(void);
 void M_Crosshair(int choice);		// Options -> Crosshair submenu
 void M_CrosshairType(int choice);	// cycle Off / Cross / Dot / Big
@@ -487,6 +489,8 @@ enum
     feat_messages,	// in-game pickup/status messages
     feat_footclip,	// (H) sink actors into liquid
     feat_autoswitch,	// auto-raise a newly picked-up weapon
+    feat_runspeed,	// player run-speed percentage
+    feat_weaponpower,	// player weapon-damage percentage
     feat_end
 } features_e;
 
@@ -494,7 +498,9 @@ menuitem_t FeaturesMenu[]=
 {
     {1,"",	M_ChangeMessages,'m'},		// select toggles On/Off
     {1,"",	M_ToggleFootclip,'f'},
-    {1,"",	M_ToggleAutoswitch,'w'}
+    {1,"",	M_ToggleAutoswitch,'w'},
+    {2,"",	M_RunSpeed,'r'},		// left/right cycles 100..300%
+    {2,"",	M_WeaponPower,'p'}		// left/right cycles 50..500%
 };
 
 menu_t  FeaturesDef =
@@ -1679,6 +1685,24 @@ void M_ToggleAutoswitch(int choice)
     M_SaveDefaults ();
 }
 
+void M_RunSpeed(int choice)		// 100 .. 300 in 50% steps
+{
+    extern int run_speed;
+    run_speed += choice ? 50 : -50;
+    if (run_speed > 300) run_speed = 100;
+    if (run_speed < 100) run_speed = 300;
+    M_SaveDefaults ();
+}
+
+void M_WeaponPower(int choice)		// 50 .. 500 in 50% steps
+{
+    extern int weapon_power;
+    weapon_power += choice ? 50 : -50;
+    if (weapon_power > 500) weapon_power = 50;
+    if (weapon_power < 50)  weapon_power = 500;
+    M_SaveDefaults ();
+}
+
 void M_Features(int choice)
 {
     choice = 0;
@@ -1687,8 +1711,9 @@ void M_Features(int choice)
 
 void M_DrawFeatures(void)
 {
-    extern int footclip, weapon_autoswitch;
-    int x = FeaturesDef.x, y = FeaturesDef.y;
+    extern int footclip, weapon_autoswitch, run_speed, weapon_power;
+    int  x = FeaturesDef.x, y = FeaturesDef.y;
+    char buf[16];
 
     M_DrawMenuGraphic (108,15,"M_OPTTTL");
 
@@ -1698,6 +1723,12 @@ void M_DrawFeatures(void)
     M_WriteText (x+130, y+LINEHEIGHT*feat_footclip,   footclip ? "On" : "Off");
     M_WriteText (x,     y+LINEHEIGHT*feat_autoswitch, "Weapon Autoswitch");
     M_WriteText (x+130, y+LINEHEIGHT*feat_autoswitch, weapon_autoswitch ? "On" : "Off");
+    M_WriteText (x,     y+LINEHEIGHT*feat_runspeed,   "Run Speed");
+    snprintf (buf, sizeof buf, "%d%%", run_speed);
+    M_WriteText (x+130, y+LINEHEIGHT*feat_runspeed,   buf);
+    M_WriteText (x,     y+LINEHEIGHT*feat_weaponpower,"Weapon Power");
+    snprintf (buf, sizeof buf, "%d%%", weapon_power);
+    M_WriteText (x+130, y+LINEHEIGHT*feat_weaponpower,buf);
 }
 
 //

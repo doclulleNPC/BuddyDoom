@@ -201,6 +201,8 @@ extern int	crosshair;
 extern int	crosshair_color;	// r_draw.c -- crosshair colour index
 extern int	footclip;		// r_things.c -- sink actors into Heretic liquid
 extern int	weapon_autoswitch;	// p_inter.c -- raise a newly picked-up weapon
+extern int	run_speed;		// p_user.c  -- player run-speed percentage
+extern int	weapon_power;		// p_inter.c -- player weapon-damage percentage
 extern int	scale_mode;
 extern int	vsync;
 extern int	integer_scale;
@@ -304,6 +306,8 @@ default_t	defaults[] =
     {"crosshair",&crosshair, 0},
     {"footclip",&footclip, 1},
     {"weapon_autoswitch",&weapon_autoswitch, 1},
+    {"run_speed",&run_speed, 100},
+    {"weapon_power",&weapon_power, 100},
     {"crosshair_color",&crosshair_color, 0},
 
     {"monster_pack",&monster_pack, 0},		// default OFF -> vanilla 1993 monster AI
