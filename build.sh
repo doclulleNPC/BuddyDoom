@@ -94,5 +94,6 @@ echo "[build] compiling BuddyDoom tools..."
 "$here/tools/build_launcher.sh"
 "$here/tools/build_extractor.sh"
 "$here/tools/build_gpumon.sh"
+"$here/tools/build_mybuddy.sh"
 echo "[build] all BuddyDoom executables built and staged in run/"
 
