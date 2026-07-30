@@ -127,11 +127,10 @@ struct Field {
 // P_CheckMeleeRange, the ranged ones spawn a missile or fire hitscans (p_enemy.c,
 // heretic.c, hexen.c, p_mbf.c).  Nothing here is aspirational.
 //
-// STRIFE IS NOT LISTED, because this engine has no Strife actors: files/info.h holds 504
-// MT_ types and not one of them is from Strife.  "Strife" occurs only in IWAD
-// identification (w_iwadid.h), a netcode comment and the UDMF namespace list -- there is
-// no Acolyte, Reaver or Templar whose attack could be borrowed.  (The Stalker below is
-// Hexen's MT_XSTALKER, not Strife's.)
+// STRIFE actors now exist (files/info.h pulls them in via strife_mt.inc), so a Strife
+// section is listed below too; melee vs ranged follows each actor's meleestate/
+// missilestate, exactly like the other three games.  (The Stalker in the Hexen block is
+// Hexen's MT_XSTALKER; the Strife one is "strifestalker".)
 static const std::vector<std::string> MELEE_CHOICES = {
     "none",
     // --- Doom ---
@@ -159,6 +158,15 @@ static const std::vector<std::string> MELEE_CHOICES = {
     "wraith",         // A_WraithMelee
     "stalker",        // A_StalkerMelee
     "bishop",         // A_BishopAttack
+    // --- Strife (melee = the actor's meleestate is wired) ---
+    "reaver",         // Strife Reaver
+    "templar",        // Strife Templar (Rocket Guard)
+    "loremaster",     // Strife Loremaster (PRST sprite)
+    "strifestalker",  // Strife Stalker (spider) surface lunge
+    "programmer",     // Strife Programmer
+    "entity",         // Strife The Entity
+    "spectre",        // Strife Spectre (Entity pod)
+    "rat",            // Strife Rat bite
 };
 
 // Attacks used at distance: projectiles and hitscans only.  No melee swing appears here,
@@ -197,6 +205,19 @@ static const std::vector<std::string> RANGED_CHOICES = {
     "firedemon",      // A_FiredAttack
     "dragon",         // A_DragonAttack
     "stalker",        // A_StalkerMissile
+    // --- Strife (ranged = the actor's missilestate is wired) ---
+    "acolyte",        // Strife Acolyte
+    "reaver",         // Strife Reaver
+    "templar",        // Strife Templar (Rocket Guard)
+    "crusader",       // Strife Crusader
+    "loremaster",     // Strife Loremaster (PRST sprite)
+    "strifebishop",   // Strife Bishop (MLDR sprite)
+    "sentinel",       // Strife Sentinel
+    "inquisitor",     // Strife Inquisitor
+    "programmer",     // Strife Programmer
+    "entity",         // Strife The Entity
+    "spectre",        // Strife Spectre (Entity pod)
+    "turret",         // Strife Mounted Turret
 };
 
 // The named power, shown as "Special" in the editor (BUDDYDEF key `ability`).  Keep in
@@ -206,6 +227,83 @@ static const std::vector<std::string> ABILITY_CHOICES = {
 };
 static const std::vector<std::string> COLOR_CHOICES   = { "", "Green", "Gray", "Brown", "Red",
                                                           "Blue", "Orange", "Purple", "White" };
+
+// "Base monster": pick a monster and the editor (re)sets Sprite base, every body stat
+// and both attacks from it -- picking again fully re-applies, so it is a body swap.  Sprite
+// bases + melee/ranged tokens are verified against files/info.c, heretic.c, hexen*.c and
+// strife_mon.c.  Melee/ranged use the exact tokens from MELEE_CHOICES / RANGED_CHOICES;
+// "none" where the actor has no such attack or (all Strife) no token exists yet.
+struct MonsterBase {
+    const char* name; const char* sprite; const char* melee; const char* ranged;
+    int health, speed, radius, height, mass, painchance;   // from mobjinfo / GZDoom ZScript
+};
+static const std::vector<MonsterBase> MONSTERS = {
+    // name              sprite  melee          ranged          hp    spd  rad  ht   mass    pain
+    // --- Doom ---
+    { "Zombieman",        "POSS", "none",       "zombieman",     20,   8,  20,  56,  100,   200 },
+    { "Shotgun Guy",      "SPOS", "none",       "shotgunguy",    30,   8,  20,  56,  100,   170 },
+    { "Chaingunner",      "CPOS", "none",       "chaingunner",   70,   8,  20,  56,  100,   170 },
+    { "Imp",              "TROO", "imp",        "imp",           60,   8,  20,  56,  100,   200 },
+    { "Demon",            "SARG", "demon",      "none",          150, 10,  30,  56,  400,   180 },
+    { "Spectre",          "SARG", "demon",      "none",          150, 10,  30,  56,  400,   180 },
+    { "Cacodemon",        "HEAD", "cacodemon",  "cacodemon",     400,  8,  31,  56,  400,   128 },
+    { "Baron of Hell",    "BOSS", "baron",      "baron",         1000, 8,  24,  64,  1000,   50 },
+    { "Hell Knight",      "BOS2", "hellknight", "hellknight",    500,  8,  24,  64,  1000,   50 },
+    { "Lost Soul",        "SKUL", "none",       "lostsoul",      100,  8,  16,  56,  50,    255 },
+    { "Pain Elemental",   "PAIN", "none",       "painelemental", 400,  8,  31,  56,  400,   128 },
+    { "Revenant",         "SKEL", "revenant",   "revenant",      300, 10,  20,  56,  500,   100 },
+    { "Mancubus",         "FATT", "none",       "mancubus",      600,  8,  48,  64,  1000,   80 },
+    { "Arachnotron",      "BSPI", "none",       "arachnotron",   500, 12,  64,  64,  600,   128 },
+    { "Cyberdemon",       "CYBR", "none",       "cyberdemon",    4000,16,  40, 110,  1000,   20 },
+    { "Spider Mastermind","SPID", "none",       "none",          3000,12, 128, 100,  1000,   40 },
+    { "Arch-Vile",        "VILE", "archvile",   "none",          700, 15,  20,  56,  500,    10 },
+    { "Wolfenstein SS",   "SSWV", "none",       "none",          50,   8,  20,  56,  100,   170 },
+    // --- Heretic ---
+    { "Golem",            "HMUM", "golem",         "none",          80,  12,  22,  62,  75,   128 },
+    { "Sabreclaw",        "HCLK", "sabreclaw",     "none",          150, 14,  20,  64,  75,    32 },
+    { "Gargoyle",         "HIMP", "gargoyle",      "gargoyle",      40,  10,  16,  36,  50,   200 },
+    { "Undead Warrior",   "HKNI", "undeadwarrior", "undeadwarrior", 200, 12,  24,  78,  150,  100 },
+    { "Weredragon",       "HBEA", "weredragon",    "weredragon",    220, 14,  32,  74,  200,  100 },
+    { "Disciple",         "HWIZ", "none",          "disciple",      180, 12,  16,  68,  100,   64 },
+    { "Ophidian",         "HSNK", "none",          "ophidian",      280, 10,  22,  70,  100,   48 },
+    { "Maulotaur",        "HMIN", "minotaur",      "minotaur",      3000,16,  28, 100,  800,   25 },
+    { "Iron Lich",        "HIRO", "none",          "ironlich",      700,  6,  40,  72,  325,   32 },
+    { "D'Sparil",         "HSR2", "none",          "dsparil",       3500,14,  16,  70,  150,   32 },
+    // --- Hexen ---
+    { "Ettin",            "XETT", "ettin",      "none",          175, 13,  25,  68,  175,    60 },
+    { "Centaur",          "XCEN", "centaur",    "none",          200, 13,  20,  64,  120,   135 },
+    { "Slaughtaur",       "XCEN", "centaur",    "centaurleader", 250, 10,  20,  64,  120,    96 },
+    { "Chaos Serpent",    "XDEM", "serpent",    "serpent",       250, 13,  32,  64,  220,    50 },
+    { "Afrit",            "XFDM", "none",       "firedemon",     80,  13,  20,  68,  75,      1 },
+    { "Reiver",           "XWRT", "wraith",     "wraith",        150, 11,  20,  55,  75,     25 },
+    { "Dark Bishop",      "XBIS", "none",       "bishop",        130, 10,  22,  65,  100,   110 },
+    { "Wendigo",          "XICE", "none",       "iceguy",        120, 14,  22,  75,  150,   144 },
+    { "Stalker",          "XSSP", "stalker",    "none",          90,  12,  32,  70,  100000, 96 },
+    { "Death Wyvern",     "XDRA", "none",       "dragon",        640, 10,  20,  65,  100000,128 },
+    { "Korax",            "KORX", "none",       "none",          5000,10,  65, 115,  2000,   20 },
+    { "Heresiarch",       "SORC", "none",       "none",          5000,16,  40, 110,  500,    10 },
+    // --- Strife  (PRST sprite = Loremaster, MLDR sprite = Bishop -- names/stats matched) ---
+    { "Acolyte",          "AGRD", "none",          "acolyte",      70,   7,  24,  64,  400,   150 },
+    { "Reaver",           "ROB1", "reaver",        "reaver",       150, 12,  20,  60,  500,   128 },
+    { "Templar",          "PGRD", "templar",       "templar",      300,  8,  20,  60,  500,   100 },
+    { "Crusader",         "ROB2", "none",          "crusader",     400,  8,  40,  56,  400,   128 },
+    { "Loremaster",       "PRST", "loremaster",    "loremaster",   800, 10,  15,  56,  100,     0 },
+    { "Bishop",           "MLDR", "none",          "strifebishop", 500,  8,  40,  56,  500,   128 },
+    { "Sentinel",         "SEWR", "none",          "sentinel",     100,  7,  23,  53,  300,   255 },
+    { "Strife Stalker",   "SPID", "strifestalker", "none",         80,  16,  31,  25,  100,    40 },
+    { "Inquisitor",       "ROB3", "none",          "inquisitor",   1000,12,  40, 110,  1000,    0 },
+    { "Programmer",       "PRGR", "programmer",    "programmer",   1100,26,  45,  60,  800,    50 },
+    { "The Entity",       "MNAM", "entity",        "entity",       2500,13, 130, 200,  1000,   255 },
+    { "Strife Spectre",   "ALN1", "spectre",       "spectre",      1000,12,  64,  64,  1000,   250 },
+    { "Mounted Turret",   "TURT", "none",          "turret",       125,  0,  20,  16,  100000,   0 },
+    { "Rat",              "RATT", "rat",           "none",         5,   13,  10,  16,  100,     0 },
+};
+// Names for the picker, "" (no base) first.
+static const std::vector<std::string> MONSTER_CHOICES = []{
+    std::vector<std::string> v = { "" };
+    for (const MonsterBase& m : MONSTERS) v.push_back(m.name);
+    return v;
+}();
 
 // The built-in Marine (roster slot 0, P_Buddy_LoadDefs): the baseline an alternative
 // buddy is a deviation from.
@@ -217,6 +315,8 @@ static const std::vector<Field> FIELDS = {
       "Shown big on the Buddy select screen." },
     { "Sprite base",   Kind::Sprite,   Key::Sprite,  &Buddy::sprite,  nullptr, 0, 0, nullptr, 4, Status::Live,
       "4-char sprite base, e.g. FRAN -> needs FRANA1.. in the WAD. Frame A is the preview." },
+    { "Base monster",  Kind::Choice,   Key::Monster, &Buddy::monster, nullptr, 0, 0, &MONSTER_CHOICES, 24, Status::Live,
+      "Base on a Doom/Heretic/Hexen/Strife monster -- (re)sets Sprite base, stats, Melee + Ranged. Click to pick." },
     { "Color",         Kind::Choice,   Key::Color,   &Buddy::color,   nullptr, 0, 0, &COLOR_CHOICES, 24, Status::Live,
       "Default player-colour on the Buddy screen. Empty = no default (menu picks Green)." },
     { "Description",   Kind::TextLong, Key::Desc,    &Buddy::desc,    nullptr, 0, 0, nullptr, 240, Status::Live,
@@ -247,7 +347,7 @@ static const std::vector<Field> FIELDS = {
       "Idle grunt, lump name." },
 
     { "Melee attack",  Kind::Choice, Key::MeleeAttack,  &Buddy::melee,  nullptr, 0, 0, &MELEE_CHOICES, 24, Status::Pending,
-      "Close-range attack, borrowed from a Doom/Heretic/Hexen actor. Melee only." },
+      "Close-range attack, borrowed from a Doom/Heretic/Hexen/Strife actor. Melee only." },
     { "Ranged attack", Kind::Choice, Key::RangedAttack, &Buddy::ranged, nullptr, 0, 0, &RANGED_CHOICES, 24, Status::Pending,
       "Attack used at distance. Projectiles and hitscans only, never a melee swing." },
     { "Special",       Kind::Choice, Key::Ability, &Buddy::ability, nullptr, 0, 0, &ABILITY_CHOICES, 24, Status::Live,
@@ -1580,6 +1680,33 @@ static void draw_footer()
     text(btn.quit.x + 28, btn.quit.y + 6, "Quit", 255, 230, 230);
 }
 
+// ----- Base-monster picker state + geometry (used by draw + click) -----
+static bool monster_menu_open = false;
+static int  monster_scroll    = 0;      // first visible row in the scrollable list
+
+static int monster_field_idx()
+{
+    for (size_t i = 0; i < FIELDS.size(); i++)
+        if (FIELDS[i].key == Key::Monster) return (int)i;
+    return -1;
+}
+
+// Popup geometry, shared by draw + click so they can never disagree.  Hangs below the
+// Base-monster row and is clamped to stay on screen.
+static bool monster_menu_geom(float& x, float& y, float& w, float& ih, int& vis)
+{
+    const int fi = monster_field_idx();
+    if (fi < 0) return false;
+    const FieldLay& L = LAY[(size_t)fi];
+    w = 220; ih = 22; vis = 16;
+    x = L.vx - 4;
+    y = L.ry + ROWH;
+    const float botmax = WINH - FOOTER_H - (vis * ih + 4) - 2;
+    if (y > botmax) y = botmax;
+    if (y < HEADER_H + 2) y = HEADER_H + 2;
+    return true;
+}
+
 // The File button and its dropdown.  Drawn LAST, after every panel, so the open menu
 // overlays them instead of being painted over.
 static void draw_file_menu()
@@ -1607,6 +1734,35 @@ static void draw_file_menu()
     }
 }
 
+// The Base-monster picker: a scrollable list of every monster, hanging off its field.
+// Drawn last so it overlays the panels; wheel scrolls it, a click picks a row.
+static void draw_monster_menu()
+{
+    if (!monster_menu_open) return;
+    float x, y, w, ih; int vis;
+    if (!monster_menu_geom(x, y, w, ih, vis)) { monster_menu_open = false; return; }
+
+    const int n = (int)MONSTER_CHOICES.size();
+    monster_scroll = std::max(0, std::min(monster_scroll, n - vis));
+
+    rect(x, y, w, vis * ih + 4, 28, 30, 40);
+    rect_outline(x, y, w, vis * ih + 4, 90, 110, 150);
+
+    float hx = 0, hy = 0;
+    mouse_logical(&hx, &hy);
+    const std::string cur = (sel >= 0 && sel < (int)buddies.size()) ? buddies[sel].monster
+                                                                    : std::string();
+    for (int r = 0; r < vis && monster_scroll + r < n; r++) {
+        const int idx = monster_scroll + r;
+        const float ry = y + 2 + r * ih;
+        const std::string& nm = MONSTER_CHOICES[(size_t)idx];
+        const bool hot = (hx >= x && hx < x + w && hy >= ry && hy < ry + ih);
+        if (hot)            rect(x + 2, ry, w - 4, ih, 55, 75, 110);
+        else if (nm == cur) rect(x + 2, ry, w - 4, ih, 45, 55, 75);
+        text(x + 8, ry + 3, nm.empty() ? "(none)" : nm, 225, 235, 245, w - 16);
+    }
+}
+
 static void draw()
 {
     rect(0, 0, WINW, WINH, 16, 16, 22);
@@ -1619,6 +1775,7 @@ static void draw()
     draw_preview();
     draw_footer();
     draw_file_menu();		// last: the open dropdown must overlay the panels
+    draw_monster_menu();	// the scrollable base-monster picker, also on top
     SDL_RenderPresent(ren);
 }
 
@@ -1733,6 +1890,41 @@ static void commit_rename_lump()
     mode = Mode::Normal;
 }
 
+// Apply the chosen monster to the buddy: sprite, all body stats, and both attacks are
+// (re)set from it.  Picking a different monster therefore rewrites every one of these,
+// so a base is a full body swap -- tune the fields afterwards if you want a deviation.
+static void apply_monster_base(Buddy& b)
+{
+    for (const MonsterBase& m : MONSTERS) {
+        if (b.monster == m.name) {
+            b.sprite     = m.sprite;     b.set(Key::Sprite);
+            b.health     = m.health;     b.set(Key::Health);
+            b.speed      = m.speed;      b.set(Key::Speed);
+            b.radius     = m.radius;     b.set(Key::Radius);
+            b.height     = m.height;     b.set(Key::Height);
+            b.mass       = m.mass;       b.set(Key::Mass);
+            b.painchance = m.painchance; b.set(Key::PainChance);
+            b.melee      = m.melee;      b.set(Key::MeleeAttack);
+            b.ranged     = m.ranged;     b.set(Key::RangedAttack);
+            sprite_invalidate();
+            return;
+        }
+    }
+}
+
+static void select_monster(const std::string& name)
+{
+    if (sel < 0 || sel >= (int)buddies.size()) { monster_menu_open = false; return; }
+    push_undo();
+    buddies[sel].monster = name;
+    buddies[sel].set(Key::Monster);
+    if (!name.empty()) apply_monster_base(buddies[sel]);
+    record_change();
+    monster_menu_open = false;
+    if (name.empty()) set_status("Base monster cleared.");
+    else              set_status("Base monster: %s.", name.c_str());
+}
+
 static void cycle_choice(int idx, int dir)
 {
     const Field& f = FIELDS[(size_t)idx];
@@ -1769,6 +1961,11 @@ static void click_value(float mx, float my)
     const int i = field_at(mx, my);
     if (i < 0) return;
     const Field& f = FIELDS[(size_t)i];
+    if (f.key == Key::Monster) {                // too many monsters to cycle -> dropdown
+        monster_menu_open = true;
+        monster_scroll = 0;
+        return;
+    }
     if (f.kind == Kind::Choice) {
         const int dir = value_dir(mx, LAY[i].vx, textw(format_value(buddies[sel], f)));
         cycle_choice(i, dir);
@@ -1794,6 +1991,21 @@ static void click_value(float mx, float my)
 
 static void click_main(float mx, float my)
 {
+    // Base-monster picker: while open it captures the next click.
+    if (monster_menu_open) {
+        float x, y, w, ih; int vis;
+        if (monster_menu_geom(x, y, w, ih, vis) && mx >= x && mx < x + w && my >= y + 2) {
+            const int row = (int)((my - (y + 2)) / ih);
+            const int idx = monster_scroll + row;
+            if (row >= 0 && row < vis && idx >= 0 && idx < (int)MONSTER_CHOICES.size()) {
+                select_monster(MONSTER_CHOICES[(size_t)idx]);
+                return;
+            }
+        }
+        monster_menu_open = false;              // click elsewhere closes it
+        return;
+    }
+
     // File dropdown: while open it captures the next click (an item runs its action,
     // anything else just closes it).
     if (file_menu_open) {
@@ -2001,6 +2213,10 @@ int main(int argc, char** argv)
             break;
 
         case SDL_EVENT_MOUSE_WHEEL:
+            if (monster_menu_open) {            // scroll the base-monster picker
+                monster_scroll += (e.wheel.y > 0) ? -1 : 1;
+                break;
+            }
             if (mode == Mode::Normal) {
                 float mmx = 0, mmy = 0;
                 mouse_logical(&mmx, &mmy);
@@ -2049,7 +2265,7 @@ int main(int argc, char** argv)
                 else if (e.key.key == SDLK_RETURN) commit_edit_text();
                 else if (e.key.key == SDLK_ESCAPE) cancel_edit();
             } else {
-                if (e.key.key == SDLK_ESCAPE) { if (file_menu_open) file_menu_open = false; else run = false; }
+                if (e.key.key == SDLK_ESCAPE) { if (monster_menu_open) monster_menu_open = false; else if (file_menu_open) file_menu_open = false; else run = false; }
                 else if (e.key.key == SDLK_S && (e.key.mod & SDL_KMOD_CTRL)) save_wad("");
                 else if (e.key.key == SDLK_O && (e.key.mod & SDL_KMOD_CTRL)) open_dialog();
                 else if (e.key.key == SDLK_Z && (e.key.mod & SDL_KMOD_CTRL) && (e.key.mod & SDL_KMOD_SHIFT)) do_redo();

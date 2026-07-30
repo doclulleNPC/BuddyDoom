@@ -26,7 +26,7 @@ namespace buddy {
 enum class Key {
     Name, Desc, Ability, Color, Sprite,
     Health, Speed, Radius, Height, Mass, PainChance, ReactionTime,
-    MeleeAttack, RangedAttack,
+    MeleeAttack, RangedAttack, Monster,
     SeeSound, PainSound, DeathSound, ActiveSound, Ednum,
     COUNT
 };
@@ -56,6 +56,7 @@ struct Buddy {
     // any other unknown key, and saving drops it.)
     std::string melee  = "none";         // close range
     std::string ranged = "none";         // at distance
+    std::string monster;                 // "base monster" the editor set sprite/melee/ranged from
 
     int         ednum  = -1;             // retired: a player is not map-placeable
 

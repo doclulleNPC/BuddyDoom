@@ -132,6 +132,7 @@ std::vector<Buddy> parse(const std::string& text)
         else if (key == "meleeattack" || key == "melee")     str(cur.melee, Key::MeleeAttack);
         else if (key == "rangedattack" || key == "ranged" || key == "missile")
                                                              str(cur.ranged, Key::RangedAttack);
+        else if (key == "monster" || key == "basemonster")   str(cur.monster, Key::Monster);
         // `attack` (the old combined key) is deliberately absent: it falls through to
         // the ignore-everything-else branch, so old lumps still load and lose it on save.
         else if (key == "seesound")                          str(cur.seesnd, Key::SeeSound);
@@ -180,6 +181,7 @@ std::string serialize(const Buddy& b)
     emit_int(out, "reactiontime", b.reactiontime, b.has(Key::ReactionTime), 8);
     emit    (out, "meleeattack",  b.melee,    b.has(Key::MeleeAttack),  "none");
     emit    (out, "rangedattack", b.ranged,   b.has(Key::RangedAttack), "none");
+    emit    (out, "monster",      b.monster,  b.has(Key::Monster),      "");
     emit    (out, "ability",     b.ability,   b.has(Key::Ability),      "none");
     emit    (out, "color",       b.color,     b.has(Key::Color),            "");
     emit    (out, "seesound",    b.seesnd,    b.has(Key::SeeSound),         "");
