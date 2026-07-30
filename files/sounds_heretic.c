@@ -44,6 +44,33 @@ void Sounds_Heretic_Init (void)
     int	n = (int)(sizeof heretic_sfx / sizeof heretic_sfx[0]);
     int	i;
 
+    // (H) A pile of stock DOOM sfx have no matching lump in heretic.wad, so they went
+    // SILENT in heretic_mode (the resolver tries the bare name first): the player's
+    // oof/pain/death, powerup pickups, "no way" grunt, switches and the melee whiff.
+    // Point those slots at the native Heretic lumps instead (name only -- keep the DOOM
+    // priorities).  heretic_mode only, so DOOM/Hexen keep their own sounds.
+    {
+	extern int heretic_mode;
+	if (heretic_mode)
+	{
+	    static const struct { int id; char* name; } hmap[] =
+	    {
+		{ sfx_oof,    "plroof" },	// hard landing / "oof"
+		{ sfx_noway,  "plroof" },	// "can't do that" grunt
+		{ sfx_plpain, "plrpai" },	// player pain
+		{ sfx_pldeth, "plrdth" },	// player death
+		{ sfx_getpow, "artiup" },	// powerup / artifact pickup
+		{ sfx_swtchn, "switch" },	// switch on
+		{ sfx_swtchx, "switch" },	// switch off
+		{ sfx_itmbk,  "itemup" },	// item respawn
+		{ sfx_punch,  "gntful" },	// melee whiff
+	    };
+	    int k;
+	    for (k = 0; k < (int)(sizeof hmap / sizeof hmap[0]); k++)
+		S_sfx_builtin[hmap[k].id].name = hmap[k].name;
+	}
+    }
+
     // guard against enum drift: only fill the contiguous sfx_h_* range we own
     if (n != (sfx_h_wizsit - sfx_h_bstact + 1))
 	return;

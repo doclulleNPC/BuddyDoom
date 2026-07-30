@@ -1362,13 +1362,18 @@ void AM_drawPlayers(void)
 
     if (!netgame)
     {
+	// (H) Heretic's player/buddy arrows read as tiny; draw them 2x bigger (DOOM keeps
+	// the vanilla size).  scale 0 = coords as-is; a scale > FRACUNIT enlarges.
+	extern int heretic_mode;
+	fixed_t amsc = heretic_mode ? 2*FRACUNIT : 0;
+
 	if (cheating)
 	    AM_drawLineCharacter
-		(cheat_player_arrow, NUMCHEATPLYRLINES, 0,
+		(cheat_player_arrow, NUMCHEATPLYRLINES, amsc,
 		 plr->mo->angle, WHITE, plr->mo->x, plr->mo->y);
 	else
 	    AM_drawLineCharacter
-		(player_arrow, NUMPLYRLINES, 0, plr->mo->angle,
+		(player_arrow, NUMPLYRLINES, amsc, plr->mo->angle,
 		 WHITE, plr->mo->x, plr->mo->y);
 
 	// AI co-op buddy: yellow arrow while alive; a green medkit cross while DOWN
@@ -1379,11 +1384,11 @@ void AM_drawPlayers(void)
 	    {
 		if (players[bs].playerstate == PST_LIVE)
 		    AM_drawLineCharacter
-			(player_arrow, NUMPLYRLINES, 0, players[bs].mo->angle,
+			(player_arrow, NUMPLYRLINES, amsc, players[bs].mo->angle,
 			 YELLOWS, players[bs].mo->x, players[bs].mo->y);
 		else if (players[bs].playerstate == PST_DEAD)
 		    AM_drawLineCharacter
-			(cross_mark, NUMCROSSMARKLINES, 0, 0,
+			(cross_mark, NUMCROSSMARKLINES, amsc, 0,
 			 GREENS, players[bs].mo->x, players[bs].mo->y);
 	    }
 	}
