@@ -347,12 +347,17 @@ void R_SetBuddyColor (mobj_t* mo, const byte* xlat)
 void R_InitSprites (char** namelist)
 {
     int		i;
-	
-    for (i=0 ; i<SCREENWIDTH ; i++)
+
+    // Fill the WHOLE array (MAXWIDTH), not just the startup SCREENWIDTH: negonearray is
+    // a constant -1 sprite ceiling-clip, and the internal resolution can be raised at
+    // runtime (Options -> Video / V_SetRes).  Bounding this by the startup width left
+    // negonearray[startwidth..viewwidth) as 0, which over-clipped (hid) sprite columns
+    // after a res bump.  It never changes afterwards, so no per-res refill is needed.
+    for (i=0 ; i<MAXWIDTH ; i++)
     {
 	negonearray[i] = -1;
     }
-	
+
     R_InitSpriteDefs (namelist);
 }
 
@@ -745,16 +750,18 @@ void R_ProjectSprite (mobj_t* thing)
 	flip = (boolean)sprframe->flip[0];
     }
     
-    // calculate edges of the shape
-    tx -= spriteoffset[lump];	
-    x1 = (centerxfrac + FixedMul (tx,xscale) ) >>FRACBITS;
+    // calculate edges of the shape.  Do it in 64-bit: at hi-res centerxfrac and xscale
+    // are large, so the 32-bit (centerxfrac + tx*xscale) sum can overflow before the
+    // >>FRACBITS (crispy/woof use FixedMul64 here for the same reason).
+    tx -= spriteoffset[lump];
+    x1 = (int)(((long long)centerxfrac + (((long long)tx * xscale) >> FRACBITS)) >> FRACBITS);
 
     // off the right side?
     if (x1 > viewwidth)
 	return;
-    
+
     tx +=  spritewidth[lump];
-    x2 = ((centerxfrac + FixedMul (tx,xscale) ) >>FRACBITS) - 1;
+    x2 = (int)(((long long)centerxfrac + (((long long)tx * xscale) >> FRACBITS)) >> FRACBITS) - 1;
 
     // off the left side
     if (x2 < 0)
