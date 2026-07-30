@@ -33,6 +33,7 @@
 
 // Visplane related.
 extern  int*		lastopening;
+extern  int*		openings_end;	// one past openings[] -- R_StoreWallRange bounds guard
 
 
 typedef void (*planefunction_t) (int top, int bottom);

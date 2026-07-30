@@ -450,6 +450,7 @@ R_StoreWallRange
     angle_t		distangle, offsetangle;
     fixed_t		vtop;
     int			lightnum;
+    boolean		openings_full;	// no room in openings[] for this seg's clip tables
 
     // grow the drawseg array on demand instead of silently dropping the segment
     // (which showed up as HOM / missing-wall edges once the old fixed MAXDRAWSEGS
@@ -492,7 +493,15 @@ R_StoreWallRange
     ds_p->x2 = stop;
     ds_p->curline = curline;
     rw_stopx = stop+1;
-    
+
+    // openings[] is a finite arena that this seg's clip tables (masked mid texture +
+    // sprite top/bottom clip, up to 3 columns' worth per screen column) are carved from.
+    // If they won't all fit, skip STORING them below rather than run lastopening past
+    // the array -- an overrun hands R_DrawSprite a garbage sprbottomclip and sprites
+    // leak through floors.  The wall still renders; only its sprite-clip contribution is
+    // dropped (graceful, bounded degradation in an extremely busy hi-res view).
+    openings_full = lastopening + 3*(rw_stopx - start) > openings_end;
+
     // calculate scale at both ends and step
     ds_p->scale1 = rw_scale = 
 	R_ScaleFromGlobalAngle (viewangle + xtoviewangle[start]);
@@ -682,8 +691,8 @@ R_StoreWallRange
 	rw_toptexturemid += sidedef->rowoffset;
 	rw_bottomtexturemid += sidedef->rowoffset;
 	
-	// allocate space for masked texture tables
-	if (sidedef->midtexture)
+	// allocate space for masked texture tables (skip if openings[] is exhausted)
+	if (sidedef->midtexture && !openings_full)
 	{
 	    // masked midtexture
 	    maskedtexture = true;
@@ -793,6 +802,13 @@ R_StoreWallRange
     R_RenderSegLoop ();
 
     
+    // openings[] exhausted for this seg (see the rw_stopx guard above): drop its sprite
+    // clipping cleanly.  With silhouette 0 and maskedtexturecol NULL, R_DrawSprite skips
+    // this drawseg (r_things.c) rather than reading a bogus sprtopclip/sprbottomclip --
+    // the masked alloc was skipped too, so nothing here stores past the arena.
+    if (openings_full)
+	ds_p->silhouette = 0;
+
     // save sprite clipping info
     if ( ((ds_p->silhouette & SIL_TOP) || maskedtexture)
 	 && !ds_p->sprtopclip)

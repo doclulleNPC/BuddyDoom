@@ -69,10 +69,17 @@ visplane_t*		ceilingplane;
 #define visplane_hash(picnum,lightlevel,height) \
   (((unsigned)(picnum)*3 + (unsigned)(lightlevel) + (unsigned)(height)*7) & (MAXVISPLANES-1))
 
-// ? (sized for the maximum internal resolution)
-#define MAXOPENINGS	MAXWIDTH*64
+// The arena that per-drawseg sprtopclip/sprbottomclip are carved out of.  Because this
+// fork removed the fixed drawseg cap (r_bsp.c/r_segs.c grow drawsegs on demand), a
+// hi-res + widescreen view crossing many two-sided lines can consume a LOT of it -- so
+// size it 4x like crispy-doom (MAXWIDTH*64*4).  R_StoreWallRange also bounds-checks
+// every write now, so an even busier scene degrades (a seg drops its clip) instead of
+// overrunning the array and handing R_DrawSprite a garbage clip (sprites leaked through
+// floors -- a thin sliver of a pickup in a lower sector poked over the near floor).
+#define MAXOPENINGS	(MAXWIDTH*64*4)
 int			openings[MAXOPENINGS];
 int*			lastopening;
+int*			openings_end = openings + MAXOPENINGS;	// one past the arena (bounds guard)
 
 
 //
