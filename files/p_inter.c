@@ -74,6 +74,10 @@ int		ff_protect = 0;
 int	maxammo[NUMAMMO] = {200, 50, 300, 50, 600, 150};	// +am_fuel (ID24) +am_mace (H)
 int	clipammo[NUMAMMO] = {10, 4, 20, 1, 100, 25};	// +am_fuel (ID24) +am_mace (H)
 
+// Options -> Features: auto-raise a newly picked-up weapon (1 = vanilla DOOM, 0 = keep
+// the weapon you're holding).  Read in P_GiveWeapon.
+int	weapon_autoswitch = 1;
+
 
 //
 // GET STUFF
@@ -247,11 +251,16 @@ P_GiveWeapon
 	gaveweapon = false;
     else
     {
+	extern int weapon_autoswitch;	// Options -> Features (default on = vanilla)
 	gaveweapon = true;
 	player->weaponowned[weapon] = true;
-	player->pendingweapon = weapon;
+	// Vanilla DOOM auto-raises a newly picked-up weapon.  With auto-switch off, keep
+	// the weapon you're holding (the buddy bot re-picks its own weapon each tic, so
+	// this only really changes the human's behaviour).
+	if (weapon_autoswitch)
+	    player->pendingweapon = weapon;
     }
-	
+
     return (gaveweapon || gaveammo);
 }
 

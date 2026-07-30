@@ -440,6 +440,10 @@ typedef struct vissprite_s
 
     fixed_t     floorz;
 
+    // (H) sprite foot-clip in world units (0 = none): how far the actor's feet are
+    // sunk below a liquid surface -- the bottom is clipped so it looks submerged.
+    int			footclip;
+
     // Optional per-actor palette translation (buddy colour).  NULL = fall back to
     // the MF_TRANSLATION flag bits.  Transient render data -- never serialised.
     const byte*		translation;

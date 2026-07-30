@@ -361,7 +361,7 @@ menu_t  NewDef =
 //  main menu; it only ever sat here in vanilla to abandon a co-op session.)
 enum
 {
-    messages,
+    featuresopt,	// Features submenu (Messages / Footclip / Weapon Autoswitch)
     mousesens,
     option_empty2,
     soundvol,
@@ -374,6 +374,10 @@ enum
 } options_e;
 
 void M_ControlsMenu(int choice);
+void M_Features(int choice);		// Options -> Features submenu
+void M_ToggleFootclip(int choice);	// Heretic liquid foot-clip on/off
+void M_ToggleAutoswitch(int choice);	// auto-raise a picked-up weapon on/off
+void M_DrawFeatures(void);
 void M_Crosshair(int choice);		// Options -> Crosshair submenu
 void M_CrosshairType(int choice);	// cycle Off / Cross / Dot / Big
 void M_CrosshairColor(int choice);	// cycle Green / White / Red / Yellow / Blue
@@ -385,7 +389,7 @@ menuitem_t OptionsMenu[]=
     // so M_Drawer doesn't blit the big graphic lumps.
     // (Vanilla's "Graphic Detail" High/Low was removed -- low-detail mode is a
     //  dead no-op in this hi-res renderer; see the old M_ChangeDetail.)
-    {1,"",	M_ChangeMessages,'m'},
+    {1,"",	M_Features,'f'},	// enters the Features submenu (Messages moved inside)
     {2,"",	M_ChangeSensitivity,'m'},
     {-1,"",0},
     {1,"",	M_Sound,'s'},
@@ -471,6 +475,34 @@ menu_t  CrosshairDef =
     &OptionsDef,
     CrosshairMenu,
     M_DrawCrosshair,
+    60,37,
+    0
+};
+
+//
+// Features MENU (Options -> Features): gameplay toggles, text-drawn.
+//
+enum
+{
+    feat_messages,	// in-game pickup/status messages
+    feat_footclip,	// (H) sink actors into liquid
+    feat_autoswitch,	// auto-raise a newly picked-up weapon
+    feat_end
+} features_e;
+
+menuitem_t FeaturesMenu[]=
+{
+    {1,"",	M_ChangeMessages,'m'},		// select toggles On/Off
+    {1,"",	M_ToggleFootclip,'f'},
+    {1,"",	M_ToggleAutoswitch,'w'}
+};
+
+menu_t  FeaturesDef =
+{
+    feat_end,
+    &OptionsDef,
+    FeaturesMenu,
+    M_DrawFeatures,
     60,37,
     0
 };
@@ -1147,8 +1179,7 @@ void M_DrawOptions(void)
     M_DrawMenuGraphic (108,15,"M_OPTTTL");
 
     // All items drawn at the small hu_font size (same as the Video submenu).
-    M_WriteText (x, y+LINEHEIGHT*messages, "Messages");
-    M_WriteText (x+130, y+LINEHEIGHT*messages, showMessages ? "On" : "Off");
+    M_WriteText (x, y+LINEHEIGHT*featuresopt, "Features");
 
     M_WriteText (x, y+LINEHEIGHT*mousesens, "Mouse Sensitivity");
     M_DrawThermo (x, y+LINEHEIGHT*(mousesens+1), 10, mouseSensitivity);
@@ -1629,6 +1660,47 @@ void M_StatusBarStyle(int choice)
 }
 
 //
+// Options -> Features submenu: gameplay toggles.  Messages moved here from the
+// Options root; footclip lives in r_things.c, weapon_autoswitch in p_inter.c.
+//
+void M_ToggleFootclip(int choice)
+{
+    extern int footclip;
+    choice = 0;
+    footclip = !footclip;
+    M_SaveDefaults ();
+}
+
+void M_ToggleAutoswitch(int choice)
+{
+    extern int weapon_autoswitch;
+    choice = 0;
+    weapon_autoswitch = !weapon_autoswitch;
+    M_SaveDefaults ();
+}
+
+void M_Features(int choice)
+{
+    choice = 0;
+    M_SetupNextMenu (&FeaturesDef);
+}
+
+void M_DrawFeatures(void)
+{
+    extern int footclip, weapon_autoswitch;
+    int x = FeaturesDef.x, y = FeaturesDef.y;
+
+    M_DrawMenuGraphic (108,15,"M_OPTTTL");
+
+    M_WriteText (x,     y+LINEHEIGHT*feat_messages,   "Messages");
+    M_WriteText (x+130, y+LINEHEIGHT*feat_messages,   showMessages ? "On" : "Off");
+    M_WriteText (x,     y+LINEHEIGHT*feat_footclip,   "Liquid Footclip");
+    M_WriteText (x+130, y+LINEHEIGHT*feat_footclip,   footclip ? "On" : "Off");
+    M_WriteText (x,     y+LINEHEIGHT*feat_autoswitch, "Weapon Autoswitch");
+    M_WriteText (x+130, y+LINEHEIGHT*feat_autoswitch, weapon_autoswitch ? "On" : "Off");
+}
+
+//
 // Options -> Crosshair submenu (type + colour).  `crosshair` (0..3) lives in
 // r_draw.c and `crosshair_color` (0..4) resolves to the nearest palette entry
 // at draw time (R_DrawCrosshair), so it looks right in DOOM/Heretic/Hexen.
@@ -1757,6 +1829,7 @@ void M_ChangeMessages(int choice)
 	players[consoleplayer].message = MSGON ;
 
     message_dontfuckwithme = true;
+    M_SaveDefaults ();
 }
 
 

@@ -199,6 +199,8 @@ extern int	hd_sprites;		// r_things.c -- full-colour HD sprites in truecolor
 extern int	key_spy;
 extern int	crosshair;
 extern int	crosshair_color;	// r_draw.c -- crosshair colour index
+extern int	footclip;		// r_things.c -- sink actors into Heretic liquid
+extern int	weapon_autoswitch;	// p_inter.c -- raise a newly picked-up weapon
 extern int	scale_mode;
 extern int	vsync;
 extern int	integer_scale;
@@ -300,6 +302,8 @@ default_t	defaults[] =
     {"key_console",&key_console, KEY_BACKQUOTE},
     {"key_spy",&key_spy, KEY_F12},	// spy mode (view the AI buddy); default F12
     {"crosshair",&crosshair, 0},
+    {"footclip",&footclip, 1},
+    {"weapon_autoswitch",&weapon_autoswitch, 1},
     {"crosshair_color",&crosshair_color, 0},
 
     {"monster_pack",&monster_pack, 0},		// default OFF -> vanilla 1993 monster AI

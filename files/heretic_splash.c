@@ -85,6 +85,13 @@ static int P_GetThingFloorType (mobj_t* thing)
     return TerrainTypes[pic];
 }
 
+// Public: is this thing standing over a liquid (water/lava/sludge) flat?  Used by
+// the sprite footclip in R_ProjectSprite (r_things.c) to sink actors into liquid.
+int P_ThingOnLiquid (mobj_t* thing)
+{
+    return P_GetThingFloorType (thing) != FLOOR_SOLID;
+}
+
 //
 // P_HitFloor
 // Spawn the terrain splash for a thing that just hit the floor.  Returns the

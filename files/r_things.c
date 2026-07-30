@@ -401,6 +401,10 @@ int*		mceilingclip;
 fixed_t		spryscale;
 int64_t		sprtopscreen;
 int		r_shadows = 1;
+// (H) sprite foot clipping: `footclip` config toggle (Options -> Features), and the
+// per-sprite bottom clip row R_DrawMaskedColumn honours (-1 = no clip).
+int		footclip = 1;
+int		dc_baseclip = -1;
 
 void R_DrawMaskedColumn (column_t* column, int texheight)
 {
@@ -442,6 +446,9 @@ void R_DrawMaskedColumn (column_t* column, int texheight)
 	    dc_yh = mfloorclip[dc_x]-1;
 	if (dc_yl <= mceilingclip[dc_x])
 	    dc_yl = mceilingclip[dc_x]+1;
+	// (H) foot clip: hide the submerged bottom of a liquid-standing sprite.
+	if (dc_baseclip >= 0 && dc_yh > dc_baseclip)
+	    dc_yh = dc_baseclip;
 
 	if (dc_yl <= dc_yh)
 	{
@@ -625,7 +632,17 @@ R_DrawVisSprite
     frac = vis->startfrac;
     spryscale = vis->scale;
     sprtopscreen = (int64_t)centeryfrac - (int64_t)FixedMul(dc_texturemid,spryscale);
-	
+
+    // (H) foot clip: clamp the sprite's columns at the liquid surface, `footclip`
+    // world units up from its bottom (crispy baseclip), so the submerged part is hidden.
+    if (vis->footclip)
+    {
+	int64_t sprbot = sprtopscreen + (int64_t)FixedMul (SHORT(patch->height)<<FRACBITS, spryscale);
+	dc_baseclip = (int)((sprbot - (int64_t)FixedMul (vis->footclip<<FRACBITS, spryscale)) >> FRACBITS);
+    }
+    else
+	dc_baseclip = -1;
+
     for (dc_x=vis->x1 ; dc_x<=vis->x2 ; dc_x++, frac += vis->xiscale)
     {
 	texturecolumn = frac>>FRACBITS;
@@ -637,6 +654,7 @@ R_DrawVisSprite
 			       LONG(patch->columnofs[texturecolumn]));
 	R_DrawMaskedColumn (column, 128);	// sprite -- vanilla 128-row wrap
     }
+    dc_baseclip = -1;		// (H) don't leak the foot clip into other sprites/psprites
 
     colfunc = basecolfunc;
 
@@ -778,6 +796,21 @@ void R_ProjectSprite (mobj_t* thing)
     vis->gz = thing->z;
     vis->gzt = thing->z + spritetopoffset[lump];
     vis->texturemid = vis->gzt - viewz;
+    // (H) foot clipping: sink an actor standing on a liquid flat by FOOTCLIPSIZE (10)
+    // world units and clip its submerged bottom (crispy heretic).  Gated on the
+    // `footclip` option; floating things (MF_NOGRAVITY) never clip.
+    {
+	extern int heretic_mode, footclip;
+	extern int P_ThingOnLiquid (mobj_t*);
+	if (heretic_mode && footclip
+	    && !(thing->flags & MF_NOGRAVITY)
+	    && thing->z <= thing->subsector->sector->floorheight
+	    && P_ThingOnLiquid (thing))
+	    vis->footclip = 10;
+	else
+	    vis->footclip = 0;
+	vis->texturemid -= vis->footclip << FRACBITS;
+    }
     vis->x1 = x1 < 0 ? 0 : x1;
     vis->x2 = x2 >= viewwidth ? viewwidth-1 : x2;	
     iscale = FixedDiv (FRACUNIT, xscale);
@@ -924,6 +957,7 @@ void R_DrawPSprite (pspdef_t* psp)
     // store information in a vissprite
     vis = &avis;
     vis->mobjflags = 0;
+    vis->footclip = 0;			// psprites (the weapon) are never foot-clipped
     vis->texturemid = (BASEYCENTER<<FRACBITS)+FRACUNIT/2-(psp->sy-spritetopoffset[lump]);
     { extern int statusbar_style, setblocks;   // full bar over a full-height view hides the weapon
       if (statusbar_style == 0 && setblocks <= 10 && viewheight == SCREENHEIGHT)
