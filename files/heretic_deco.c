@@ -386,6 +386,25 @@ void Heretic_Deco_Init (void)
     m->damage = 0; m->activesound = sfx_None;
     m->flags = MF_SPAWNCEILING|MF_NOGRAVITY; m->flags2 = 0; m->raisestate = S_NULL;
 
+    // (H) Dead Corvus -- a placeable dead-player corpse, Heretic's answer to DOOM's
+    // thing 15 (there is none in vanilla Heretic).  Uses the Heretic player sprite
+    // PLAY frame 15 -- the resting corpse the death sequence ends on (crispy
+    // S_PLAY_DIE9).  Editor number 56 in heretic_mode only: DOOM's PLAY sprite has no
+    // frame 15, so its doomednum stays -1 there (it would I_Error on render).
+    ST (S_HDEADCORVUS, SPR_PLAY, 15, -1, NULL, S_NULL);
+    {
+	extern int heretic_mode;
+	m = &mobjinfo[MT_HDEADCORVUS];
+	m->doomednum = heretic_mode ? 56 : -1; m->spawnstate = S_HDEADCORVUS; m->spawnhealth = 1000;
+	m->seestate = S_NULL; m->seesound = sfx_None; m->reactiontime = 8;
+	m->attacksound = sfx_None; m->painstate = S_NULL; m->painchance = 0;
+	m->painsound = sfx_None; m->meleestate = S_NULL; m->missilestate = S_NULL;
+	m->deathstate = S_NULL; m->xdeathstate = S_NULL; m->deathsound = sfx_None;
+	m->speed = 0; m->radius = 20*FRACUNIT; m->height = 16*FRACUNIT; m->mass = 100;
+	m->damage = 0; m->activesound = sfx_None;
+	m->flags = 0; m->flags2 = 0; m->raisestate = S_NULL;	// inert floor corpse (like MT_MISC62)
+    }
+
     // ====================================================================
     // Chandelier (ceiling, animated) + serpent torch (floor, animated)
     // ====================================================================
