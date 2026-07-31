@@ -16,9 +16,13 @@
 //	exactly that and made every modder buddy a monster -- which cannot open a
 //	door, be ordered, be revived or show up on the HUD.)
 //
-//	Applying a record's properties to player 2 -- skin, stats, sounds, behaviour
-//	-- is in progress; until it lands, slot 0's Marine is the body whatever is
-//	selected.  Design: docs/BUDDYDEF.md.
+//	A record's properties ARE applied to player 2 at runtime (files/p_ai_coop.c),
+//	while the AI co-op bot stays the brain: skin (R_SetBuddySkin), body stats
+//	(health/radius/height at spawn), colour, the named ability (P_Buddy_AbilityTicker),
+//	behaviour stats (speed/painchance/reactiontime), the buddy's own see/pain/death/
+//	active sounds, and its BUDDYDEF melee/ranged attack (P_Buddy_DoAttack).  Slot 0 is
+//	the stock Marine.  All applied per-instance/per-tic, so mobj_t + savegames are
+//	untouched.  Design: docs/BUDDYDEF.md.
 //
 //-----------------------------------------------------------------------------
 
