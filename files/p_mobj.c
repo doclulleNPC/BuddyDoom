@@ -791,8 +791,11 @@ void P_SpawnMapThing (mapthing_t* mthing)
 	return;
     }
 	
-    // check for players specially
-    if (mthing->type <= 4)
+    // check for players specially.  (S) Strife has EIGHT player starts, not four --
+    // thing types 5..8 are co-op starts there, and running them through the normal
+    // spawn path would look them up as actors (strife-ve P_SpawnMapThing:
+    // "haleyjd 20120209: [STRIFE] 8 player starts").
+    if (mthing->type <= (strife_mode ? 8 : 4))
     {
 	// save spots for respawning in network games
 	playerstarts[mthing->type-1] = *mthing;
@@ -891,9 +894,14 @@ void P_SpawnMapThing (mapthing_t* mthing)
 	totalitems++;
 		
     mobj->angle = ANG45 * (mthing->angle/45);
-    if (mthing->options & MTF_AMBUSH)
+    // (S) Strife renumbered the map-thing flags (strife-ve doomdef.h): STAND 8,
+    // NOTSINGLE 16, AMBUSH *32*, FRIEND *64*, TRANSLUCENT 256, MVIS 512.  Reading
+    // DOOM's bits there means every "standing NPC" is taken for an ambusher and no
+    // map-flagged ally is ever recognised.  (MTF_STAND has no MF_ counterpart in this
+    // engine yet, and the two translucency bits wait for a translucent-actor pass.)
+    if (mthing->options & (strife_mode ? 32 : MTF_AMBUSH))
 	mobj->flags |= MF_AMBUSH;
-    if (mthing->options & 0x80)		// MBF/UDMF "friend" flag
+    if (mthing->options & (strife_mode ? 64 : 0x80))	// MBF/UDMF (S: MTF_FRIEND) "friend" flag
 	mobj->flags |= MF_FRIEND;
 
     P_LastMapThingMobj = mobj;
