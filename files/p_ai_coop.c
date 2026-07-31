@@ -42,11 +42,15 @@
 #include "m_fixed.h"
 
 #include "p_ai_coop.h"
+#include "p_buddydef.h"		// buddystats_t / P_Buddy_GetStats -- apply the selected buddy's body
 
 // Buddy player-colour (v_png.c / r_things.c / m_menu.c)
 extern int		buddy_color;			// selected colour index (Buddy menu, config)
+extern int		buddy_select;			// selected roster slot (0 = Marine, 1..N = BUDDYDEF)
 extern const byte*	V_BuddyColorTable (int);	// 256-entry remap, NULL = Green(0)/identity
 extern void		R_SetBuddyColor (mobj_t*, const byte*);
+extern void		R_SetBuddySkin (mobj_t*, int);	// render player 2 with the buddy's body sprite
+extern int		P_Buddy_Sprite (int slot);	// BUDDYDEF preview/skin spritenum
 
 static int	companion_active;	// buddy enabled (-coop OR -aicoop)
 static int	aicoop_layer;		// -aicoop given: AI-driven layer requested
@@ -306,6 +310,20 @@ void P_AICoop_VerifySpawn (void)
 	// Remember the spawn point for "buddyhome".
 	coop_home_x = buddy_mo->x; coop_home_y = buddy_mo->y;
 	coop_home_angle = buddy_mo->angle; coop_home_set = true;
+
+	// (buddy) Apply the selected BUDDYDEF buddy's body stats to player 2 once, at spawn
+	// (slot 0 = Marine keeps the stock player body).  Per-instance fields only, so this
+	// never touches mobjinfo/savegames.  health seeds the spawn HP; radius/height resize
+	// the collision box (BUDDYDEF stores plain map units -> <<FRACBITS).
+	if (buddy_select > 0)
+	{
+	    buddystats_t st;
+	    P_Buddy_GetStats (buddy_select, &st);
+	    if (st.health > 0)
+	    { buddy_mo->health = st.health; players[coop_slot].health = st.health; }
+	    if (st.radius > 0) buddy_mo->radius = st.radius << FRACBITS;
+	    if (st.height > 0) buddy_mo->height = st.height << FRACBITS;
+	}
 	return;				// all good, buddy spawned
     }
 
@@ -2104,7 +2122,12 @@ void P_AICoop_BuildCmd (void)
     // Refreshed every tic so a live colour change (or reborn) takes effect immediately;
     // applies in every state (incl. downed), so do it before the down-state handling.
     if (bot->mo)
+    {
 	R_SetBuddyColor (bot->mo, V_BuddyColorTable (buddy_color));
+	// (buddy) skin: render player 2's body as the selected BUDDYDEF buddy (slot 0 =
+	// Marine keeps the stock PLAY body).  -1 clears the override.
+	R_SetBuddySkin (bot->mo, buddy_select > 0 ? P_Buddy_Sprite (buddy_select) : -1);
+    }
 
     // Down (L4D-style incapacitation): NOT game over -- the buddy lies on the ground
     // (its corpse) and calls for help.  We clear the cmd (never tap USE, which would

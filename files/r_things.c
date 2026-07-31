@@ -338,6 +338,21 @@ void R_SetBuddyColor (mobj_t* mo, const byte* xlat)
     r_buddycolor_xlat = xlat;
 }
 
+// Buddy skin: the same one companion actor may also render with an ARBITRARY sprite
+// (the BUDDYDEF-selected body, e.g. FRAN/HARG) in place of its own mobj->sprite (SPR_PLAY),
+// so a modder buddy actually looks like itself in-world without becoming a monster.  Set
+// each tic by the companion driver (R_SetBuddySkin); R_ProjectSprite swaps the spritedef
+// when the actor matches AND the skin has the current player frame (else it falls back).
+// spr < 0 means "no override".  Like the colour, this never touches mobj_t (savegame-safe).
+static mobj_t*		r_buddyskin_mo;
+static int		r_buddyskin_spr = -1;
+
+void R_SetBuddySkin (mobj_t* mo, int spritenum)
+{
+    r_buddyskin_mo  = mo;
+    r_buddyskin_spr = spritenum;
+}
+
 
 
 //
@@ -745,7 +760,14 @@ void R_ProjectSprite (mobj_t* thing)
 	I_Error ("R_ProjectSprite: invalid sprite number %i ",
 		 thing->sprite);
 #endif
-    sprdef = &sprites[thing->sprite];
+    // (buddy) render the co-op companion with its selected skin sprite, but only if that
+    // sprite actually carries the current player frame -- otherwise keep the PLAY body.
+    if (thing == r_buddyskin_mo && r_buddyskin_spr >= 0
+	&& (unsigned)r_buddyskin_spr < numsprites
+	&& (thing->frame&FF_FRAMEMASK) < sprites[r_buddyskin_spr].numframes)
+	sprdef = &sprites[r_buddyskin_spr];
+    else
+	sprdef = &sprites[thing->sprite];
 #ifdef RANGECHECK
     if ( (thing->frame&FF_FRAMEMASK) >= sprdef->numframes )
 	I_Error ("R_ProjectSprite: invalid sprite frame %i : %i ",
