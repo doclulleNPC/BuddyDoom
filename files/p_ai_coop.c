@@ -316,6 +316,76 @@ int P_Buddy_BodyPainchance (mobj_t* mo)
     return st.painchance;
 }
 
+// ---------------------------------------------------------------------------
+// (buddy) Monster-style attack: an alternative buddy can borrow a Doom actor's melee /
+// ranged attack (BUDDYDEF meleeattack/rangedattack) instead of firing the player weapons.
+// The Doom attack codepointers are self-contained -- they hard-code their own missile type
+// + damage and act on actor->target -- so calling one on the player-2 body just works.
+// The Heretic/Hexen/Strife attacks live in static per-game modules (not linkable here), so
+// those names fall back to the closest Doom attack (bite for melee, imp fireball for ranged).
+// ---------------------------------------------------------------------------
+typedef void (*buddyatk_t)(mobj_t*);
+extern void A_PosAttack(mobj_t*), A_SPosAttack(mobj_t*), A_CPosAttack(mobj_t*),
+	    A_TroopAttack(mobj_t*), A_SargAttack(mobj_t*), A_HeadAttack(mobj_t*),
+	    A_BruisAttack(mobj_t*), A_VileAttack(mobj_t*), A_SkelFist(mobj_t*),
+	    A_SkelMissile(mobj_t*), A_FatAttack1(mobj_t*), A_BspiAttack(mobj_t*),
+	    A_CyberAttack(mobj_t*), A_SkullAttack(mobj_t*), A_PainAttack(mobj_t*),
+	    A_FaceTarget(mobj_t*);
+extern boolean P_CheckMeleeRange (mobj_t* actor);
+
+static buddyatk_t Buddy_MeleeFn (const char* n)
+{
+    if (!n || !*n || !strcasecmp (n, "none")) return NULL;
+    if (!strcasecmp(n,"revenant"))			return A_SkelFist;
+    if (!strcasecmp(n,"imp")||!strcasecmp(n,"gargoyle"))return A_TroopAttack;
+    if (!strcasecmp(n,"cacodemon"))			return A_HeadAttack;
+    if (!strcasecmp(n,"baron")||!strcasecmp(n,"hellknight")) return A_BruisAttack;
+    if (!strcasecmp(n,"archvile"))			return A_VileAttack;
+    return A_SargAttack;				// demon bite -- generic melee
+}
+static buddyatk_t Buddy_RangedFn (const char* n)
+{
+    if (!n || !*n || !strcasecmp (n, "none")) return NULL;
+    if (!strcasecmp(n,"zombieman"))			return A_PosAttack;
+    if (!strcasecmp(n,"shotgunguy"))			return A_SPosAttack;
+    if (!strcasecmp(n,"chaingunner"))			return A_CPosAttack;
+    if (!strcasecmp(n,"cacodemon"))			return A_HeadAttack;
+    if (!strcasecmp(n,"baron")||!strcasecmp(n,"hellknight")) return A_BruisAttack;
+    if (!strcasecmp(n,"revenant"))			return A_SkelMissile;
+    if (!strcasecmp(n,"mancubus"))			return A_FatAttack1;
+    if (!strcasecmp(n,"arachnotron"))			return A_BspiAttack;
+    if (!strcasecmp(n,"cyberdemon"))			return A_CyberAttack;
+    if (!strcasecmp(n,"lostsoul"))			return A_SkullAttack;
+    if (!strcasecmp(n,"painelemental"))			return A_PainAttack;
+    return A_TroopAttack;				// imp fireball -- generic ranged
+}
+
+// Perform the buddy's borrowed attack on `target`.  Returns:  1 = attacked this tic,
+// 0 = has a monster attack but not firing now (cooling down / closing to melee),
+// -1 = no monster attack -> the caller should fire the player weapon as usual.
+int P_Buddy_DoAttack (mobj_t* buddy, mobj_t* target)
+{
+    static int	cd;
+    buddystats_t st;
+    buddyatk_t	melee, ranged, fn;
+
+    if (buddy_select <= 0) return -1;
+    P_Buddy_GetStats (buddy_select, &st);
+    melee  = Buddy_MeleeFn  (st.melee);
+    ranged = Buddy_RangedFn (st.ranged);
+    if (!melee && !ranged) return -1;			// plain buddy -> weapon
+    if (cd > 0) { cd--; return 0; }			// between swings/shots
+    if (!buddy || !target || target->health <= 0) return 0;
+
+    buddy->target = target;
+    A_FaceTarget (buddy);				// aim the missile/bite
+    if (melee && P_CheckMeleeRange (buddy)) { fn = melee;  cd = 12; }
+    else if (ranged)			    { fn = ranged; cd = 18; }
+    else return 0;					// melee-only + out of range: keep closing
+    fn (buddy);
+    return 1;
+}
+
 void P_AICoop_VerifySpawn (void)
 {
     mobj_t*	buddy_mo;
@@ -2711,7 +2781,11 @@ void P_AICoop_BuildCmd (void)
 		    AICoop_Callout ("barrel:", 3);
 		else
 		{
-		    cmd->buttons |= BT_ATTACK;
+		    // (buddy) An alternative buddy with a BUDDYDEF melee/ranged attack uses THAT
+		    // (its claws / fireball) instead of the player weapon; -1 = plain buddy -> weapon.
+		    int bd = P_Buddy_DoAttack (mo, aimmon);
+		    if (bd < 0)
+			cmd->buttons |= BT_ATTACK;
 		    if ((gametic & 255) == 0) AICoop_Callout ("taunt:", 4);	// occasional swagger
 		}
 	    }
