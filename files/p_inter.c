@@ -1222,10 +1222,16 @@ P_DamageMobj
 	if (target->player && !P_AICoop_IsBuddy (target->player))
 	    P_Director_Say ("dir:death", 3, 1);	// (voice) the director taunts a survivor's death
 	P_KillMobj (source, target);
-	// Downed buddy: snap to the type-15 dead-marine lying pose (no gib), so it reads
-	// as a revivable body on the ground (gray via its player colour translation).
+	// Downed buddy: it must end up as a readable, revivable body on the ground (gray
+	// via its player colour translation) and must never gib -- but it should still DIE
+	// on screen.  Snapping straight to the final lying frame (S_PLAY_DIE7) did the
+	// first two and killed the third: the death animation was over in the tic it
+	// started, and after a gibbing hit it also ended on the wrong frame, because
+	// P_KillMobj had just entered the XDEATH run.  Restart the NORMAL death instead:
+	// it plays all seven frames and its last one IS that lying pose (tics -1), so the
+	// body still comes to rest exactly where it did before.
 	if (target->player && P_AICoop_IsBuddy (target->player))
-	    P_SetMobjState (target, S_PLAY_DIE7);
+	    P_SetMobjState (target, S_PLAY_DIE1);
 	// (buddy mode) A human that has a stored stimpack/medikit is NOT auto-patched -- it
 	// dies, but can spend the item itself to get back up (the inventory-use key while
 	// dead -> P_InventorySelfRevive).  Hint at it.
