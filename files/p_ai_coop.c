@@ -43,6 +43,8 @@
 
 #include "p_ai_coop.h"
 #include "p_buddydef.h"		// buddystats_t / P_Buddy_GetStats -- apply the selected buddy's body
+#include "sounds.h"		// sfx_bd_* -- buddy see/pain/death/active slots
+#include "s_sound.h"		// S_StartSound for the buddy's own voice
 
 // Buddy player-colour (v_png.c / r_things.c / m_menu.c)
 extern int		buddy_color;			// selected colour index (Buddy menu, config)
@@ -55,6 +57,7 @@ extern int		P_Buddy_Sprite (int slot);	// BUDDYDEF preview/skin spritenum
 static int	companion_active;	// buddy enabled (-coop OR -aicoop)
 static int	aicoop_layer;		// -aicoop given: AI-driven layer requested
 static int	buddy_react;		// reaction delay (tics) before firing a fresh target (-buddyreact)
+static fixed_t	buddy_movescale = FRACUNIT;	// (buddy) BUDDYDEF speed -> movement scale (1.0 = Marine)
 static int	coop_state;		// 0 follow 1 fight 2 heal 3 hold 4 come 5 items
 static int	summon;			// "come": tics left running to the player
 static int	summon_stay;		// "come" leash: stay near the player (LOS) until another order
@@ -282,6 +285,37 @@ static boolean AICoop_OnGrid (fixed_t x, fixed_t y)
     return (cx >= 0 && cx < bmapwidth && cy >= 0 && cy < bmapheight);
 }
 
+// (buddy) The sfx id to play for the buddy body's <which> sound (BUDDYSND_*), or -1 to
+// fall back to the default player sound.  Only for the active alternative buddy whose
+// BUDDYDEF actually set that sound.  Called from A_Pain / A_PlayerScream (p_enemy.c) and
+// the co-op ticker, so player 2 speaks with the selected buddy's own voice.
+int P_Buddy_BodySfx (mobj_t* mo, int which)
+{
+    static const int slot[4] = { sfx_bd_see, sfx_bd_pain, sfx_bd_death, sfx_bd_active };
+    const char*	nm;
+
+    if (!companion_active || buddy_select <= 0 || which < 0 || which > 3)
+	return -1;
+    if (!mo || mo != players[coop_slot].mo)
+	return -1;
+    nm = P_Buddy_Sound (buddy_select, which);
+    if (!nm || !*nm)
+	return -1;
+    return slot[which];
+}
+
+// (buddy) The selected buddy's painchance for its body (player 2), or -1 to use the
+// mobjinfo default.  Lets P_DamageMobj roll the buddy's own flinch chance -- a low value
+// makes a tough buddy shrug off hits, a high one makes it stagger.
+int P_Buddy_BodyPainchance (mobj_t* mo)
+{
+    buddystats_t	st;
+    if (!companion_active || buddy_select <= 0 || !mo || mo != players[coop_slot].mo)
+	return -1;
+    P_Buddy_GetStats (buddy_select, &st);
+    return st.painchance;
+}
+
 void P_AICoop_VerifySpawn (void)
 {
     mobj_t*	buddy_mo;
@@ -315,6 +349,7 @@ void P_AICoop_VerifySpawn (void)
 	// (slot 0 = Marine keeps the stock player body).  Per-instance fields only, so this
 	// never touches mobjinfo/savegames.  health seeds the spawn HP; radius/height resize
 	// the collision box (BUDDYDEF stores plain map units -> <<FRACBITS).
+	buddy_movescale = FRACUNIT;		// Marine default (overridden below for alt buddies)
 	if (buddy_select > 0)
 	{
 	    buddystats_t st;
@@ -323,6 +358,22 @@ void P_AICoop_VerifySpawn (void)
 	    { buddy_mo->health = st.health; players[coop_slot].health = st.health; }
 	    if (st.radius > 0) buddy_mo->radius = st.radius << FRACBITS;
 	    if (st.height > 0) buddy_mo->height = st.height << FRACBITS;
+	    // Behaviour stats: reactiontime -> the fire delay on a fresh target; speed ->
+	    // a movement scale (relative to the BUDDYDEF default of 8, clamped 0.5x..2x);
+	    // painchance is read per-hit in P_DamageMobj (P_Buddy_BodyPainchance).
+	    if (st.reactiontime >= 0 && st.reactiontime <= 70) buddy_react = st.reactiontime;
+	    buddy_movescale = st.speed > 0
+		? (st.speed * FRACUNIT / 8 < FRACUNIT/2 ? FRACUNIT/2
+		   : st.speed * FRACUNIT / 8 > 2*FRACUNIT ? 2*FRACUNIT
+		   : st.speed * FRACUNIT / 8)
+		: FRACUNIT;
+	    // Load the buddy's custom see/pain/death/active sounds into the reserved sfx_bd_*
+	    // slots (silent if the BUDDYDEF set none).  Loads once per session per sound.
+	    { extern void I_LoadBuddySfx (int, const char*);
+	      I_LoadBuddySfx (sfx_bd_see,    P_Buddy_Sound (buddy_select, BUDDYSND_SEE));
+	      I_LoadBuddySfx (sfx_bd_pain,   P_Buddy_Sound (buddy_select, BUDDYSND_PAIN));
+	      I_LoadBuddySfx (sfx_bd_death,  P_Buddy_Sound (buddy_select, BUDDYSND_DEATH));
+	      I_LoadBuddySfx (sfx_bd_active, P_Buddy_Sound (buddy_select, BUDDYSND_ACTIVE)); }
 	}
 	return;				// all good, buddy spawned
     }
@@ -2276,6 +2327,20 @@ void P_AICoop_BuildCmd (void)
     }
 
     tgt  = AICoop_FindTarget (mo);
+
+    // (buddy) an alternative buddy speaks with its own voice: a "see" bark on a fresh
+    // target, and an idle "active" grunt now and then when nothing's around.
+    {
+	static boolean	bd_hadtgt = false;
+	int		s;
+	if (tgt && !bd_hadtgt && (s = P_Buddy_BodySfx (mo, BUDDYSND_SEE)) >= 0)
+	    S_StartSound (mo, s);
+	else if (!tgt && !(gametic % (7*TICRATE))
+		 && (s = P_Buddy_BodySfx (mo, BUDDYSND_ACTIVE)) >= 0)
+	    S_StartSound (mo, s);
+	bd_hadtgt = (tgt != NULL);
+    }
+
     if (bot->health < COOP_HEAL_HP)
 	AICoop_AutoHeal (bot);		// spend a held heal-artifact first (instant; beats hunting a med-pack)
     heal = (bot->health < COOP_HEAL_HP) ? AICoop_FindHealth (mo) : NULL;
@@ -2815,4 +2880,16 @@ void P_AICoop_BuildCmd (void)
     // sidestep it (overriding the approach/backoff move for this tic).  Aim and fire
     // are separate fields, so the buddy keeps shooting while it strafes clear.
     AICoop_DodgeMissile (cmd, mo);
+
+    // (buddy) speed stat: scale the final move by the selected buddy's movement factor
+    // (1.0 for the Marine), clamped to the ticcmd's signed-char run range.
+    if (buddy_movescale != FRACUNIT)
+    {
+	int fm = FixedMul (cmd->forwardmove << FRACBITS, buddy_movescale) >> FRACBITS;
+	int sm = FixedMul (cmd->sidemove    << FRACBITS, buddy_movescale) >> FRACBITS;
+	if (fm >  0x32) fm =  0x32; else if (fm < -0x32) fm = -0x32;
+	if (sm >  0x32) sm =  0x32; else if (sm < -0x32) sm = -0x32;
+	cmd->forwardmove = (signed char)fm;
+	cmd->sidemove    = (signed char)sm;
+    }
 }

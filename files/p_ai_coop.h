@@ -131,4 +131,13 @@ void P_AICoop_Callout (const char* prefix, int n);
 // true if the press was consumed (caller then skips P_UseLines).  From P_PlayerThink.
 boolean P_AICoop_RevivePress (player_t* presser);
 
+// (buddy) sfx id for the buddy body's <which> sound (BUDDYSND_* from p_buddydef.h), or -1
+// to use the default player sound.  Lets A_Pain / A_PlayerScream give player 2 the
+// selected BUDDYDEF buddy's own voice.
+int P_Buddy_BodySfx (struct mobj_s* mo, int which);
+
+// (buddy) the selected buddy's painchance for its body, or -1 to use the mobjinfo default
+// (P_DamageMobj uses this so an alt buddy flinches by its own BUDDYDEF painchance).
+int P_Buddy_BodyPainchance (struct mobj_s* mo);
+
 #endif

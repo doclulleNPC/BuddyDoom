@@ -47,6 +47,8 @@ rcsid[] = "$Id: p_enemy.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 
 // Data.
 #include "sounds.h"
+#include "p_buddydef.h"		// BUDDYSND_* -- buddy body's own pain/death voice
+#include "p_ai_coop.h"		// P_Buddy_BodySfx
 
 
 // (cheat) `notarget` console toggle -- when on, the monster AI ignores the human player
@@ -1918,8 +1920,14 @@ void A_XScream (mobj_t* actor)
 
 void A_Pain (mobj_t* actor)
 {
+    int	bs = P_Buddy_BodySfx (actor, BUDDYSND_PAIN);	// (buddy) alt-buddy's own pain voice
+    if (bs >= 0)
+    {
+	S_StartSound (actor, bs);
+	return;
+    }
     if (actor->info->painsound)
-	S_StartSound (actor, actor->info->painsound);	
+	S_StartSound (actor, actor->info->painsound);
 }
 
 
@@ -2453,7 +2461,13 @@ void A_PlayerScream (mobj_t* mo)
 {
     // Default death sound.
     int		sound = sfx_pldeth;
-	
+
+    // (buddy) an alternative buddy dies with its own death sound, not the marine's.
+    {
+	int bs = P_Buddy_BodySfx (mo, BUDDYSND_DEATH);
+	if (bs >= 0) { S_StartSound (mo, bs); return; }
+    }
+
     if ( (gamemode == commercial)
 	&& 	(mo->health < -50))
     {

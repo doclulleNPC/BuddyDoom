@@ -49,6 +49,11 @@ typedef struct {
 } buddystats_t;
 void	P_Buddy_GetStats (int slot, buddystats_t* out);
 
+// BUDDYDEF sound lump names (see/pain/death/active) -- the co-op driver reprograms the
+// buddy sfx slots with these so player 2 uses the selected buddy's voice.  "" = not set.
+enum { BUDDYSND_SEE, BUDDYSND_PAIN, BUDDYSND_DEATH, BUDDYSND_ACTIVE };
+const char* P_Buddy_Sound (int slot, int which);
+
 // BUDDYDEF `ability` -- the mechanic the buddy actually uses in play, as opposed to the
 // `special` blurb.  P_Buddy_AbilityTicker runs it once per tic (called from P_Ticker) on
 // the buddy player's body; the Marine's own "drone" runs inside the marine bot instead,

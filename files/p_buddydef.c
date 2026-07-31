@@ -111,6 +111,7 @@ typedef struct
     char	special[96];	// modder-supplied "special abilities" text
     char	ability[24];	// BUDDYDEF `ability`: the named special ABILITY the buddy
 				// actually uses in play (none|drone|poisoncloud)
+    char	seesnd[16], painsnd[16], deathsnd[16], activesnd[16];	// BUDDYDEF sound lumps
     int		spritenum;	// preview sprite
     int		color;		// declared default player-colour index, -1 = none (BUDDYDEF `color`)
     int		health, speed, radius, height, mass, painchance, reactiontime;
@@ -168,6 +169,20 @@ void P_Buddy_GetStats (int s, buddystats_t* out)
     out->monster      = roster[s].monster;
     out->special      = roster[s].special;
     out->ability      = roster[s].ability;
+}
+
+// BUDDYDEF sound lump name for the co-op driver (which: BUDDYSND_*).  "" = not set.
+const char* P_Buddy_Sound (int s, int which)
+{
+    if (s < 0 || s >= nroster) return "";
+    switch (which)
+    {
+      case BUDDYSND_SEE:    return roster[s].seesnd;
+      case BUDDYSND_PAIN:   return roster[s].painsnd;
+      case BUDDYSND_DEATH:  return roster[s].deathsnd;
+      case BUDDYSND_ACTIVE: return roster[s].activesnd;
+    }
+    return "";
 }
 
 // The named special ability of a roster slot ("" = none).  P_Buddy_AbilityTicker runs it.
@@ -282,6 +297,12 @@ static void Buddy_Register (buddyparse_t* b)
 	strncpy (r->monster, b->monster, sizeof r->monster - 1);
 	strncpy (r->special, b->special, sizeof r->special - 1);
 	strncpy (r->ability, b->ability, sizeof r->ability - 1);
+	strncpy (r->seesnd,   b->seesnd,   sizeof r->seesnd - 1);
+	strncpy (r->painsnd,  b->painsnd,  sizeof r->painsnd - 1);
+	strncpy (r->deathsnd, b->deathsnd, sizeof r->deathsnd - 1);
+	strncpy (r->activesnd,b->activesnd,sizeof r->activesnd - 1);
+	r->seesnd[sizeof r->seesnd - 1] = r->painsnd[sizeof r->painsnd - 1] = 0;
+	r->deathsnd[sizeof r->deathsnd - 1] = r->activesnd[sizeof r->activesnd - 1] = 0;
 	r->name[sizeof r->name - 1] = 0;
 	r->desc[sizeof r->desc - 1] = 0;
 	r->melee[sizeof r->melee - 1] = 0;

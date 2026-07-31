@@ -507,6 +507,25 @@ int I_GetSfxLumpNum(sfxinfo_t* sfx)
 				//   (lumpnum isn't used to index a lump; I_GetSfx emits silence)
 }
 
+// (buddy) Reprogram one of the reserved sfx_bd_* slots to a selected buddy's custom lump
+// name (BUDDYDEF see/pain/death/active) on demand.  Loads once per (slot,name): skipped
+// when the slot already holds this name, so a same-buddy level reload does not reload.  An
+// empty name clears the slot (silent).  `name` must be a stable string (points into the
+// static buddy roster).  The precached SFX data + length live in i_sound.c's own tables,
+// which is why this helper -- not the caller -- owns the (re)load.
+void I_LoadBuddySfx (int sfxid, const char* name)
+{
+    if (sfxid < 0 || sfxid >= NUMSFX)
+	return;
+    if (!name || !*name)
+    { S_sfx[sfxid].name = NULL; S_sfx[sfxid].data = NULL; lengths[sfxid] = 0; return; }
+    if (S_sfx[sfxid].name && !strcasecmp (S_sfx[sfxid].name, name))
+	return;					// already loaded this sound
+    S_sfx[sfxid].name    = (char*)name;		// stable (points into the roster)
+    S_sfx[sfxid].data    = getsfx ((char*)name, &lengths[sfxid]);
+    S_sfx[sfxid].lumpnum = -1;
+}
+
 //
 // Starting a sound means adding it
 //  to the current list of active sounds

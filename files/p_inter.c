@@ -1244,13 +1244,15 @@ P_DamageMobj
 	return;
     }
 
-    if ( (P_Random () < target->info->painchance)
+    { int pc = P_Buddy_BodyPainchance (target);		// (buddy) alt buddy's own painchance
+      if (pc < 0) pc = target->info->painchance;
+    if ( (P_Random () < pc)
 	 && !(target->flags&MF_SKULLFLY) )
     {
 	target->flags |= MF_JUSTHIT;	// fight back!
 	
 	P_SetMobjState (target, target->info->painstate);
-    }
+    } }		// close the (buddy) painchance block
 			
     target->reactiontime = 0;		// we're awake now...	
 

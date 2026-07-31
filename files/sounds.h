@@ -442,6 +442,12 @@ typedef enum
     // ---- (S) Strife SFX -- native lump names (files/sounds_strife.c Sounds_Strife_Init).
     // Contiguous block, in enum order from sfx_s_swish.  (strife_sfx.inc, generated.)
 #include "strife_sfx.inc"
+    // ---- (buddy) 4 dynamic slots reprogrammed at buddy spawn from the selected
+    // BUDDYDEF buddy's see/pain/death/active lump names (files/i_sound.c I_LoadBuddySfx).
+    sfx_bd_see,
+    sfx_bd_pain,
+    sfx_bd_death,
+    sfx_bd_active,
     NUMSFX
 } sfxenum_t;
 
