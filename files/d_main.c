@@ -365,6 +365,15 @@ void D_Display (void)
 	    else if (statusbar_style == 2)	{ ST_HereticAltHUD (); fullscreen = true; }
 	    else				{ ST_Drawer (false, redrawsbar); fullscreen = false; }
 	}
+	else if (strife_mode)
+	{
+	    // Strife has its own bar (ST_StrifeDrawer, reached via ST_Drawer) but no scaled
+	    // / alt-HUD variants yet -- and ST_DrawScaled/ST_DrawAltHUD below use DOOM STBAR
+	    // / STTNUM art that strife1.wad lacks (they'd render a black bar full of '!').
+	    // So route EVERY Status Bar style through ST_Drawer, which draws the Strife bar.
+	    ST_Drawer (false, redrawsbar);
+	    fullscreen = false;
+	}
 	else if (statusbar_style == 1)	{ ST_DrawScaled (); fullscreen = true; }
 	else if (statusbar_style == 2)	{ ST_DrawAltHUD (); fullscreen = true; }
 	else
