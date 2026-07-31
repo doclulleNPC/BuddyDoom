@@ -1395,6 +1395,58 @@ void ST_HereticAltHUD (void)
 	ST_HDrINumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], wbase - 4 - 27, y);
 }
 
+// ===========================================================================
+//  Strife status bar
+//  strife1.wad has its own bar art -- INVBACK (320x32 background) + INVFONG/INVFONY
+//  (6x5 green/yellow digit fonts) -- but none of the DOOM lumps.  Draw INVBACK along
+//  the bottom and overlay the two readouts in its side number boxes: health (green,
+//  left) and the ready weapon's ammo (yellow, right).  Straight to screen 0 at base
+//  (320x200) coords -- V_DrawPatch scales for hires -- like the Heretic bar.  The
+//  inventory row, keys and the accuracy targeter need Strife subsystems not wired in
+//  here yet and are omitted (the empty slots are part of the INVBACK art).
+// ===========================================================================
+static patch_t*	s_invback;
+static patch_t*	s_fong[10];	// INVFONG* green digits (health)
+static patch_t*	s_fony[10];	// INVFONY* yellow digits (ammo)
+static int	s_sb_loaded;
+
+static void ST_StrifeLoad (void)
+{
+    int i; char nm[9];
+    if (s_sb_loaded) return;
+    s_sb_loaded = 1;
+    s_invback = ST_HCache ("INVBACK");
+    for (i = 0; i < 10; i++) { sprintf (nm, "INVFONG%d", i); s_fong[i] = ST_HCache (nm); }
+    for (i = 0; i < 10; i++) { sprintf (nm, "INVFONY%d", i); s_fony[i] = ST_HCache (nm); }
+}
+
+// Right-justified number in a 6px-wide digit font, ending (ones digit's right edge) at xr.
+static void ST_SDrNumber (int val, int xr, int y, patch_t** font)
+{
+    if (val < 0)   val = 0;
+    if (val > 999) val = 999;
+    if (font[val % 10])                     V_DrawPatch (xr - 6,  y, 0, font[val % 10]);
+    if (val >= 10  && font[(val / 10) % 10]) V_DrawPatch (xr - 12, y, 0, font[(val / 10) % 10]);
+    if (val >= 100 && font[val / 100])      V_DrawPatch (xr - 18, y, 0, font[val / 100]);
+}
+
+static void ST_StrifeDrawer (void)
+{
+    int wd = WIDESCREENDELTA;	// the 320-wide bar is centred in widescreen (0 in 4:3)
+
+    if (!plyr) return;
+    ST_StrifeLoad ();
+
+    if (s_invback) V_DrawPatch (wd + 0, 168, 0, s_invback);	// bar background, bottom 32px
+
+    // Health -- green digits, left number box.
+    ST_SDrNumber (plyr->health, wd + 34, 183, s_fong);
+
+    // Ready weapon's ammo -- yellow digits, right number box.
+    if (weaponinfo[plyr->readyweapon].ammo != am_noammo)
+	ST_SDrNumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], wd + 316, 183, s_fony);
+}
+
 void ST_Drawer (boolean fullscreen, boolean refresh)
 {
 
@@ -1413,11 +1465,13 @@ void ST_Drawer (boolean fullscreen, boolean refresh)
 	return;
     }
 
-    // Strife: same situation, but it has no bar of its own here yet.  Draw nothing --
-    // the substituted patches from ST_CachePatch would be a wall of garbage, and a
-    // missing bar is the honest placeholder until a Strife bar exists.
+    // Strife: draw its own bar (INVBACK + INVFON* numbers), like Heretic.
     if (strife_mode)
+    {
+	if (st_statusbaron)
+	    ST_StrifeDrawer ();
 	return;
+    }
 
     // ID24 SBARDEF (opt-in via -sbardef): draw the data-driven bar instead.
     if (ST_SBARDEF_Active ()) { ST_SBARDEF_Draw (fullscreen); return; }
