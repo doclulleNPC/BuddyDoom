@@ -1698,9 +1698,19 @@ void D_DoomMain (void)
 	Heretic_Weapons_Init ();	// (H) player weapons -- Phase 1: Staff + Gold Wand (heretic_mode only)
 	// (X) The Hexen wave-2 pack is summon-only (no hexen_mode map path yet): force every
 	// Hexen additive type's doomednum to -1 so real Hexen ednums can't shadow DOOM/Heretic
-	// map things.  MT_XZARMORCHUNK is the first of the block; it runs to NUMMOBJTYPES.
+	// map things.  MT_XZARMORCHUNK is the first of that block.
+	//
+	// (S) It used to run all the way to NUMMOBJTYPES -- which also wiped every STRIFE
+	// type, because the Strife block sits after Hexen's in the enum.  Strife_*_Init had
+	// just filled those doomednums and this erased them again, so P_StrifeThingType
+	// resolved almost nothing and a Strife map came up nearly empty (map02: 377 of 602
+	// things dropped as "unknown type").  Strife DOES have a map path, so keep its
+	// numbers in strife_mode -- and only there, or a Strife ednum would shadow a
+	// DOOM/Heretic one (3002 is both a Strife thing and the Hell Knight).
 	{ extern mobjinfo_t* mobjinfo; int i;
-	  for (i = MT_XZARMORCHUNK; i < NUMMOBJTYPES; i++) mobjinfo[i].doomednum = -1; }
+	  for (i = MT_XZARMORCHUNK; i < MT_S_FIELDGUARD; i++) mobjinfo[i].doomednum = -1;
+	  if (!strife_mode)
+	      for (i = MT_S_FIELDGUARD; i < NUMMOBJTYPES; i++) mobjinfo[i].doomednum = -1; }
 	// Per-game SFX tables (files/sounds_heretic.c, files/sounds_hexen.c): fill the
 	// sfx_h_*/sfx_x_* slots with native lump names before I_InitSound precaches.
 	Sounds_Heretic_Init (); Sounds_Hexen_Init (); Sounds_HWeapons_Init ();	// (H) +weapon sfx
