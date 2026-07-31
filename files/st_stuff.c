@@ -1405,9 +1405,9 @@ void ST_HereticAltHUD (void)
 //  inventory row, keys and the accuracy targeter need Strife subsystems not wired in
 //  here yet and are omitted (the empty slots are part of the INVBACK art).
 // ===========================================================================
-static patch_t*	s_invback;
-static patch_t*	s_fong[10];	// INVFONG* green digits (health)
-static patch_t*	s_fony[10];	// INVFONY* yellow digits (ammo)
+static patch_t*	s_invback;	// INVBACK -- main bar body, drawn at (0,168)
+static patch_t*	s_invtop;	// INVTOP  -- top plate strip (health heart), at (0,160)
+static patch_t*	s_fong[10];	// INVFONG* -- green digits (health + ready ammo)
 static int	s_sb_loaded;
 
 static void ST_StrifeLoad (void)
@@ -1416,35 +1416,41 @@ static void ST_StrifeLoad (void)
     if (s_sb_loaded) return;
     s_sb_loaded = 1;
     s_invback = ST_HCache ("INVBACK");
+    s_invtop  = ST_HCache ("INVTOP");
     for (i = 0; i < 10; i++) { sprintf (nm, "INVFONG%d", i); s_fong[i] = ST_HCache (nm); }
-    for (i = 0; i < 10; i++) { sprintf (nm, "INVFONY%d", i); s_fony[i] = ST_HCache (nm); }
 }
 
-// Right-justified number in a 6px-wide digit font, ending (ones digit's right edge) at xr.
+// Strife number: INVFON digits are 6px + 1px gap = 7px cells (strife-ve STlib_drawNum).
+// `xr` is the number's RIGHT boundary; digits fill leftward.  0 draws a single "0".
 static void ST_SDrNumber (int val, int xr, int y, patch_t** font)
 {
+    int x = xr;
     if (val < 0)   val = 0;
     if (val > 999) val = 999;
-    if (font[val % 10])                     V_DrawPatch (xr - 6,  y, 0, font[val % 10]);
-    if (val >= 10  && font[(val / 10) % 10]) V_DrawPatch (xr - 12, y, 0, font[(val / 10) % 10]);
-    if (val >= 100 && font[val / 100])      V_DrawPatch (xr - 18, y, 0, font[val / 100]);
+    if (!val) { if (font[0]) V_DrawPatch (x - 7, y, 0, font[0]); return; }
+    while (val) { x -= 7; if (font[val % 10]) V_DrawPatch (x, y, 0, font[val % 10]); val /= 10; }
 }
 
+// Ported from strife-ve src/strife/st_stuff.c (ST_doRefresh + ST_DrawExternal): the
+// INVBACK body at (0,168) plus the INVTOP plate at (0,160), then health and the ready
+// weapon's ammo as GREEN (INVFONG) numbers right-aligned at Strife's own coords
+// (health x=79, ammo x=311, both y=162).  The inventory row, keys and accuracy targeter
+// need Strife subsystems not wired here yet and are left as the INVBACK art's empty
+// slots.  Centred with WIDESCREENDELTA in widescreen.
 static void ST_StrifeDrawer (void)
 {
-    int wd = WIDESCREENDELTA;	// the 320-wide bar is centred in widescreen (0 in 4:3)
+    int wd = WIDESCREENDELTA;
 
     if (!plyr) return;
     ST_StrifeLoad ();
 
-    if (s_invback) V_DrawPatch (wd + 0, 168, 0, s_invback);	// bar background, bottom 32px
+    if (s_invback) V_DrawPatch (wd + 0, 168, 0, s_invback);	// main bar body
+    if (s_invtop)  V_DrawPatch (wd + 0, 160, 0, s_invtop);	// top plate (holds the health heart)
 
-    // Health -- green digits, left number box.
-    ST_SDrNumber (plyr->health, wd + 34, 183, s_fong);
+    ST_SDrNumber (plyr->health, wd + 79, 162, s_fong);		// health -- green
 
-    // Ready weapon's ammo -- yellow digits, right number box.
-    if (weaponinfo[plyr->readyweapon].ammo != am_noammo)
-	ST_SDrNumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], wd + 316, 183, s_fony);
+    if (weaponinfo[plyr->readyweapon].ammo != am_noammo)	// ready weapon ammo -- green
+	ST_SDrNumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], wd + 311, 162, s_fong);
 }
 
 void ST_Drawer (boolean fullscreen, boolean refresh)
