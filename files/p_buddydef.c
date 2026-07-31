@@ -105,7 +105,9 @@ typedef struct
 {
     char	name[40];
     char	desc[160];
-    char	attack[24];	// attack-style name (for the stats panel)
+    char	melee[24];	// close-range attack style (stats panel; BUDDYDEF `meleeattack`)
+    char	ranged[24];	// at-distance attack style (BUDDYDEF `rangedattack`)
+    char	monster[24];	// base monster the buddy was derived from (BUDDYDEF `monster`)
     char	special[96];	// modder-supplied "special abilities" text
     char	ability[24];	// BUDDYDEF `ability`: the named special ABILITY the buddy
 				// actually uses in play (none|drone|poisoncloud)
@@ -152,7 +154,8 @@ void P_Buddy_GetStats (int s, buddystats_t* out)
 {
     if (!out) return;
     if (s < 0 || s >= nroster)
-    { memset (out, 0, sizeof *out); out->attack = out->special = out->ability = ""; return; }
+    { memset (out, 0, sizeof *out);
+      out->melee = out->ranged = out->monster = out->special = out->ability = ""; return; }
     out->health       = roster[s].health;
     out->speed        = roster[s].speed;
     out->radius       = roster[s].radius;
@@ -160,7 +163,9 @@ void P_Buddy_GetStats (int s, buddystats_t* out)
     out->mass         = roster[s].mass;
     out->painchance   = roster[s].painchance;
     out->reactiontime = roster[s].reactiontime;
-    out->attack       = roster[s].attack;
+    out->melee        = roster[s].melee;
+    out->ranged       = roster[s].ranged;
+    out->monster      = roster[s].monster;
     out->special      = roster[s].special;
     out->ability      = roster[s].ability;
 }
@@ -222,7 +227,10 @@ typedef struct
     char	name[40];
     char	desc[160];
     char	sprite[8];
-    char	attack[24];
+    char	melee[24];	// BUDDYDEF `meleeattack` / `melee`
+    char	ranged[24];	// BUDDYDEF `rangedattack` / `ranged` / `missile`
+    char	monster[24];	// BUDDYDEF `monster` / `basemonster` (preset origin)
+    char	attack[24];	// legacy single `attack` key (mapped to melee if melee unset)
     char	seesnd[16], painsnd[16], deathsnd[16], activesnd[16];
     char	special[96];
     char	ability[24];
@@ -236,8 +244,10 @@ static void Buddy_Defaults (buddyparse_t* b)
     memset (b, 0, sizeof *b);
     strcpy (b->name, "Buddy");
     strcpy (b->sprite, "PLAY");
-    strcpy (b->attack, "melee");
+    strcpy (b->melee, "none");
+    strcpy (b->ranged, "none");
     strcpy (b->ability, "none");
+    /* monster/attack default to "" (memset above) */
     b->health = 200; b->speed = 8; b->radius = 20; b->height = 56;
     b->mass = 100;   b->painchance = 120; b->reactiontime = 8; b->ednum = -1;
     b->color = -1;
@@ -262,14 +272,21 @@ static void Buddy_Register (buddyparse_t* b)
     // roster entry (+ the stats shown on the Buddy select screen)
     {
 	buddyrec_t* r = &roster[nroster++];
+	// Legacy: a BUDDYDEF with only the old single `attack` key seeds melee.
+	if ((!b->melee[0] || !strcmp (b->melee, "none")) && b->attack[0])
+	    strncpy (b->melee, b->attack, sizeof b->melee - 1);
 	strncpy (r->name, b->name, sizeof r->name - 1);
 	strncpy (r->desc, b->desc, sizeof r->desc - 1);
-	strncpy (r->attack, b->attack, sizeof r->attack - 1);
+	strncpy (r->melee, b->melee, sizeof r->melee - 1);
+	strncpy (r->ranged, b->ranged, sizeof r->ranged - 1);
+	strncpy (r->monster, b->monster, sizeof r->monster - 1);
 	strncpy (r->special, b->special, sizeof r->special - 1);
 	strncpy (r->ability, b->ability, sizeof r->ability - 1);
 	r->name[sizeof r->name - 1] = 0;
 	r->desc[sizeof r->desc - 1] = 0;
-	r->attack[sizeof r->attack - 1] = 0;
+	r->melee[sizeof r->melee - 1] = 0;
+	r->ranged[sizeof r->ranged - 1] = 0;
+	r->monster[sizeof r->monster - 1] = 0;
 	r->special[sizeof r->special - 1] = 0;
 	r->ability[sizeof r->ability - 1] = 0;
 	// Unknown ability -> refuse it rather than pretending the buddy has a power.
@@ -361,6 +378,15 @@ static void Buddy_ParseText (const char* text, int len)
 		  || !strcmp(key,"about")
 		  || !strcmp(key,"info"))	Buddy_Value (p, cur.desc, sizeof cur.desc);
 	    else if (!strcmp(key,"sprite"))	Buddy_Value (p, cur.sprite, sizeof cur.sprite);
+	    // attack style -- split into melee + ranged (mybuddy writes these).  The old
+	    // single `attack` key is still read as a legacy alias (mapped to melee below).
+	    else if (!strcmp(key,"meleeattack")
+		  || !strcmp(key,"melee"))	Buddy_Value (p, cur.melee, sizeof cur.melee);
+	    else if (!strcmp(key,"rangedattack")
+		  || !strcmp(key,"ranged")
+		  || !strcmp(key,"missile"))	Buddy_Value (p, cur.ranged, sizeof cur.ranged);
+	    else if (!strcmp(key,"monster")
+		  || !strcmp(key,"basemonster"))Buddy_Value (p, cur.monster, sizeof cur.monster);
 	    else if (!strcmp(key,"attack"))	Buddy_Value (p, cur.attack, sizeof cur.attack);
 	    else if (!strcmp(key,"seesound"))	Buddy_Value (p, cur.seesnd, sizeof cur.seesnd);
 	    else if (!strcmp(key,"painsound"))	Buddy_Value (p, cur.painsnd, sizeof cur.painsnd);
@@ -412,7 +438,9 @@ void P_Buddy_LoadDefs (void)
     strcpy (roster[0].name, "Marine");
     strcpy (roster[0].desc, "Standard-issue AI marine. Hunts monsters, guards "
 			    "you and revives the fallen. The default buddy.");
-    strcpy (roster[0].attack, "hitscan");
+    strcpy (roster[0].ranged, "hitscan");	// fires the player weapons
+    strcpy (roster[0].melee, "punch");
+    strcpy (roster[0].monster, "marine");
     strcpy (roster[0].special, "Revives downed marines, seeks health when hurt, "
 			       "orderable (come/wait/attack), has its own HUD.");
     // The marine's named ability -- it already deploys Security Drones when it is under

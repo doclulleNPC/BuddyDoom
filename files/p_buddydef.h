@@ -41,7 +41,9 @@ int		P_Buddy_Color  (int slot);	// declared default colour index (BUDDYDEF `colo
 // Stats shown on the Buddy select screen (all definable in BUDDYDEF).
 typedef struct {
     int		health, speed, radius, height, mass, painchance, reactiontime;
-    const char*	attack;		// attack-style name
+    const char*	melee;		// close-range attack style (BUDDYDEF `meleeattack`)
+    const char*	ranged;		// at-distance attack style (BUDDYDEF `rangedattack`)
+    const char*	monster;	// base monster the buddy derives from (BUDDYDEF `monster`)
     const char*	special;	// free-text special abilities (blurb)
     const char*	ability;	// NAMED ability: none | drone | poisoncloud | turret
 } buddystats_t;

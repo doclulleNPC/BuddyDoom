@@ -1404,7 +1404,8 @@ extern int		I_GetTime (void);
 // Buddy stats for the select screen (mirror of buddystats_t in p_buddydef.h -- keep
 // the field list identical, P_Buddy_GetStats writes through this layout).
 typedef struct { int health, speed, radius, height, mass, painchance, reactiontime;
-		 const char* attack; const char* special; const char* ability; } buddystats_t;
+		 const char* melee; const char* ranged; const char* monster;
+		 const char* special; const char* ability; } buddystats_t;
 extern void		P_Buddy_GetStats (int slot, buddystats_t* out);
 
 // Styled like the Controls/Video screens: a crisp TTF overlay (drawn in i_video.c

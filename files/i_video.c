@@ -943,10 +943,18 @@ static void I_DrawBuddySelectOverlay (void)
     I_ConDrawText (px, y, buf, cw*0.82f, ch*0.82f); y += ch*0.84f;
     snprintf (buf, sizeof buf, "SIZE %dx%-3d MASS %d", st.radius, st.height, st.mass);
     I_ConDrawText (px, y, buf, cw*0.82f, ch*0.82f); y += ch*0.84f;
-    // Attack style + named ability.  A modder can give either a long name, so this row
-    // shrinks to fit the panel instead of running off the right edge.
-    snprintf (buf, sizeof buf, "ATTACK %-8s ABILITY %s",
-	      (st.attack  && *st.attack)  ? st.attack  : "-",
+    // Attack styles (melee + ranged) then the named ability.  A modder can give a long
+    // name, so each row shrinks to fit the panel instead of running off the right edge.
+    snprintf (buf, sizeof buf, "MELEE %-7s RANGED %s",
+	      (st.melee  && *st.melee  && strcmp(st.melee, "none"))  ? st.melee  : "-",
+	      (st.ranged && *st.ranged && strcmp(st.ranged,"none")) ? st.ranged : "-");
+    {
+	float avail = W - px - cw*0.8f;
+	float need  = (float)strlen (buf) * cw;
+	float sc    = (need > 0 && avail/need < 0.82f) ? avail/need : 0.82f;
+	I_ConDrawText (px, y, buf, cw*sc, ch*sc); y += ch*0.84f;
+    }
+    snprintf (buf, sizeof buf, "ABILITY %s",
 	      (st.ability && *st.ability) ? st.ability : "none");
     {
 	float avail = W - px - cw*0.8f;
