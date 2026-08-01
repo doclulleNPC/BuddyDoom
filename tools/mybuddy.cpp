@@ -86,6 +86,7 @@ enum {
     PREV_Y    = EDIT_Y + EDIT_H + PAD,
     PREV_H    = WINH - FOOTER_H - PAD - PREV_Y,
     LABEL_W   = 150,    // fits the longest label ("Ranged attack") plus a gap
+    SNDBTN_W  = 52,     // sound rows: [<][>] pick from the WAD, [P] plays -- 3 x 14 + gaps
 };
 
 // ----- fields -----
@@ -1040,6 +1041,30 @@ static int find_sound_lump(const std::string& name)
     return wad.find(name);
 }
 
+// Every sound lump in the open WAD, as the value a BUDDYDEF field wants: a "DS" prefix
+// is stripped, because the engine resolves "FRANKN" to DSFRANKN itself (i_sound.c
+// I_SfxLumpFor).  A lump counts as a sound when it is named DS*, or when its bytes are
+// a DMX header (0x0003) or Ogg -- exactly what the engine will accept later.
+static std::vector<std::string> wad_sound_values()
+{
+    std::vector<std::string> out;
+    for (size_t i = 0; i < wad.size(); i++) {
+        const buddy::Lump&          l = wad[i];
+        const std::vector<uint8_t>& d = l.data;
+        const bool dmx  = d.size() >= 2 && d[0] == 0x03 && d[1] == 0x00;
+        const bool ogg  = d.size() >= 4 && memcmp(d.data(), "OggS", 4) == 0;
+        const bool named = l.name.size() > 2 && l.name.compare(0, 2, "DS") == 0;
+        if (!dmx && !ogg && !named) continue;
+        out.push_back(named ? l.name.substr(2) : l.name);
+    }
+    return out;
+}
+
+// Step a sound field to the next/previous sound in the WAD.  Starting from a value that
+// is not in the WAD (an IWAD sound typed by hand) enters the list at its start, so the
+// buttons always do something.
+static void sound_cycle(size_t fieldidx, int dir);
+
 static void play_sound(const std::string& name)
 {
     const int l = find_sound_lump(name);
@@ -1579,14 +1604,21 @@ static void draw_editor()
             text(L.vx, L.ry + 4, editbuf, 255, 235, 160);
             text(L.vx + textw(editbuf), L.ry + 4, "_", 255, 255, 160);
         } else {
-            const float vmaxw = is_sound_field(f.key) ? L.vw - 20 : L.vw;
+            const float vmaxw = is_sound_field(f.key) ? L.vw - SNDBTN_W : L.vw;
             text(L.vx, L.ry + 4, ellipsize(format_value(b, f), (int)vmaxw), vr, vg, vb);
         }
-        // Sound rows get a small ">" play button at the right of the value cell.
+        // Sound rows: [<][>] pick the next/previous sound lump in the open WAD, then a
+        // green [>] plays it.  Typing is still there -- click the value itself -- for
+        // IWAD sounds that are not in this WAD.
         if (is_sound_field(f.key)) {
-            const float px = L.vx + L.vw - 16;
-            rect(px, L.ry + 3, 14, ROWH - 8, 55, 85, 55);
-            text(px + 3, L.ry + 4, ">", 220, 245, 220);
+            const float bx = L.vx + L.vw - SNDBTN_W;
+            const bool  any = !wad.empty();
+            rect(bx,      L.ry + 3, 14, ROWH - 8, any ? 60 : 40, any ? 60 : 40, any ? 85 : 55);
+            text(bx + 4,  L.ry + 4, "<", any ? 220 : 130, any ? 230 : 130, any ? 245 : 150);
+            rect(bx + 18, L.ry + 3, 14, ROWH - 8, any ? 60 : 40, any ? 60 : 40, any ? 85 : 55);
+            text(bx + 22, L.ry + 4, ">", any ? 220 : 130, any ? 230 : 130, any ? 245 : 150);
+            rect(bx + 36, L.ry + 3, 14, ROWH - 8, 55, 85, 55);
+            text(bx + 40, L.ry + 4, "P", 220, 245, 220);         // play
         }
     }
 
@@ -1956,6 +1988,45 @@ static void inc_int(int idx, int dir)
     record_change();
 }
 
+// Step a sound field through the WAD's own sounds, so a buddy pack's sounds can be
+// picked instead of typed.  Wraps, and plays what it lands on -- picking a sound you
+// cannot hear is guesswork.
+static void sound_cycle(size_t fieldidx, int dir)
+{
+    const std::vector<std::string> snd = wad_sound_values();
+    if (snd.empty()) {
+        set_status(wad.empty() ? "No WAD open -- open one, or type a sound name."
+                               : "This WAD has no sound lumps.");
+        return;
+    }
+    if (sel < 0 || sel >= (int)buddies.size()) return;
+
+    const Field&  f   = FIELDS[fieldidx];
+    std::string&  dst = buddies[sel].*(f.str);
+
+    // Where are we now?  An unknown value (an IWAD sound typed by hand, or empty) has no
+    // position, so a step enters the list at either end instead of doing nothing.
+    size_t at = snd.size();
+    for (size_t k = 0; k < snd.size(); k++)
+        if (snd[k].size() == dst.size() &&
+            std::equal(snd[k].begin(), snd[k].end(), dst.begin(),
+                       [](char a, char b) { return tolower((unsigned char)a) ==
+                                                   tolower((unsigned char)b); }))
+        { at = k; break; }
+
+    size_t next;
+    if (at == snd.size()) next = (dir > 0) ? 0 : snd.size() - 1;
+    else                  next = (size_t)(((int)at + dir + (int)snd.size()) % (int)snd.size());
+
+    push_undo();
+    dst = snd[next];
+    buddies[sel].set(f.key);
+    record_change();
+    set_status("%s: %s  (%d/%d in this WAD)", f.label, dst.c_str(),
+               (int)next + 1, (int)snd.size());
+    play_sound(dst);
+}
+
 static void click_value(float mx, float my)
 {
     const int i = field_at(mx, my);
@@ -1982,9 +2053,11 @@ static void click_value(float mx, float my)
         else                                    begin_edit_text(i);
         return;
     }
-    if (is_sound_field(f.key) && mx >= LAY[i].vx + LAY[i].vw - 18) {
-        play_sound(field_value(buddies[sel], f));       // clicked the ">" play button
-        return;
+    if (is_sound_field(f.key)) {
+        const float bx = LAY[i].vx + LAY[i].vw - SNDBTN_W;
+        if (mx >= bx + 36) { play_sound(field_value(buddies[sel], f)); return; }   // [P]
+        if (mx >= bx + 18) { sound_cycle((size_t)i, +1); return; }                 // [>]
+        if (mx >= bx)      { sound_cycle((size_t)i, -1); return; }                 // [<]
     }
     begin_edit_text(i);
 }
