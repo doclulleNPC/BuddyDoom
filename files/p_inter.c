@@ -1006,6 +1006,15 @@ void P_PoisonDamage (player_t* player, mobj_t* source, int damage,
 	player->health = 0;
     player->attacker = source;
 
+    // Directional damage indicator (HUD): flash a red arc around the crosshair pointing
+    // at the attacker, for the player being viewed.  Cosmetic only -- R_DamageIndicator
+    // touches no playsim state.
+    if (source && source != target && target->player == &players[displayplayer])
+    {
+	extern void R_DamageIndicator (angle_t ang);
+	R_DamageIndicator (R_PointToAngle2 (target->x, target->y, source->x, source->y));
+    }
+
     target->health -= damage;
     if (target->health <= 0)
     {

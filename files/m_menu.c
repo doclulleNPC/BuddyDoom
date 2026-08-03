@@ -383,6 +383,7 @@ void M_DrawFeatures(void);
 void M_Crosshair(int choice);		// Options -> Crosshair submenu
 void M_CrosshairType(int choice);	// cycle Off / Cross / Dot / Big
 void M_CrosshairColor(int choice);	// cycle Green / White / Red / Yellow / Blue
+void M_HitIndicator(int choice);	// toggle the directional damage ring
 void M_DrawCrosshair(void);
 
 menuitem_t OptionsMenu[]=
@@ -462,13 +463,15 @@ enum
 {
     xh_type,		// Off / Cross / Dot / Big Cross
     xh_color,		// Green / White / Red / Yellow / Blue
+    xh_hit,		// Hit Indicator: On / Off (directional damage ring)
     xh_end
 } crosshair_e;
 
 menuitem_t CrosshairMenu[]=
 {
     {2,"",	M_CrosshairType,'t'},	// left/right cycles the shape
-    {2,"",	M_CrosshairColor,'c'}	// left/right cycles the colour
+    {2,"",	M_CrosshairColor,'c'},	// left/right cycles the colour
+    {2,"",	M_HitIndicator,'h'}	// left/right toggles the directional damage ring
 };
 
 menu_t  CrosshairDef =
@@ -1766,6 +1769,17 @@ void M_Crosshair(int choice)
     M_SetupNextMenu (&CrosshairDef);
 }
 
+// Options -> Crosshair -> Hit Indicator: toggle the directional damage ring
+// (`damage_indicator` in r_draw.c -- a red arc around the crosshair pointing at the
+// direction incoming damage came from).
+void M_HitIndicator(int choice)
+{
+    extern int damage_indicator;
+    (void)choice;
+    damage_indicator = !damage_indicator;
+    M_SaveDefaults ();
+}
+
 void M_DrawCrosshair(void)
 {
     extern int crosshair, crosshair_color;
@@ -1779,6 +1793,11 @@ void M_DrawCrosshair(void)
     M_WriteText (x+130, y+LINEHEIGHT*xh_type,  M_XHairTypeNames[t]);
     M_WriteText (x,     y+LINEHEIGHT*xh_color, "Color");
     M_WriteText (x+130, y+LINEHEIGHT*xh_color, M_XHairColorNames[c]);
+    {
+	extern int damage_indicator;
+	M_WriteText (x,     y+LINEHEIGHT*xh_hit, "Hit Indicator");
+	M_WriteText (x+130, y+LINEHEIGHT*xh_hit, damage_indicator ? "On" : "Off");
+    }
 }
 
 void M_VideoRes(int choice)

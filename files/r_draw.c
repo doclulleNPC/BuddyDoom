@@ -37,6 +37,8 @@ rcsid[] = "$Id: r_draw.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 #include "w_wad.h"
 
 #include "r_local.h"
+#include "tables.h"		// finesine/finecosine + ANG45/ANG90 (damage indicator arc)
+#include "m_fixed.h"		// FixedMul
 
 // Needs access to LFB (guess what).
 #include "v_video.h"
@@ -165,6 +167,112 @@ void R_DrawCrosshair (void)
     {
 	XHairPix (cx+i, cy, col);  XHairPix (cx-i, cy, col);
 	XHairPix (cx, cy+i, col);  XHairPix (cx, cy-i, col);
+    }
+}
+
+
+// ===========================================================================
+//  Directional damage indicator (modern-FPS "hit indicator" / damage ring)
+//
+//  A red arc around the crosshair pointing at the direction incoming damage came
+//  from.  P_DamageMobj calls R_DamageIndicator with the world-space BAM angle from
+//  the viewed player to the attacker; D_Display calls R_DrawDamageIndicators after
+//  the crosshair.  The arc's screen bearing is (attacker angle - viewangle), so it
+//  rotates as you turn -- attacker straight ahead shows at 12 o'clock, behind at 6.
+//  Purely a HUD overlay: it reads gametic/viewangle but never feeds the playsim, so
+//  demos and netplay stay in sync.  Toggle: `damage_indicator` (Options -> Crosshair).
+// ===========================================================================
+int		damage_indicator = 1;		// config (m_misc.c): on/off
+
+#define DMGIND_MAX	8			// concurrent arcs (distinct directions)
+#define DMGIND_TICS	24			// ~0.7 s lifetime per hit
+#define DMGIND_RAMP	8			// red fade steps (bright -> dark)
+
+static struct { angle_t ang; int until; } dmgind[DMGIND_MAX];
+
+// Nearest-palette red for fade `level` (0 = brightest .. RAMP-1 = darkest).  Resolved
+// against PLAYPAL so it's a real red in DOOM/Heretic/Hexen/Strife; cached (the loaded
+// palette is stable for the run).
+static int R_DamageRed (int level)
+{
+    static int	ramp[DMGIND_RAMP];
+    static int	ready = 0;
+    if (!ready)
+    {
+	const byte* pal = (const byte*) W_CacheLumpName ("PLAYPAL", PU_CACHE);
+	int k, i;
+	for (k = 0; k < DMGIND_RAMP; k++)
+	{
+	    int want = 224 - k*22;		// red channel bright (224) -> dark (~70)
+	    int best = 0x70, bestd = 0x7fffffff;
+	    if (!pal) { ramp[k] = 0x70; continue; }
+	    for (i = 0; i < 256; i++)
+	    {
+		int dr = pal[i*3+0] - want, dg = pal[i*3+1], db = pal[i*3+2];
+		int d  = dr*dr + dg*dg + db*db;
+		if (d < bestd) { bestd = d; best = i; }
+	    }
+	    ramp[k] = best;
+	}
+	ready = 1;
+    }
+    if (level < 0)            level = 0;
+    if (level >= DMGIND_RAMP) level = DMGIND_RAMP - 1;
+    return ramp[level];
+}
+
+// Record a hit from `worldangle` (BAM, viewed player -> attacker).  Hits from ~the same
+// direction refresh one arc instead of spawning a swarm; otherwise the oldest slot is
+// reused.
+void R_DamageIndicator (angle_t worldangle)
+{
+    int	i, slot = 0, oldest = 0x7fffffff;
+    if (!damage_indicator)
+	return;
+    for (i = 0; i < DMGIND_MAX; i++)
+    {
+	angle_t d = worldangle - dmgind[i].ang;
+	if (d > ANG180) d = (angle_t)0 - d;			// |delta|
+	if (dmgind[i].until > gametic && d < ANG45/2) { slot = i; break; }
+	if (dmgind[i].until < oldest) { oldest = dmgind[i].until; slot = i; }
+    }
+    dmgind[slot].ang   = worldangle;
+    dmgind[slot].until = gametic + DMGIND_TICS;
+}
+
+void R_DrawDamageIndicators (void)
+{
+    int	cx, cy, R, thick, i;
+    if (!damage_indicator)
+	return;
+    cx    = viewwindowx + scaledviewwidth/2;
+    cy    = viewwindowy + viewheight/2;
+    R     = 18 * hires;					// ring radius around the crosshair
+    thick = 2  * hires;
+    for (i = 0; i < DMGIND_MAX; i++)
+    {
+	angle_t	s;
+	int	life, col, k;
+	const int steps = 40;
+	if (dmgind[i].until <= gametic)
+	    continue;
+	life = dmgind[i].until - gametic;			// DMGIND_TICS (fresh) .. 1 (fading)
+	col  = R_DamageRed ((DMGIND_TICS - life) * DMGIND_RAMP / DMGIND_TICS);
+	// screen bearing: attacker straight ahead (relative 0) -> 12 o'clock (top)
+	s = ANG90 + (dmgind[i].ang - viewangle);
+	for (k = 0; k <= steps; k++)
+	{
+	    angle_t  a    = s - ANG45/2 + (angle_t)((unsigned long long)ANG45 * k / steps);
+	    unsigned fine = a >> ANGLETOFINESHIFT;
+	    fixed_t  cosv = finecosine[fine], sinv = finesine[fine];
+	    int	     rr;
+	    for (rr = R; rr < R + thick; rr++)
+	    {
+		int px = cx + (FixedMul (rr<<FRACBITS, cosv) >> FRACBITS);
+		int py = cy - (FixedMul (rr<<FRACBITS, sinv) >> FRACBITS);
+		XHairPix (px, py, col);
+	    }
+	}
     }
 }
 

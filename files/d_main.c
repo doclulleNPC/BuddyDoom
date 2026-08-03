@@ -338,6 +338,7 @@ void D_Display (void)
 	R_RenderPlayerView (&players[displayplayer]);
 	I_CaptureTrueColorView ();	// snapshot the 8-bit view before 2D overlays draw
 	R_DrawCrosshair ();		// over the 3D view, under the HUD/menu/console
+	{ extern void R_DrawDamageIndicators (void); R_DrawDamageIndicators (); }	// red directional hit ring
 
 	// Boom automap: overlay the map lines on top of the just-rendered view
 	// (AM_Drawer skips the background fill in this style).

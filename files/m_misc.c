@@ -199,6 +199,7 @@ extern int	hd_sprites;		// r_things.c -- full-colour HD sprites in truecolor
 extern int	key_spy;
 extern int	crosshair;
 extern int	crosshair_color;	// r_draw.c -- crosshair colour index
+extern int	damage_indicator;	// r_draw.c -- directional damage ring on/off
 extern int	footclip;		// r_things.c -- sink actors into Heretic liquid
 extern int	weapon_autoswitch;	// p_inter.c -- raise a newly picked-up weapon
 extern int	run_speed;		// p_user.c  -- player run-speed percentage
@@ -309,6 +310,7 @@ default_t	defaults[] =
     {"run_speed",&run_speed, 100},
     {"weapon_power",&weapon_power, 100},
     {"crosshair_color",&crosshair_color, 0},
+    {"damage_indicator",&damage_indicator, 1},	// directional hit ring (r_draw.c)
 
     {"monster_pack",&monster_pack, 0},		// default OFF -> vanilla 1993 monster AI
     {"monster_pack_range",&monster_pack_range, 2048},
