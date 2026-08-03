@@ -1006,15 +1006,6 @@ void P_PoisonDamage (player_t* player, mobj_t* source, int damage,
 	player->health = 0;
     player->attacker = source;
 
-    // Directional damage indicator (HUD): flash a red arc around the crosshair pointing
-    // at the attacker, for the player being viewed.  Cosmetic only -- R_DamageIndicator
-    // touches no playsim state.
-    if (source && source != target && target->player == &players[displayplayer])
-    {
-	extern void R_DamageIndicator (angle_t ang);
-	R_DamageIndicator (R_PointToAngle2 (target->x, target->y, source->x, source->y));
-    }
-
     target->health -= damage;
     if (target->health <= 0)
     {
@@ -1211,6 +1202,20 @@ P_DamageMobj
 	P_Director_NoteDamage (target, damage);		// L4D stress: damage taken (burst-weighted)
 
 	player->attacker = source;
+
+	// Directional damage indicator (HUD): flash a red arc around the crosshair
+	// pointing where the hit came FROM, for the player being viewed.  Prefer the
+	// inflictor (projectile / explosion right next to you), else the attacker
+	// (hitscan shooter).  Cosmetic only -- R_DamageIndicator touches no playsim state.
+	{
+	    mobj_t* org = inflictor ? inflictor : source;
+	    if (org && org != target && target->player == &players[displayplayer])
+	    {
+		extern void R_DamageIndicator (angle_t ang);
+		R_DamageIndicator (R_PointToAngle2 (target->x, target->y, org->x, org->y));
+	    }
+	}
+
 	player->damagecount += damage;	// add damage after armor / invuln
 
 	if (player->damagecount > 100)

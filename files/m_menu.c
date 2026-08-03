@@ -463,15 +463,13 @@ enum
 {
     xh_type,		// Off / Cross / Dot / Big Cross
     xh_color,		// Green / White / Red / Yellow / Blue
-    xh_hit,		// Hit Indicator: On / Off (directional damage ring)
     xh_end
 } crosshair_e;
 
 menuitem_t CrosshairMenu[]=
 {
     {2,"",	M_CrosshairType,'t'},	// left/right cycles the shape
-    {2,"",	M_CrosshairColor,'c'},	// left/right cycles the colour
-    {2,"",	M_HitIndicator,'h'}	// left/right toggles the directional damage ring
+    {2,"",	M_CrosshairColor,'c'}	// left/right cycles the colour
 };
 
 menu_t  CrosshairDef =
@@ -492,6 +490,7 @@ enum
     feat_messages,	// in-game pickup/status messages
     feat_footclip,	// (H) sink actors into liquid
     feat_autoswitch,	// auto-raise a newly picked-up weapon
+    feat_hitind,	// directional damage indicator (red hit ring)
     feat_runspeed,	// player run-speed percentage
     feat_weaponpower,	// player weapon-damage percentage
     feat_end
@@ -502,6 +501,7 @@ menuitem_t FeaturesMenu[]=
     {1,"",	M_ChangeMessages,'m'},		// select toggles On/Off
     {1,"",	M_ToggleFootclip,'f'},
     {1,"",	M_ToggleAutoswitch,'w'},
+    {1,"",	M_HitIndicator,'h'},		// select toggles the directional damage ring
     {2,"",	M_RunSpeed,'r'},		// left/right cycles 100..300%
     {2,"",	M_WeaponPower,'p'}		// left/right cycles 50..500%
 };
@@ -1731,6 +1731,9 @@ void M_DrawFeatures(void)
     M_WriteText (x+130, y+LINEHEIGHT*feat_footclip,   footclip ? "On" : "Off");
     M_WriteText (x,     y+LINEHEIGHT*feat_autoswitch, "Weapon Autoswitch");
     M_WriteText (x+130, y+LINEHEIGHT*feat_autoswitch, weapon_autoswitch ? "On" : "Off");
+    { extern int damage_indicator;
+      M_WriteText (x,     y+LINEHEIGHT*feat_hitind,   "Hit Indicator");
+      M_WriteText (x+130, y+LINEHEIGHT*feat_hitind,   damage_indicator ? "On" : "Off"); }
     M_WriteText (x,     y+LINEHEIGHT*feat_runspeed,   "Run Speed");
     snprintf (buf, sizeof buf, "%d%%", run_speed);
     M_WriteText (x+130, y+LINEHEIGHT*feat_runspeed,   buf);
@@ -1793,11 +1796,6 @@ void M_DrawCrosshair(void)
     M_WriteText (x+130, y+LINEHEIGHT*xh_type,  M_XHairTypeNames[t]);
     M_WriteText (x,     y+LINEHEIGHT*xh_color, "Color");
     M_WriteText (x+130, y+LINEHEIGHT*xh_color, M_XHairColorNames[c]);
-    {
-	extern int damage_indicator;
-	M_WriteText (x,     y+LINEHEIGHT*xh_hit, "Hit Indicator");
-	M_WriteText (x+130, y+LINEHEIGHT*xh_hit, damage_indicator ? "On" : "Off");
-    }
 }
 
 void M_VideoRes(int choice)
