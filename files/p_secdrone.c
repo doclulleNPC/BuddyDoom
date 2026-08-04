@@ -54,6 +54,14 @@ void A_SecDroneShot (mobj_t* self)
     if (!self->target)
 	return;
     A_FaceTarget (self);
+
+    // A_SecDroneChase only checks ClearShot once, before the whole 3-shot volley
+    // (S_SECDR_ATK1..ATK6, ~21 tics).  If the target sidesteps near a corner
+    // partway through, later shots would otherwise fire straight into the wall
+    // that first check avoided -- re-verify right before each individual shot.
+    if (!Companion_ClearShot (self, self->target))
+	return;
+
     mo = P_SpawnMissile (self, self->target, MT_SECDRONESHOT);
     if (!mo)
 	return;
