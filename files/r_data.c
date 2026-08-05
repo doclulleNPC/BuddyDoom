@@ -43,6 +43,7 @@ extern void *alloca(int);
 #include <stdint.h>
 
 #include "m_swap.h"
+#include "v_video.h"		// V_PNGLumpInfo / V_PNGLumpDecodeCached (PNG sprites)
 
 #include "i_system.h"
 #include "z_zone.h"
@@ -839,25 +840,21 @@ void R_InitSpriteLumps (void)
 	spritelumps[i] = l;
 	if (IS_PNG_LUMP(l))
 	{
-	    unsigned int* rgba = NULL;
-	    int hw = 0, hh = 0;
-	    patch_t* cp = V_PNGLumpDecode (l, &rgba, &hw, &hh);	// GZDoom PNG -> patch (+ HD RGBA)
-	    spritepatch[i] = cp;
-	    if (cp)
+	    // Header only -- do NOT decode here.  A whole-game PNG pack has thousands
+	    // of sprites (hexenstuff.wad 1941 + strifestuff.wad 2002); decoding them
+	    // all at load pinned ~11 MB of patches and ~210 MB of full-colour copies
+	    // in a 48 MB zone, which is exactly the "Z_Malloc: failed on allocation"
+	    // crash.  R_SpritePatch() decodes each one on first draw into a PURGEABLE
+	    // block instead, so only what is on screen costs anything.
+	    int pw = 0, ph = 0, lo = 0, to = 0;
+	    if (V_PNGLumpInfo (l, &pw, &ph, &lo, &to))
 	    {
-		spritewidth[i]     = SHORT(cp->width)<<FRACBITS;
-		spriteoffset[i]    = SHORT(cp->leftoffset)<<FRACBITS;
-		spritetopoffset[i] = SHORT(cp->topoffset)<<FRACBITS;
-		// keep the full-colour image for the truecolor path; clamp its height to the
-		// patch's (VP_BuildPatch caps very tall sprites) so the two stay aligned.
-		if (rgba)
-		{
-		    hdsprite[i].w    = hw;
-		    hdsprite[i].h    = SHORT(cp->height);
-		    hdsprite[i].rgba = rgba;
-		}
+		spritewidth[i]     = pw<<FRACBITS;
+		spriteoffset[i]    = lo<<FRACBITS;
+		spritetopoffset[i] = to<<FRACBITS;
 	    }
 	    else spritewidth[i] = spriteoffset[i] = spritetopoffset[i] = 0;
+	    spritepatch[i] = NULL;			// decoded lazily
 	    i++;
 	    continue;
 	}
@@ -872,6 +869,46 @@ void R_InitSpriteLumps (void)
     #undef IS_S_START
     #undef IS_S_END
     #undef IS_PNG_LUMP
+}
+
+
+//
+// R_SpritePatch
+// The patch for sprite index `idx`, whatever format it is stored in.  Ordinary
+// Doom sprites come straight from the lump cache; a PNG sprite is decoded on first
+// use into PU_CACHE blocks owned by spritepatch[idx] / hdsprite[idx].rgba, so the
+// zone can reclaim any sprite that is not currently on screen and we decode it
+// again next time it is.  Never returns NULL for a valid index (a PNG that fails
+// to decode falls back to the raw lump, which simply renders nothing).
+//
+patch_t* R_SpritePatch (int idx)
+{
+    extern int	truecolor;		// i_video.c
+    extern int	hd_sprites;		// r_things.c
+
+    if ((unsigned) idx >= (unsigned) numspritelumps)
+	return NULL;
+    if (spritepatch[idx])
+	return (patch_t*) spritepatch[idx];
+
+    if (W_LumpLength (spritelumps[idx]) >= 4)
+    {
+	const byte* h = (const byte*) W_CacheLumpNum (spritelumps[idx], PU_CACHE);
+	if (h[0]==0x89 && h[1]=='P' && h[2]=='N' && h[3]=='G')
+	{
+	    // Only keep the full-colour copy when the truecolor HD path can use it --
+	    // otherwise it is ~50x the size of the patch, pinned for nothing.
+	    int	 hw = 0, hh = 0;
+	    void** ru = (truecolor && hd_sprites) ? (void**) &hdsprite[idx].rgba : NULL;
+	    patch_t* p = V_PNGLumpDecodeCached (spritelumps[idx], &spritepatch[idx],
+						ru, &hw, &hh);
+	    if (p && ru)
+		{ hdsprite[idx].w = hw; hdsprite[idx].h = hh; }
+	    if (p)
+		return p;
+	}
+    }
+    return (patch_t*) W_CacheLumpNum (spritelumps[idx], PU_CACHE);
 }
 
 

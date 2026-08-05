@@ -179,15 +179,23 @@ void P_InitPicAnims (void)
 
 	if (lastanim >= anims + MAXANIMS) break;   // don't overflow the table
 
+	// BOTH ends must exist.  Vanilla only checked startname, so an animation
+	// whose LAST frame is missing -- or whose two frames land out of order
+	// because a PWAD redefines one of them and W_CheckNumForName (last match
+	// wins) picks the new copy -- fell through to the "bad cycle" I_Error below
+	// and killed the whole game over one animated flat.  Skip such an entry with
+	// a warning instead: the flat still draws, it just does not animate.
 	if (istexture)
 	{
 	    if (R_CheckTextureNumForName(startname) == -1) continue;
+	    if (R_CheckTextureNumForName(endname)   == -1) continue;
 	    lastanim->picnum  = R_TextureNumForName (endname);
 	    lastanim->basepic = R_TextureNumForName (startname);
 	}
 	else
 	{
 	    if (W_CheckNumForName(startname) == -1) continue;
+	    if (W_CheckNumForName(endname)   == -1) continue;
 	    lastanim->picnum  = R_FlatNumForName (endname);
 	    lastanim->basepic = R_FlatNumForName (startname);
 	}
@@ -196,7 +204,11 @@ void P_InitPicAnims (void)
 	lastanim->numpics = lastanim->picnum - lastanim->basepic + 1;
 
 	if (lastanim->numpics < 2)
-	    I_Error ("P_InitPicAnims: bad cycle from %s to %s", startname, endname);
+	{
+	    printf ("P_InitPicAnims: bad cycle from %s to %s -- animation skipped\n",
+		    startname, endname);
+	    continue;
+	}
 
 	lastanim->speed = speed;
 	lastanim++;

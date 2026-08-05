@@ -61,8 +61,10 @@ director.exe: director.c director.res font_atlas.h ..\files\buddydoom_icon.h
 extractor.res: extractor.rc ..\buddydoom.ico
 	rc /nologo /fo extractor.res extractor.rc
 
-extractor.exe: extractor.c extractor.res font_atlas.h ..\files\buddydoom_icon.h
-	$(CC) $(CFLAGS) /Fe:extractor.exe extractor.c extractor.res $(LDFLAGS) $(LIBS)
+# wadpng.c/wadcodes.c are the shared *stuff.wad conversion + sprite-name policy
+# (mirrored by tools/wadpng.py / wadcodes.py); miniz supplies the PNG deflate.
+extractor.exe: extractor.c wadpng.c wadcodes.c ..\files\miniz.c extractor.res font_atlas.h ..\files\buddydoom_icon.h
+	$(CC) $(CFLAGS) /I..\files /Fe:extractor.exe extractor.c wadpng.c wadcodes.c ..\files\miniz.c extractor.res $(LDFLAGS) $(LIBS)
 	@if not exist ..\run mkdir ..\run
 	@copy /Y extractor.exe ..\run\extractor.exe >nul
 

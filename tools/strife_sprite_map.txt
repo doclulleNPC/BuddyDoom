@@ -1,0 +1,5 @@
+# Strife sprite code -> strifestuff.wad code.  Only codes that
+# COLLIDE with a DOOM/Heretic/Hexen sprite are renamed; the rest
+# keep their native name.  docs/BUDDY_SPRITE_COLLISIONS.md.
+MISL -> SMIS
+SPID -> STLK

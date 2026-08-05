@@ -126,6 +126,16 @@ patch_t* V_PNGLumpToPatch (int lump);
 // *rgba_out with its w/h -- for the truecolor HD sprite renderer.  See v_png.c.
 patch_t* V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_out);
 
+// PNG header only: dimensions + grAb offsets, WITHOUT decoding any pixels.  Lets
+// R_InitSpriteLumps size thousands of PNG sprites for free.  false = not a PNG.
+boolean V_PNGLumpInfo (int lump, int* w_out, int* h_out, int* loff, int* toff);
+
+// Decode a PNG sprite into PURGEABLE zone blocks owned by the caller's cache slots
+// (PU_CACHE + user pointer, so Z_Free NULLs them and the caller re-decodes on the
+// next draw).  rgba_user == NULL skips the full-colour copy.  See v_png.c.
+patch_t* V_PNGLumpDecodeCached (int lump, void** patch_user, void** rgba_user,
+				int* w_out, int* h_out);
+
 // Draw a patch with a 256-entry palette translation applied per pixel (NULL = none).
 void V_DrawPatchTranslated (int x, int y, int scrn, patch_t* patch, const byte* trans);
 

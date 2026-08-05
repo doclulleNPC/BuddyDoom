@@ -45,6 +45,12 @@ column_t* R_GetMaskedColumn (int tex, int col);
 void R_InitData (void);
 void R_PrecacheLevel (void);
 
+// The patch for a sprite index.  Ordinary Doom sprites come from the lump cache;
+// a PNG sprite is decoded on first use into purgeable blocks and re-decoded after
+// a purge, so a whole-game PNG pack costs only what is on screen (r_data.c).
+// (r_defs.h defines patch_t; every caller already has it.)
+patch_t* R_SpritePatch (int idx);
+
 // Boom 260 translucency filter map (main_tranmap[bg*256+fg] -> blended palette index).
 extern byte* main_tranmap;
 void R_InitTranMap (void);

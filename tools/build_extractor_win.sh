@@ -24,8 +24,8 @@ if command -v "$WINDRES" >/dev/null 2>&1; then
 fi
 
 # -mwindows: GUI subsystem (no console window). SDL_MAIN_HANDLED: we own main().
-"$CC" -O2 -DSDL_MAIN_HANDLED -I"$here" -I"$SDL3/include" \
-    "$here/extractor.c" $RES \
+"$CC" -O2 -DSDL_MAIN_HANDLED -I"$here" -I"$here/../files" -I"$SDL3/include" \
+    "$here/extractor.c" "$here/wadpng.c" "$here/wadcodes.c" "$here/../files/miniz.c" $RES \
     -L"$SDL3/lib" -lSDL3 -mwindows -static-libgcc \
     -o "$here/extractor.exe"
 [ -n "$RES" ] && rm -f "$RES"

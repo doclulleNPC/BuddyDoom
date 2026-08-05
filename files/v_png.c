@@ -169,7 +169,10 @@ const byte* V_BuddyColorTable (int i)
 
 // Build a column-format patch_t (Z_Malloc'd, PU_STATIC) from RGBA pixels.
 // loff/toff are the sprite offsets (from a PNG grAb chunk, else 0).
-static patch_t* VP_BuildPatch (const unsigned char* rgba, int w, int h, int loff, int toff)
+// `tag`/`user` go straight to Z_Malloc, so the caller decides whether the patch is
+// pinned (PU_STATIC) or purgeable (PU_CACHE + the address of its own cache slot).
+static patch_t* VP_BuildPatch (const unsigned char* rgba, int w, int h, int loff, int toff,
+			       int tag, void** user)
 {
     int		x, y, total, off;
     int*	colsize;
@@ -199,7 +202,7 @@ static patch_t* VP_BuildPatch (const unsigned char* rgba, int w, int h, int loff
 	total += sz;
     }
 
-    patch = (patch_t*) Z_Malloc (total, PU_STATIC, 0);
+    patch = (patch_t*) Z_Malloc (total, tag, user);
     base  = (byte*) patch;
     // header (host-endian == LE; the engine reads via SHORT/LONG which are no-ops on LE)
     patch->width = (short)w; patch->height = (short)h;
@@ -265,7 +268,7 @@ patch_t* V_CachePNG (const char* name)
     rgba = stbi_load_from_memory (raw, len, &w, &h, &comp, 4);
     if (!rgba) return NULL;
     if (!vp_pal_ready) VP_LoadPalette ();
-    patch = VP_BuildPatch (rgba, w, h, 0, 0);		// UI patches are drawn at explicit x,y
+    patch = VP_BuildPatch (rgba, w, h, 0, 0, PU_STATIC, NULL);	// UI: drawn at explicit x,y
     stbi_image_free (rgba);
     if (!patch) return NULL;
 
@@ -305,6 +308,31 @@ static void VP_ParseGrab (const byte* raw, int len, int* loff, int* toff)
 
 // Decode a PNG sprite lump to a patch.  If rgba_out != NULL, also keep an
 // ARGB8888 copy of the full-colour image (Z_Malloc'd PU_STATIC, caller owns it)
+// Read a PNG lump's dimensions + grAb offsets WITHOUT decoding any pixels.
+// R_InitSpriteLumps needs spritewidth/offset for every sprite up front, but a pack
+// like hexenstuff.wad/strifestuff.wad has thousands of them -- decoding all of them
+// at load cost hundreds of MB of zone (see V_PNGLumpDecodeCached).  IHDR is always
+// the first chunk, so w/h are at a fixed offset; grAb is walked like VP_ParseGrab.
+// Returns false if the lump isn't a PNG.
+boolean V_PNGLumpInfo (int lump, int* w_out, int* h_out, int* loff, int* toff)
+{
+    int		len;
+    const byte*	raw;
+
+    if (lump < 0) return false;
+    len = W_LumpLength (lump);
+    if (len < 33) return false;
+    raw = (const byte*) W_CacheLumpNum (lump, PU_CACHE);
+    if (raw[0]!=0x89 || raw[1]!='P' || raw[2]!='N' || raw[3]!='G')
+	return false;
+    if (raw[12]!='I' || raw[13]!='H' || raw[14]!='D' || raw[15]!='R')
+	return false;
+    if (w_out) *w_out = (int)(((unsigned)raw[16]<<24)|(raw[17]<<16)|(raw[18]<<8)|raw[19]);
+    if (h_out) *h_out = (int)(((unsigned)raw[20]<<24)|(raw[21]<<16)|(raw[22]<<8)|raw[23]);
+    VP_ParseGrab (raw, len, loff, toff);
+    return true;
+}
+
 // and report its w/h -- used for the truecolor HD sprite path.
 patch_t* V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_out)
 {
@@ -324,7 +352,7 @@ patch_t* V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_
     rgba = stbi_load_from_memory (raw, len, &w, &h, &comp, 4);
     if (!rgba) return NULL;
     if (!vp_pal_ready) VP_LoadPalette ();
-    patch = VP_BuildPatch (rgba, w, h, loff, toff);
+    patch = VP_BuildPatch (rgba, w, h, loff, toff, PU_STATIC, NULL);
 
     if (rgba_out && patch)
     {
@@ -347,4 +375,57 @@ patch_t* V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_
 patch_t* V_PNGLumpToPatch (int lump)
 {
     return V_PNGLumpDecode (lump, NULL, NULL, NULL);
+}
+
+// Decode a PNG sprite lump into PURGEABLE zone blocks, tied to the caller's own
+// pointers.  This is what the sprite system uses: an all-PNG pack has thousands of
+// sprites and decoding them PU_STATIC at load pins hundreds of MB (a full-colour
+// copy of strifestuff.wad's sprites alone is ~176 MB against a 48 MB heap -- the
+// "Z_Malloc: failed on allocation" report).  PU_CACHE + a user pointer lets the zone
+// reclaim any sprite that isn't currently on screen; Z_Free NULLs the pointer, and
+// the caller simply decodes again on the next draw.
+//
+// `patch_user` and `rgba_user` are the addresses of the caller's cache slots.
+// Pass rgba_user == NULL to skip the full-colour copy entirely (the truecolor HD
+// path is off, so it would be pinned for nothing).
+patch_t* V_PNGLumpDecodeCached (int lump, void** patch_user,
+				void** rgba_user, int* w_out, int* h_out)
+{
+    int			len, w, h, comp, loff, toff;
+    const byte*		raw;
+    unsigned char*	rgba;
+    patch_t*		patch;
+
+    if (lump < 0 || !patch_user) return NULL;
+    len = W_LumpLength (lump);
+    raw = (const byte*) W_CacheLumpNum (lump, PU_CACHE);
+    if (len < 8 || raw[0]!=0x89 || raw[1]!='P' || raw[2]!='N' || raw[3]!='G')
+	return NULL;
+
+    VP_ParseGrab (raw, len, &loff, &toff);
+    rgba = stbi_load_from_memory (raw, len, &w, &h, &comp, 4);
+    if (!rgba) return NULL;
+    if (!vp_pal_ready) VP_LoadPalette ();
+    patch = VP_BuildPatch (rgba, w, h, loff, toff, PU_CACHE, patch_user);
+    if (!patch)
+    {
+	stbi_image_free (rgba);
+	return NULL;
+    }
+
+    if (rgba_user)
+    {
+	unsigned int*	keep = (unsigned int*) Z_Malloc (w*h*sizeof(unsigned int),
+							 PU_CACHE, rgba_user);
+	int		i;
+	for (i = 0; i < w*h; i++)
+	{
+	    const unsigned char* p = rgba + i*4;
+	    keep[i] = ((unsigned)p[3]<<24) | (p[0]<<16) | (p[1]<<8) | p[2];
+	}
+	if (w_out) *w_out = w;
+	if (h_out) *h_out = patch->height;		// VP_BuildPatch may clamp (host-endian)
+    }
+    stbi_image_free (rgba);
+    return patch;
 }

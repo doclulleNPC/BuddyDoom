@@ -27,6 +27,10 @@ import struct
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from wadpng import patch_to_png		# noqa: E402  (needs the path tweak above)
+from wadcodes import reserved_codes	# noqa: E402
+
 # ---------------------------------------------------------------------------
 # Hexen MONSTER sprite codes (body + gibs/variants + their projectiles).
 # ---------------------------------------------------------------------------
@@ -151,40 +155,6 @@ def pal(data, ent):
     return [(p[i*3], p[i*3+1], p[i*3+2]) for i in range(256)]
 
 
-def build_xlat(sp, dp):
-    xl = bytearray(256)
-    for i, (r, g, b) in enumerate(sp):
-        best, bd = 0, 1 << 30
-        for j, (R, G, B) in enumerate(dp):
-            d = (r-R)**2+(g-G)**2+(b-B)**2
-            if d < bd:
-                bd, best = d, j
-                if not d:
-                    break
-        xl[i] = best
-    return xl
-
-
-def remap_patch(raw, xl):
-    b = bytearray(raw)
-    if len(b) < 8:
-        return bytes(b)
-    w = struct.unpack("<h", b[0:2])[0]
-    if w <= 0 or 8+4*w > len(b):
-        return bytes(b)
-    for o in struct.unpack(f"<{w}I", b[8:8+4*w]):
-        if o <= 0 or o >= len(b):
-            continue
-        while o < len(b) and b[o] != 0xff:
-            length = b[o+1]
-            for k in range(length):
-                p = o+3+k
-                if p < len(b):
-                    b[p] = xl[b[p]]
-            o += length+4
-    return bytes(b)
-
-
 def is_dmx(raw):
     return len(raw) >= 8 and raw[0] == 3 and raw[1] == 0
 
@@ -203,10 +173,16 @@ def write_wad(out, lumps):
             f.write(nm.encode("ascii", "replace")[:8].ljust(8, b"\x00"))
 
 
-def make_rename(codes):
+def make_rename(codes, reserved=()):
     """Deterministic, collision-free 4-char rename into the 'X' (heXen) namespace.
-    XYZ stem = 'X'+code[:2]; 4th char tries code[2], code[3], then 2..9/A..Z."""
-    used, ren = set(), {}
+    XYZ stem = 'X'+code[:2]; 4th char tries code[2], code[3], then 2..9/A..Z.
+
+    `reserved` seeds the used-set with codes other games already own, so a
+    placeholder can never shadow their art (tools/wadcodes.py).  Seeding only ever
+    removes candidates -- it cannot change an assignment unless that assignment was
+    already colliding, which is exactly the case we want changed.  Diff
+    tools/hexen_sprite_map.txt after any re-run to confirm nothing moved."""
+    used, ren = set(reserved), {}
     for code in codes:
         stem = "X" + code[:2]
         for c in [code[2], code[3]] + list("23456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
@@ -216,47 +192,46 @@ def make_rename(codes):
     return ren
 
 
-def find_base(id0, given):
-    """Resolve the IWAD whose PLAYPAL is the target palette."""
-    if given:
-        p = Path(given)
-        return p if p.is_absolute() else (id0 / given)
-    for name in ("doom2.wad", "DOOM2.WAD", "doom.wad", "DOOM.WAD", "plutonia.wad", "tnt.wad"):
-        if (id0 / name).exists():
-            return id0 / name
-    return id0 / "DOOM.WAD"
-
-
 def main():
     here = Path(__file__).resolve().parent.parent
     id0 = here / "run" / "ID0"
     ap = argparse.ArgumentParser()
     ap.add_argument("--src",  default=str(id0/"hexen.wad"))
-    ap.add_argument("--base", default=None, help="IWAD for the target palette (auto-detected in ID0 if omitted)")
+    ap.add_argument("--base", default=None,
+                    help="(deprecated, ignored) sprites are PNG now -- no palette conversion")
     ap.add_argument("--out",  default=str(id0/"hexenstuff.wad"))
     a = ap.parse_args()
-    sp, sb, op = Path(a.src), find_base(id0, a.base), Path(a.out)
-    for p in (sp, sb):
-        if not p.exists():
-            print(f"ERROR: {p} not found", file=sys.stderr); return 2
+    sp, op = Path(a.src), Path(a.out)
+    if not sp.exists():
+        print(f"ERROR: {sp} not found", file=sys.stderr); return 2
 
     hdata, hent = read_wad(sp)
-    bdata, bent = read_wad(sb)
-    xl = build_xlat(pal(hdata, hent), pal(bdata, bent))   # hexen -> doom palette (base = target)
+    hexpal = pal(hdata, hent)			# Hexen's OWN palette -- see below
 
     # which selected sprite codes actually exist in hexen.wad's sprite namespace?
     present = set(nm[:4] for nm, fp, sz in hent if len(nm) > 4)
     wanted = [c for c in (MONSTER_SPRITES + WEAPON_SPRITES) if c in present]
     missing = [c for c in (MONSTER_SPRITES + WEAPON_SPRITES) if c not in present]
-    ren = make_rename(wanted)
+    ren = make_rename(wanted, reserved_codes([id0, here / "run"], exclude=("hexen.wad",)))
 
+    # Sprites go in as PNG in HEXEN's palette -- NOT palette-converted to DOOM's.
+    # The engine decodes each PNG at load (files/v_png.c V_PNGLumpDecode via
+    # r_data.c R_InitSpriteLumps), nearest-matching into whatever IWAD is actually
+    # running AND keeping a full-colour copy for the truecolor sprite path
+    # (r_things.c R_BlitHDSprite).  Baking a DOOM-palette conversion in here threw
+    # that colour away permanently; PNG also compresses smaller than the raw
+    # column format, so the pack shrinks.  Offsets ride along in a grAb chunk.
     out = [("S_START", b"")]
-    n_spr = 0
+    n_spr, n_skip = 0, 0
     for nm, fp, sz in hent:
         code = nm[:4]
         if code in ren and len(nm) > 4:
+            png = patch_to_png(hdata[fp:fp+sz], hexpal)
+            if png is None:			# not a patch (a same-prefixed sound etc.)
+                n_skip += 1
+                continue
             new = ren[code] + nm[4:]
-            out.append((new[:8], remap_patch(hdata[fp:fp+sz], xl)))
+            out.append((new[:8], png))
             n_spr += 1
     out.append(("S_END", b""))
 
@@ -302,8 +277,10 @@ def main():
 
     total = sum(len(d) for _n, d in out)
     print(f"extract_hexen: wrote {op}")
-    print(f"  base palette: {sb.name}")
-    print(f"  monster/weapon sprites (converted+renamed): {n_spr}  ({len(wanted)} codes)")
+    print(f"  sprite format: PNG (Hexen palette preserved; grAb offsets)")
+    print(f"  monster/weapon sprites (renamed): {n_spr}  ({len(wanted)} codes)")
+    if n_skip:
+        print(f"  non-patch lumps sharing a sprite prefix, skipped: {n_skip}")
     print(f"  WIRED monster sounds (DS* lumps for sfx_x_*): {n_ds}")
     if ds_missing:
         print(f"    WARNING: missing source lumps for DS sounds: {', '.join(ds_missing)}")

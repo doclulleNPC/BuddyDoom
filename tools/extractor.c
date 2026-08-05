@@ -35,7 +35,9 @@
 #endif
 
 #include "font_atlas.h"
-#include "../files/buddydoom_icon.h"	// shared 64x64 RGBA window icon (from buddydoom.ico)
+#include "../files/buddydoom_icon.h"
+#include "wadpng.h"		// shared Doom patch -> PNG (mirrors tools/wadpng.py)
+#include "wadcodes.h"		// shared sprite-name collision policy	// shared 64x64 RGBA window icon (from buddydoom.ico)
 
 #ifdef _WIN32
 #define strcasecmp _stricmp	// MSVC has no strcasecmp (POSIX); _stricmp is the equivalent
@@ -170,43 +172,27 @@ static int wad_write(const char* path, obuf_t* o)
 static const unsigned char* get_playpal(wad_t* w)
 { int sz; const unsigned char* p = wad_lump(w, "PLAYPAL", &sz); return (p && sz >= 768) ? p : NULL; }
 
-// src palette index -> nearest dst palette index (both are 256*RGB triples).
-static void build_xlat(const unsigned char* sp, const unsigned char* dp, unsigned char xl[256])
+// Emit one sprite lump as PNG in the SOURCE game's palette (tools/wadpng.c).
+//
+// The old path palette-QUANTISED every borrowed sprite into the DOOM PLAYPAL and
+// baked that in permanently.  BuddyDoom reads PNG sprites natively and matches them
+// into whatever IWAD is actually running -- keeping a full-colour copy for the
+// truecolor path -- so PNG loses nothing, and compresses smaller than the raw
+// column format.  Offsets ride along in a grAb chunk.
+//
+// Returns 1 if the lump was written.  A lump that is not a valid patch (a sound
+// whose name happens to share a sprite's 4-char prefix, e.g. hexen.wad's MAGE4 under
+// the MAGE code) is REJECTED rather than dumped into the sprite namespace as junk.
+static int emit_sprite(obuf_t* o, const char* newname,
+                       const unsigned char* raw, int size,
+                       const unsigned char* srcpal, int* n_skip)
 {
-    for (int i = 0; i < 256; i++) {
-        int r = sp[i*3], g = sp[i*3+1], b = sp[i*3+2];
-        int best = 0; long bd = 1L<<30;
-        for (int j = 0; j < 256; j++) {
-            int dr = r-dp[j*3], dg = g-dp[j*3+1], db = b-dp[j*3+2];
-            long d = (long)dr*dr + (long)dg*dg + (long)db*db;
-            if (d < bd) { bd = d; best = j; if (!d) break; }
-        }
-        xl[i] = (unsigned char)best;
-    }
-}
-
-// Remap a Doom patch's pixels through xl (structure/offsets unchanged); returns
-// a fresh malloc'd copy of `size` bytes (caller frees).
-static unsigned char* dup_remap(const unsigned char* raw, int size, const unsigned char* xl)
-{
-    unsigned char* b = malloc(size ? size : 1);
-    memcpy(b, raw, size);
-    if (size < 8) return b;
-    int w = (short)(b[0] | (b[1]<<8));
-    if (w <= 0 || 8 + 4*w > size) return b;              // not a patch -> leave alone
-    for (int i = 0; i < w; i++) {
-        unsigned int o = rd32(b + 8 + i*4);
-        if (o == 0 || o >= (unsigned)size) continue;
-        while (o + 1 < (unsigned)size && b[o] != 0xff) {
-            int length = b[o+1];
-            for (int k = 0; k < length; k++) {
-                unsigned int p = o + 3 + k;
-                if (p < (unsigned)size) b[p] = xl[b[p]];
-            }
-            o += length + 4;
-        }
-    }
-    return b;
+    int            len = 0;
+    unsigned char* png = wadpng_from_patch(raw, size, srcpal, &len);
+    if (!png) { if (n_skip) (*n_skip)++; return 0; }
+    oadd(o, newname, png, len);
+    free(png);
+    return 1;
 }
 
 static int is_dmx(const unsigned char* raw, int size)
@@ -252,7 +238,14 @@ static const char* HEXEN_MONSTER_SPR[] = {
     "DEME","DMFX","DEM2","DMBA","DMBB","DMBC","DMBD","DMBE","D2FX","WRTH","WRT2",
     "WRBL","MNTR","FX12","FX13","MNSM","SSPT","SSDV","SSXD","SSFX","BISH","BPFX",
     "DRAG","DRFX","FDMN","FDMB","ICEY","ICPR","ICWS","ICEC","SORC","SBMP","SBS1",
-    "SBS2","SBS3","SBS4","SBMB","SBMG","SBFX","KORX","ABAT","PIGY","FDTH", NULL
+    "SBS2","SBS3","SBS4","SBMB","SBMG","SBFX","KORX","ABAT","PIGY","FDTH",
+    // APPEND-ONLY below this line: hexen_make_rename() assigns names in list
+    // order, so inserting a code EARLIER can steal a name an existing one holds
+    // and silently invalidate every SPR_X* in files/info.c.  Diff
+    // tools/hexen_sprite_map.txt after every change.  Mirrors
+    // MONSTER_SPRITES in tools/extract_hexen.py -- keep the two in step.
+    "PLAY","CLER","MAGE",		// fighter/cleric/mage class bosses
+    NULL
 };
 static const char* HEXEN_WEAPON_SPR[] = {
     "FPCH","WFAX","FAXE","FSFX","WFHM","FHMR","FHFX","FSRD","CMCE","WCSS","CSSF",
@@ -283,13 +276,15 @@ static const char* HEXEN_SND_KW[] = {
     "srfc","mumpun","squeal","slurp","shlurp","axe","ham","hmhit","punch","sword",
     "holy","spirt","clhmm","mageball","wand","blastr","mage4","cone3","gnt",
     "wepele","strike1","strike3","fgt","mgpain","mgdth","mggrunt","mgxdth","mgfall",
-    "mghmm","mgcdth","clxdth","plrdth","plrpain","plrburn","plrcdth", NULL
+    "mghmm","mgcdth","clxdth","plrdth","plrpain","plrburn","plrcdth",
+    "bite","impact",		// PigAttack (BITE4) + MaulatorMissileHit (IMPACT3)
+    NULL
 };
 
 #define AISTUFF_NOTE "BuddyDoom internal asset pack -- loaded by the game, not a user PWAD\n"
 
 // ================================================================= sources
-enum { K_HERETIC, K_HEXEN, K_FREEDOOM, K_DOOM2 };
+enum { K_HERETIC, K_HEXEN, K_FREEDOOM, K_DOOM2, K_STRIFE, K_FREEDOOM2 };
 
 typedef struct {
     const char* src;      // source IWAD basename (lowercase)
@@ -303,6 +298,8 @@ static const source_t SOURCES[] = {
     { "heretic.wad",   "hereticstuff.wad",   "Heretic  \x1a  hereticstuff.wad",   K_HERETIC  },
     { "hexen.wad",     "hexenstuff.wad",     "Hexen  \x1a  hexenstuff.wad",       K_HEXEN    },
     { "freedoom2.wad", "freedoomstuff.wad",  "FreeDoom2  \x1a  freedoomstuff.wad", K_FREEDOOM },
+    { "freedoom2.wad", "freedoom2stuff.wad", "FreeDoom2  \x1a  freedoom2stuff.wad (monsters + SSG in FreeDoom1)", K_FREEDOOM2 },
+    { "strife1.wad",   "strifestuff.wad",    "Strife  \x1a  strifestuff.wad",     K_STRIFE   },
 };
 #define NSOURCES ((int)(sizeof SOURCES / sizeof SOURCES[0]))
 
@@ -403,15 +400,18 @@ static int extract_heretic(const char* srcpath, const char* outpath, char* log, 
     wad_t* b = wad_load(basepath);
     if (!h) { logf_(log, lcap, "ERROR: cannot read %s\n", srcpath); wad_free(b); return 0; }
     if (!b) { logf_(log, lcap, "ERROR: cannot read base %s\n", basepath); wad_free(h); return 0; }
+    // Sprites go out as PNG in the SOURCE game's own palette, so there is no
+    // conversion table any more -- files/v_png.c matches them to whatever IWAD is
+    // actually running, and keeps the full colour for the truecolor sprite path.
+    // The base IWAD is still located above so the "which DOOM do you have" check
+    // and its log line stay meaningful.
     const unsigned char* sp = get_playpal(h);
-    const unsigned char* dp = get_playpal(b);
-    if (!sp || !dp) { logf_(log, lcap, "ERROR: missing PLAYPAL\n"); wad_free(h); wad_free(b); return 0; }
-    unsigned char xl[256]; build_xlat(sp, dp, xl);
+    if (!sp) { logf_(log, lcap, "ERROR: missing PLAYPAL\n"); wad_free(h); wad_free(b); return 0; }
 
     obuf_t o = {0};
     oadd(&o, "AISTUFF", (const unsigned char*)AISTUFF_NOTE, (int)strlen(AISTUFF_NOTE));
     oadd(&o, "S_START", NULL, 0);
-    int n_spr = 0;
+    int n_spr = 0, n_skip = 0;
     for (int i = 0; i < h->n; i++) {
         const char* nm = h->dir[i].name;
         if (strlen(nm) <= 4) continue;
@@ -419,9 +419,8 @@ static int extract_heretic(const char* srcpath, const char* outpath, char* log, 
         for (int r = 0; HERETIC_RENAME[r][0]; r++) {
             if (!strcmp(code, HERETIC_RENAME[r][0])) {
                 char nn[9]; snprintf(nn, sizeof nn, "%s%s", HERETIC_RENAME[r][1], nm+4);
-                unsigned char* px = dup_remap(h->data + h->dir[i].pos, h->dir[i].size, xl);
-                oadd(&o, nn, px, h->dir[i].size);
-                free(px); n_spr++;
+                n_spr += emit_sprite(&o, nn, h->data + h->dir[i].pos, h->dir[i].size,
+                                     sp, &n_skip);
                 break;
             }
         }
@@ -467,10 +466,15 @@ static int extract_freedoom(const char* srcpath, const char* outpath, char* log,
     char d1path[600]; wad_t* d1 = NULL;
     if (find_wad("doom.wad", d1path, sizeof d1path)) d1 = wad_load(d1path);
 
+    // Sprites go out as PNG in FreeDoom's own palette -- one pack format across
+    // every *stuff.wad, and the engine matches them to whatever IWAD is running.
+    const unsigned char* fpal = get_playpal(fw);
+    if (!fpal) { logf_(log, lcap, "ERROR: missing PLAYPAL\n"); wad_free(fw); wad_free(d1); return 0; }
+
     obuf_t o = {0};
     oadd(&o, "AISTUFF", (const unsigned char*)AISTUFF_NOTE, (int)strlen(AISTUFF_NOTE));
     oadd(&o, "S_START", NULL, 0);
-    int n_spr = 0;
+    int n_spr = 0, n_skip = 0;
     for (int i = s0+1; i < s1; i++) {
         const char* nm = fw->dir[i].name;
         if (strlen(nm) < 4) continue;
@@ -478,8 +482,8 @@ static int extract_freedoom(const char* srcpath, const char* outpath, char* log,
         for (int r = 0; FREEDOOM_RENAME[r][0]; r++) {
             if (!strcmp(code, FREEDOOM_RENAME[r][0])) {
                 char nn[9]; snprintf(nn, sizeof nn, "%s%s", FREEDOOM_RENAME[r][1], nm+4);
-                oadd(&o, nn, fw->data + fw->dir[i].pos, fw->dir[i].size);  // doom palette -> verbatim
-                n_spr++;
+                n_spr += emit_sprite(&o, nn, fw->data + fw->dir[i].pos,
+                                     fw->dir[i].size, fpal, &n_skip);
                 break;
             }
         }
@@ -501,7 +505,7 @@ static int extract_freedoom(const char* srcpath, const char* outpath, char* log,
     logf_(log, lcap, ok ? "wrote %s\n" : "ERROR: could not write %s\n", outpath);
     if (ok) {
         logf_(log, lcap, "  sound diff   : %s\n", d1 ? "doom.wad (exclusive only)" : "(none: all DS*/DP*)");
-        logf_(log, lcap, "  sprites      : %d (renamed F*)\n", n_spr);
+        logf_(log, lcap, "  sprites      : %d (renamed F*, PNG)\n", n_spr);
         logf_(log, lcap, "  sounds       : %d (orig names)\n", n_snd);
         logf_(log, lcap, "  total        : %d lumps, %.1f MB\n", o.n, obuf_bytes(&o)/1048576.0);
     }
@@ -524,13 +528,30 @@ static int extract_freedoom(const char* srcpath, const char* outpath, char* log,
 // wp_supershotgun.  Unlike freedoomstuff.wad (which renames to an F* namespace so
 // it can coexist with a real DOOM2 IWAD), this is only overlaid when the IWAD is
 // DOOM1, so no rename is needed.
-static int extract_doom2(const char* srcpath, const char* outpath, char* log, int lcap)
+// Build a "phase 2 minus phase 1" overlay pack: the sprites/sounds a Doom-1-format
+// IWAD does NOT have, under their NATIVE names, so the engine can overlay them onto
+// that game (files/d_main.c, doom2_overlay) and the DOOM2 monsters + super shotgun
+// work there.  Native names are deliberate -- unlike the *stuff.wad packs, this one
+// is only ever loaded on top of the game it belongs to.
+//
+// `d1names` is the phase-1 IWAD to diff against, NULL for the id Software default
+// (doom.wad / doomu.wad / doom1.wad).  Freedoom passes freedoom1.wad, which is why
+// the two never mix: id art stays with Doom, Freedoom art stays with Freedoom.
+static int extract_phase2(const char* srcpath, const char* outpath,
+                          const char* const* d1names, char* log, int lcap)
 {
     char d1path[600];
-    if (!find_doom1(d1path, sizeof d1path)) {
-        logf_(log, lcap, "ERROR: no DOOM1 IWAD found in ID0/ to diff against.\n"
-                         "  (need doom.wad / doomu.wad / doom1.wad -- can't compute the\n"
-                         "   \"missing in DOOM1\" set without it)\n");
+    int  gotd1 = 0;
+    if (d1names) {
+        for (int i = 0; d1names[i] && !gotd1; i++)
+            gotd1 = find_wad(d1names[i], d1path, sizeof d1path);
+    } else {
+        gotd1 = find_doom1(d1path, sizeof d1path);
+    }
+    if (!gotd1) {
+        logf_(log, lcap, "ERROR: no phase-1 IWAD found in ID0/ to diff against.\n"
+                         "  (need %s -- cannot compute the missing-in-phase-1 set)\n",
+              d1names ? d1names[0] : "doom.wad / doomu.wad / doom1.wad");
         return 0;
     }
     wad_t* d2 = wad_load(srcpath);
@@ -549,10 +570,14 @@ static int extract_doom2(const char* srcpath, const char* outpath, char* log, in
     int lo = (d1s0 >= 0 && d1s1 > d1s0) ? d1s0 + 1 : 0;
     int hi = (d1s0 >= 0 && d1s1 > d1s0) ? d1s1     : d1->n;
 
+    // PNG in the source game's palette, like every other pack.
+    const unsigned char* p2pal = get_playpal(d2);
+    if (!p2pal) { logf_(log, lcap, "ERROR: missing PLAYPAL\n"); wad_free(d2); wad_free(d1); return 0; }
+
     obuf_t o = {0};
     oadd(&o, "AISTUFF", (const unsigned char*)AISTUFF_NOTE, (int)strlen(AISTUFF_NOTE));
     oadd(&o, "S_START", NULL, 0);
-    int n_spr = 0;
+    int n_spr = 0, n_skip = 0;
     for (int i = s0+1; i < s1; i++) {
         const char* nm = d2->dir[i].name;
         if (strlen(nm) < 4) continue;                 // markers / stray lumps
@@ -560,8 +585,8 @@ static int extract_doom2(const char* srcpath, const char* outpath, char* log, in
         for (int j = lo; j < hi && !in_d1; j++)
             if (strlen(d1->dir[j].name) >= 4 && !strncmp(d1->dir[j].name, nm, 4)) in_d1 = 1;
         if (in_d1) continue;
-        oadd(&o, nm, d2->data + d2->dir[i].pos, d2->dir[i].size);  // same palette -> verbatim
-        n_spr++;
+        n_spr += emit_sprite(&o, nm, d2->data + d2->dir[i].pos, d2->dir[i].size,
+                             p2pal, &n_skip);
     }
     oadd(&o, "S_END", NULL, 0);
 
@@ -582,7 +607,7 @@ static int extract_doom2(const char* srcpath, const char* outpath, char* log, in
     logf_(log, lcap, ok ? "wrote %s\n" : "ERROR: could not write %s\n", outpath);
     if (ok) {
         logf_(log, lcap, "  diff base    : %s\n", strrchr(d1path,'/')?strrchr(d1path,'/')+1:d1path);
-        logf_(log, lcap, "  sprites      : %d (DOOM2-only, verbatim -- monsters + SSG)\n", n_spr);
+        logf_(log, lcap, "  sprites      : %d (phase-2 only, PNG -- monsters + SSG)\n", n_spr);
         logf_(log, lcap, "  sounds       : %d (DOOM2-only DS*/DP*)\n", n_snd);
         logf_(log, lcap, "  total        : %d lumps, %.1f MB\n", o.n, obuf_bytes(&o)/1048576.0);
         logf_(log, lcap, "  -> auto-overlaid on a DOOM1 launch (d_main.c doom2_overlay).\n");
@@ -593,19 +618,259 @@ static int extract_doom2(const char* srcpath, const char* outpath, char* log, in
 
 // Deterministic, collision-free 4-char rename into the "X" (heXen) namespace.
 // stem = 'X' + code[:2]; 4th char tries code[2], code[3], then 2..9/A..Z.
-static void hexen_make_rename(char used[][5], int* nused, const char* code, char out[5])
+// Hexen sprite rename, via the shared policy (tools/wadcodes.c).  `used` must be
+// pre-seeded with every code the host IWADs already own -- checking only the codes
+// we ourselves assign is not enough: Strife's BLOD/GIBS/SHRD/WATR are unknown to the
+// engine's tables yet live in heretic.wad and hexen.wad, and a pack that kept such a
+// name would clobber that game's art whenever it is loaded there.
+static void hexen_make_rename(codeset_t* used, const char* code, char out[5])
 {
-    char stem[4] = { 'X', code[0], code[1], 0 };
-    char cands[64]; int nc = 0;
-    cands[nc++] = code[2]; cands[nc++] = code[3];
-    for (const char* p = "23456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"; *p; p++) cands[nc++] = *p;
-    for (int c = 0; c < nc; c++) {
-        char cand[5]; snprintf(cand, sizeof cand, "%s%c", stem, cands[c]);
-        int taken = 0;
-        for (int u = 0; u < *nused; u++) if (!strcmp(used[u], cand)) { taken = 1; break; }
-        if (!taken) { strcpy(out, cand); strcpy(used[(*nused)++], cand); return; }
+    if (!wc_pick_rename("hexen", code, 'X', used, NULL, out))
+        { memcpy(out, code, 4); out[4] = 0; }   // unreachable in practice
+}
+
+static int extract_doom2(const char* srcpath, const char* outpath, char* log, int lcap)
+{ return extract_phase2(srcpath, outpath, NULL, log, lcap); }
+
+// Freedoom Phase 2 minus Phase 1 -- the same overlay, built from Freedoom's own art.
+static int extract_freedoom2(const char* srcpath, const char* outpath, char* log, int lcap)
+{
+    static const char* const fd1[] = { "freedoom1.wad", NULL };
+    return extract_phase2(srcpath, outpath, fd1, log, lcap);
+}
+
+// --- Strife: build strifestuff.wad ------------------------------------------
+//
+// MONSTERS ONLY.  The sprite list is whatever files/strife_mon.c actually installs
+// (every SPR_S_* it names), intersected with the engine's generated code/enum
+// tables -- so it cannot drift from the port, and Strife's items/weapons/scenery,
+// which were most of the collisions, never enter the pack.
+//
+// Strife was ported with its NATIVE 4-char codes, which is right in strife_mode but
+// collides with DOOM/Heretic/Hexen everywhere else.  Both cures come from GZDoom's
+// RenameSprites() (../gzdoom/src/d_main.cpp):
+//   * RENAME when its StrifeRenames[] has a free spelling -- SPID -> STLK (Stalker),
+//     MISL -> SMIS.  files/strife.c repoints the SPR_S_* slot outside strife_mode,
+//     driven by the files/strife_ph.inc this job writes.
+//   * OMIT when it does not.  GIBS/PLAY/POW1/SHT1/TFOG are generic effects the host
+//     game already owns a lump for, so not shipping them leaves the actor drawing
+//     the host's equivalent -- correct-looking, and it cannot shadow anything.
+// See docs/BUDDY_SPRITE_COLLISIONS.md.
+
+// Read "CODE" strings (want_quoted) or SPR_S_* identifiers out of a generated .inc.
+// Returns the count, or -1 if the file is unreadable.
+static int read_inc_list(const char* path, char (*out)[16], int cap, int want_quoted)
+{
+    FILE* f = fopen(path, "rb");
+    char  line[512];
+    int   n = 0;
+    if (!f) return -1;
+    while (n < cap && fgets(line, sizeof line, f)) {
+        if (line[0] == '/' && line[1] == '/') continue;
+        if (want_quoted) {
+            char* q = strchr(line, '"');
+            char* e;
+            if (!q) continue;
+            e = strchr(q + 1, '"');
+            if (!e || e - q - 1 > 15) continue;
+            memcpy(out[n], q + 1, (size_t)(e - q - 1));
+            out[n][e - q - 1] = 0;
+            n++;
+        } else {
+            char* q = strstr(line, "SPR_S_");
+            char* e;
+            if (!q) continue;
+            for (e = q; *e && (isalnum((unsigned char)*e) || *e == '_'); e++) {}
+            if (e - q > 15) continue;
+            memcpy(out[n], q, (size_t)(e - q));
+            out[n][e - q] = 0;
+            n++;
+        }
     }
-    strcpy(out, stem); // unreachable in practice
+    fclose(f);
+    return n;
+}
+
+#define STRIFE_MAXSPR 400
+
+static int extract_strife(const char* srcpath, const char* outpath, char* log, int lcap)
+{
+    static char codes[STRIFE_MAXSPR][16];       // native 4-char codes, enum order
+    static char enums[STRIFE_MAXSPR][16];       // matching SPR_S_* names
+    static char newc [STRIFE_MAXSPR][5];        // what each one ships as
+    char        incpath[700], enumpath[700];
+    int         ncodes, nenums, i, c;
+    int         n_spr = 0, n_skip = 0, n_snd = 0, n_ren = 0, n_dropsnd = 0, n_omit = 0;
+    static codeset_t used, own;
+    wad_t*      sw;
+    const unsigned char* spal;
+    obuf_t      o = {0};
+    FILE*       mf;
+
+    snprintf(incpath,  sizeof incpath,  "%s/../files/strife_sprnames.inc", g_rundir);
+    snprintf(enumpath, sizeof enumpath, "%s/../files/strife_spr.inc",      g_rundir);
+    ncodes = read_inc_list(incpath,  codes, STRIFE_MAXSPR, 1);
+    nenums = read_inc_list(enumpath, enums, STRIFE_MAXSPR, 0);
+    if (ncodes > 0 && nenums == ncodes) {
+        // Keep only the slots files/strife_mon.c installs -- the monster/boss art.
+        char  monpath[700];
+        char* mon;
+        long  mlen;
+        FILE* mfp;
+        snprintf(monpath, sizeof monpath, "%s/../files/strife_mon.c", g_rundir);
+        mfp = fopen(monpath, "rb");
+        if (!mfp) {
+            logf_(log, lcap, "ERROR: need files/strife_mon.c to pick the monster sprites\n");
+            return 0;
+        }
+        fseek(mfp, 0, SEEK_END); mlen = ftell(mfp); fseek(mfp, 0, SEEK_SET);
+        mon = (char*) malloc((size_t)mlen + 1);
+        if (!mon || fread(mon, 1, (size_t)mlen, mfp) != (size_t)mlen) {
+            fclose(mfp); free(mon);
+            logf_(log, lcap, "ERROR: cannot read files/strife_mon.c\n");
+            return 0;
+        }
+        mon[mlen] = 0;
+        fclose(mfp);
+        {   int keep = 0, k;
+            for (k = 0; k < ncodes; k++) {
+                // whole-identifier match, so SPR_S_ROB1 never matches SPR_S_ROB10
+                const char* q = mon;
+                int         hit = 0;
+                size_t      el = strlen(enums[k]);
+                while ((q = strstr(q, enums[k])) != NULL) {
+                    char after = q[el];
+                    if (!(isalnum((unsigned char)after) || after == '_')) { hit = 1; break; }
+                    q += el;
+                }
+                if (!hit) continue;
+                if (keep != k) {
+                    memcpy(codes[keep], codes[k], sizeof codes[0]);
+                    memcpy(enums[keep], enums[k], sizeof enums[0]);
+                }
+                keep++;
+            }
+            ncodes = nenums = keep;
+        }
+        free(mon);
+    }
+    if (ncodes <= 0 || nenums != ncodes) {
+        logf_(log, lcap, "ERROR: need files/strife_sprnames.inc + strife_spr.inc\n"
+                         "  (run the extractor from the BuddyDoom tree; got %d / %d)\n",
+              ncodes, nenums);
+        return 0;
+    }
+
+    sw = wad_load(srcpath);
+    if (!sw) { logf_(log, lcap, "ERROR: cannot read %s\n", srcpath); return 0; }
+    spal = get_playpal(sw);
+    if (!spal) { logf_(log, lcap, "ERROR: missing PLAYPAL\n"); wad_free(sw); return 0; }
+
+    // Reserve every code the other games own.  The engine's tables alone are not
+    // enough: BLOD/GIBS/SHRD/WATR are unknown to sprnames yet live in heretic.wad
+    // and hexen.wad, so keeping Strife's spelling would clobber their art there.
+    memset(&used, 0, sizeof used);
+    memset(&own,  0, sizeof own);
+    wc_reserve_from_dir(g_id0,    "strife1.wad", &used);
+    wc_reserve_from_dir(g_rundir, "strife1.wad", &used);
+    {   // buddydoom.wad already ships the Stalker under ZDoom's STLK -- same art,
+        // so re-using STLK here is sharing, not a clash.
+        char bd[700];
+        snprintf(bd, sizeof bd, "%s/buddydoom.wad", g_id0);    wc_codes_in_wad(bd, &own);
+        snprintf(bd, sizeof bd, "%s/buddydoom.wad", g_rundir); wc_codes_in_wad(bd, &own);
+    }
+
+    for (c = 0; c < ncodes; c++) {
+        if (!wc_has(&used, codes[c])) {                 // unique already -- keep it
+            memcpy(newc[c], codes[c], 4); newc[c][4] = 0;
+            wc_add(&used, newc[c]);
+        } else if (wc_pick_rename("strife", codes[c], 0, &used, &own, newc[c])) {
+            n_ren++;                                    // GZDoom has a free spelling
+        } else {
+            newc[c][0] = 0;                             // omit: host game owns it
+            n_omit++;
+        }
+    }
+
+    oadd(&o, "AISTUFF", (const unsigned char*)AISTUFF_NOTE, (int)strlen(AISTUFF_NOTE));
+    oadd(&o, "S_START", NULL, 0);
+    for (i = 0; i < sw->n; i++) {
+        const char* nm = sw->dir[i].name;
+        if (strlen(nm) <= 4) continue;
+        for (c = 0; c < ncodes; c++) {
+            char nn[9];
+            if (strncmp(nm, codes[c], 4)) continue;
+            if (!newc[c][0]) break;                     // omitted -- host game's lump wins
+            snprintf(nn, sizeof nn, "%s%s", newc[c], nm + 4);
+            n_spr += emit_sprite(&o, nn, sw->data + sw->dir[i].pos, sw->dir[i].size,
+                                 spal, &n_skip);
+            break;
+        }
+    }
+    oadd(&o, "S_END", NULL, 0);
+
+    // Strife's own DS* sounds, verbatim -- minus any name DOOM already owns, which
+    // would silently replace DOOM's audio (DSOOF, DSBAREXP, ...).  The DOOM lump of
+    // the same name is a fine stand-in for the Strife actor.
+    {
+        char   bp[600];
+        wad_t* dm = find_base(bp, sizeof bp) ? wad_load(bp) : NULL;
+        for (i = 0; i < sw->n; i++) {
+            const char* nm = sw->dir[i].name;
+            if (strncmp(nm, "DS", 2)) continue;
+            if (!is_dmx(sw->data + sw->dir[i].pos, sw->dir[i].size)) continue;
+            if (dm && wad_find(dm, (char*)nm) >= 0) { n_dropsnd++; continue; }
+            oadd(&o, nm, sw->data + sw->dir[i].pos, sw->dir[i].size); n_snd++;
+        }
+        wad_free(dm);
+    }
+
+    if (!wad_write(outpath, &o)) {
+        logf_(log, lcap, "ERROR: cannot write %s\n", outpath);
+        ofree(&o); wad_free(sw); return 0;
+    }
+
+    // The engine-side remap table (files/strife.c #includes it).
+    {
+        char phpath[700];
+        snprintf(phpath, sizeof phpath, "%s/../files/strife_ph.inc", g_rundir);
+        mf = fopen(phpath, "w");
+        if (mf) {
+            fprintf(mf, "// Auto-generated by tools/extractor -- do not edit by hand.\n"
+                        "// Strife sprite slots whose NATIVE 4-char code collides with a\n"
+                        "// DOOM/Heretic/Hexen sprite, and the collision-free placeholder\n"
+                        "// that strifestuff.wad ships them under.  files/strife.c applies\n"
+                        "// these when the game is NOT in strife_mode, so the pack never\n"
+                        "// shadows the host game's art.  docs/BUDDY_SPRITE_COLLISIONS.md.\n");
+            for (c = 0; c < ncodes; c++)
+                if (newc[c][0] && strncmp(newc[c], codes[c], 4))
+                    fprintf(mf, "    { %s, \"%s\" },\n", enums[c], newc[c]);
+            fclose(mf);
+            logf_(log, lcap, "  engine table -> files/strife_ph.inc\n");
+        }
+    }
+    {
+        char mappath[700];
+        snprintf(mappath, sizeof mappath, "%s/../tools/strife_sprite_map.txt", g_rundir);
+        mf = fopen(mappath, "w");
+        if (mf) {
+            fprintf(mf, "# Strife sprite code -> strifestuff.wad code.  Only codes that\n"
+                        "# COLLIDE with a DOOM/Heretic/Hexen sprite are renamed; the rest\n"
+                        "# keep their native name.  docs/BUDDY_SPRITE_COLLISIONS.md.\n");
+            for (c = 0; c < ncodes; c++)
+                if (newc[c][0] && strncmp(newc[c], codes[c], 4))
+                    fprintf(mf, "%s -> %s\n", codes[c], newc[c]);
+            fclose(mf);
+        }
+    }
+
+    logf_(log, lcap, "wrote %s\n", outpath);
+    logf_(log, lcap, "  sprites: %d (PNG, Strife palette)  %d monster codes\n", n_spr, ncodes);
+    logf_(log, lcap, "  renamed: %d   omitted (host game owns the code): %d\n", n_ren, n_omit);
+    if (n_skip) logf_(log, lcap, "  non-patch lumps skipped: %d\n", n_skip);
+    logf_(log, lcap, "  sounds: %d  (%d skipped, name already owned by DOOM)\n", n_snd, n_dropsnd);
+    ofree(&o); wad_free(sw);
+    return 1;
 }
 
 // --- Hexen: build hexenstuff.wad --------------------------------------------
@@ -620,14 +885,21 @@ static int extract_hexen(const char* srcpath, const char* outpath, char* log, in
     wad_t* b = wad_load(basepath);
     if (!h) { logf_(log, lcap, "ERROR: cannot read %s\n", srcpath); wad_free(b); return 0; }
     if (!b) { logf_(log, lcap, "ERROR: cannot read base %s\n", basepath); wad_free(h); return 0; }
+    // Sprites go out as PNG in the SOURCE game's own palette, so there is no
+    // conversion table any more -- files/v_png.c matches them to whatever IWAD is
+    // actually running, and keeps the full colour for the truecolor sprite path.
+    // The base IWAD is still located above so the "which DOOM do you have" check
+    // and its log line stay meaningful.
     const unsigned char* sp = get_playpal(h);
-    const unsigned char* dp = get_playpal(b);
-    if (!sp || !dp) { logf_(log, lcap, "ERROR: missing PLAYPAL\n"); wad_free(h); wad_free(b); return 0; }
-    unsigned char xl[256]; build_xlat(sp, dp, xl);
+    if (!sp) { logf_(log, lcap, "ERROR: missing PLAYPAL\n"); wad_free(h); wad_free(b); return 0; }
 
     // Which wanted sprite codes actually exist in this hexen.wad?
     static const char* wanted[128]; int nwanted = 0;
-    static char ren[128][5]; static char used[128][5]; int nused = 0;
+    static char ren[128][5];
+    static codeset_t used;                       // seeded with the host games' codes
+    memset(&used, 0, sizeof used);
+    wc_reserve_from_dir(g_id0,    "hexen.wad", &used);
+    wc_reserve_from_dir(g_rundir, "hexen.wad", &used);
     for (int t = 0; t < 2; t++) {
         const char** list = t ? HEXEN_WEAPON_SPR : HEXEN_MONSTER_SPR;
         for (int c = 0; list[c]; c++) {
@@ -636,7 +908,7 @@ static int extract_hexen(const char* srcpath, const char* outpath, char* log, in
                 if (strlen(h->dir[i].name) > 4 && !strncmp(h->dir[i].name, list[c], 4)) present = 1;
             if (present && nwanted < 128) {
                 wanted[nwanted] = list[c];
-                hexen_make_rename(used, &nused, list[c], ren[nwanted]);
+                hexen_make_rename(&used, list[c], ren[nwanted]);
                 nwanted++;
             }
         }
@@ -645,16 +917,15 @@ static int extract_hexen(const char* srcpath, const char* outpath, char* log, in
     obuf_t o = {0};
     oadd(&o, "AISTUFF", (const unsigned char*)AISTUFF_NOTE, (int)strlen(AISTUFF_NOTE));
     oadd(&o, "S_START", NULL, 0);
-    int n_spr = 0;
+    int n_spr = 0, n_skip = 0;
     for (int i = 0; i < h->n; i++) {
         const char* nm = h->dir[i].name;
         if (strlen(nm) <= 4) continue;
         for (int c = 0; c < nwanted; c++) {
             if (!strncmp(nm, wanted[c], 4)) {
                 char nn[9]; snprintf(nn, sizeof nn, "%s%s", ren[c], nm+4);
-                unsigned char* px = dup_remap(h->data + h->dir[i].pos, h->dir[i].size, xl);
-                oadd(&o, nn, px, h->dir[i].size);
-                free(px); n_spr++;
+                n_spr += emit_sprite(&o, nn, h->data + h->dir[i].pos, h->dir[i].size,
+                                     sp, &n_skip);
                 break;
             }
         }
@@ -749,6 +1020,8 @@ static int worker(void* unused)
         case K_HEXEN:    extract_hexen   (avail_path[job], out, local, sizeof local); break;
         case K_FREEDOOM: extract_freedoom(avail_path[job], out, local, sizeof local); break;
         case K_DOOM2:    extract_doom2   (avail_path[job], out, local, sizeof local); break;
+        case K_STRIFE:   extract_strife  (avail_path[job], out, local, sizeof local); break;
+        case K_FREEDOOM2: extract_freedoom2(avail_path[job], out, local, sizeof local); break;
     }
 
     SDL_LockMutex(g_lock);
@@ -908,6 +1181,8 @@ static int run_one_cli(int si, const char* srcpath, const char* outdir)
         case K_HEXEN:    ok = extract_hexen   (srcpath, out, log, sizeof log); break;
         case K_FREEDOOM: ok = extract_freedoom(srcpath, out, log, sizeof log); break;
         case K_DOOM2:    ok = extract_doom2   (srcpath, out, log, sizeof log); break;
+        case K_STRIFE:   ok = extract_strife  (srcpath, out, log, sizeof log); break;
+        case K_FREEDOOM2: ok = extract_freedoom2(srcpath, out, log, sizeof log); break;
     }
     fputs(log, stdout);
     return ok ? 0 : 1;

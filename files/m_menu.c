@@ -1609,9 +1609,7 @@ void M_DrawBuddy (void)
 	boolean		shoot = (nf > 4) && (ph < 9) && (hash < 30);	// fire ~0.25s, ~half the cycles
 	int		fr    = shoot ? 4 : ((nf >= 4) ? ((t/5) & 3) : ((t/5) % nf));
 	spriteframe_t*	sf    = &sprites[spr].spriteframes[fr];
-	patch_t*	p     = spritepatch[sf->lump[0]]
-			      ? (patch_t*) spritepatch[sf->lump[0]]	// converted GZDoom PNG sprite
-			      : (patch_t*) W_CacheLumpNum (spritelumps[sf->lump[0]], PU_CACHE);
+	patch_t*	p     = R_SpritePatch (sf->lump[0]);	// PNG sprites decode on demand
 	const byte*	trans = V_BuddyColorTable (mbuddy_color);	// NULL for Green(0)=identity
 
 	// Sprite goes in the UPPER-LEFT QUARTER at 1x, anchored on its origin (the feet),

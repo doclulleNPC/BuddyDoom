@@ -1213,15 +1213,34 @@ void IdentifyVersion (void)
 	}
 	gamemode = mode;
 	D_AddFile (found);
-	// DOOM1 + a doom2stuff.wad on hand -> auto-overlay it so the director can spawn
-	// DOOM2 monsters and the super shotgun works (assets are absent from doom.wad).
-	// (W_AddFile resolves the bare name under ID0/.)
-	if (mode != commercial && !heretic_mode
-	    && (!access ("ID0/doom2stuff.wad", R_OK) || !access ("doom2stuff.wad", R_OK)))
+	// A Doom-1-format IWAD lacks the DOOM2-exclusive monsters and the super shotgun,
+	// so overlay the matching *2stuff.wad if one is on hand -- then the director can
+	// spawn them and wp_supershotgun works.  (W_AddFile resolves the bare name under
+	// ID0/.)  The pack must MATCH THE GAME: doom2stuff.wad carries id Software art, so
+	// it belongs only on Doom 1 / shareware Doom, and Freedoom Phase 1 gets
+	// freedoom2stuff.wad instead -- overlaying id sprites on Freedoom would mix two
+	// completely different art styles.  Gate on the CONTENT id, not "anything that is
+	// not commercial": that old test also caught Freedoom Phase 1 (4 episodes, so it
+	// has E4M1 and was even mis-identified as The Ultimate Doom) and would catch any
+	// future Doom1-format game.
 	{
-	    D_AddFile ("doom2stuff.wad");
-	    doom2_overlay = 1;
-	    printf ("DOOM2 overlay: doom2stuff.wad -> DOOM2 monsters + super shotgun enabled\n");
+	    const char* pack =
+		  (iwid == IWID_DOOM_SW || iwid == IWID_DOOM_REG || iwid == IWID_DOOM_ULTIMATE)
+		      ? "doom2stuff.wad"
+		: (iwid == IWID_FREEDOOM1) ? "freedoom2stuff.wad"
+		: NULL;
+	
+	    if (pack && mode != commercial && !heretic_mode && !strife_mode)
+	    {
+		char id0path[64];
+		snprintf (id0path, sizeof id0path, "ID0/%s", pack);
+		if (!access (id0path, R_OK) || !access (pack, R_OK))
+		{
+		    D_AddFile (pack);
+		    doom2_overlay = 1;
+		    printf ("DOOM2 overlay: %s -> DOOM2 monsters + super shotgun enabled\n", pack);
+		}
+	    }
 	}
 	return;
     }

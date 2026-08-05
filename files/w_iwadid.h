@@ -305,13 +305,22 @@ static iwid_t IWID_Identify (const char* path, char* out, int cap, int* by_md5)
 		const char* b = path, * s;
 		if ((s = strrchr (b, '/')))  b = s+1;
 		if ((s = strrchr (b, '\\'))) b = s+1;
-		if      (strstr (b, "plut") || strstr (b, "Plut")) { id = IWID_PLUTONIA; label = "Final Doom: Plutonia"; }
+		// Freedoom ships a FREEDOOM marker lump (FreeDM adds FREEDM) -- content, not
+		// filename, so a renamed copy is still caught.
+		if      (iwid_dir_has (dir, numl, "FREEDM"))       { id = IWID_FREEDM;   label = "FreeDM"; }
+		else if (iwid_dir_has (dir, numl, "FREEDOOM"))     { id = IWID_FREEDOOM2; label = "Freedoom: Phase 2"; }
+		else if (strstr (b, "plut") || strstr (b, "Plut")) { id = IWID_PLUTONIA; label = "Final Doom: Plutonia"; }
 		else if (strstr (b, "tnt")  || strstr (b, "TNT"))  { id = IWID_TNT;      label = "Final Doom: TNT Evilution"; }
 		else if (strstr (b, "freedm"))                     { id = IWID_FREEDM;   label = "FreeDM"; }
 		else if (strstr (b, "freedoom2") || strstr(b,"freedoom"))
 							           { id = IWID_FREEDOOM2; label = "Freedoom: Phase 2"; }
 		else                                               { id = IWID_DOOM2;   label = "Doom II"; }
 	    }
+	    // Freedoom Phase 1 is a 4-episode Doom1-format IWAD, so it HAS E4M1 and used to
+	    // be mis-identified as The Ultimate Doom -- which then auto-overlaid DOOM2's
+	    // sprites onto it.  Its FREEDOOM marker lump settles it before that test.
+	    else if (iwid_dir_has (dir, numl, "FREEDOOM"))
+		{ id = IWID_FREEDOOM1; label = "Freedoom: Phase 1"; }
 	    else if (iwid_dir_has (dir, numl, "E4M1")) { id = IWID_DOOM_ULTIMATE; label = "The Ultimate Doom"; }
 	    else if (iwid_dir_has (dir, numl, "E2M1"))
 	    {
