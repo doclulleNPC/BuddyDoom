@@ -375,6 +375,16 @@ void D_Display (void)
 	    ST_Drawer (false, redrawsbar);
 	    fullscreen = false;
 	}
+	else if (gametype == GT_HEXEN)
+	{
+	    // Hexen, same as Strife above: it has its own bar (ST_HexenDrawer, reached
+	    // via ST_Drawer) and no scaled / alt-HUD variants, and the DOOM
+	    // ST_DrawScaled/ST_DrawAltHUD below draw STBAR/STTNUM art hexen.wad hasn't
+	    // got -- which is literally a black bar full of '!'.  Route every Status Bar
+	    // style through ST_Drawer.
+	    ST_Drawer (false, redrawsbar);
+	    fullscreen = false;
+	}
 	else if (statusbar_style == 1)	{ ST_DrawScaled (); fullscreen = true; }
 	else if (statusbar_style == 2)	{ ST_DrawAltHUD (); fullscreen = true; }
 	else

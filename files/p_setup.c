@@ -515,6 +515,11 @@ void P_LoadNodes (int lump)
 
 
 //
+// Set per level by P_SetupLevel: this map uses the HEXEN binary format -- 16-byte
+// LINEDEFS (ACS special byte + 5 args, no tag) and 20-byte THINGS (TID + spawn
+// height), marked by a BEHAVIOR lump.  DOOM/Boom/UDMF maps leave it 0.
+int	hexen_map_format = 0;
+
 // P_LoadThings
 //
 void P_LoadThings (int lump)
@@ -528,6 +533,29 @@ void P_LoadThings (int lump)
     data = W_CacheLumpNum (lump,PU_STATIC);
     numthings = W_LumpLength (lump) / sizeof(mapthing_t);
 	
+    // Hexen-format maps store 20-byte THINGS (tid, x, y, height, angle, type,
+    // flags, special, args[5]) instead of DOOM's 10-byte records.  Read them into
+    // a DOOM mapthing_t so the whole spawn path below is untouched; the extra
+    // fields (TID, spawn height, the ACS special + its args) are dropped, because
+    // nothing downstream can act on them yet.
+    if (hexen_map_format)
+    {
+	mapthing_t	conv;
+	const byte*	r = (const byte*) data;
+	numthings = W_LumpLength (lump) / 20;
+	for (i = 0 ; i < numthings ; i++, r += 20)
+	{
+	    conv.x       = (short)(r[2]  | (r[3]  << 8));
+	    conv.y       = (short)(r[4]  | (r[5]  << 8));
+	    conv.angle   = (short)(r[8]  | (r[9]  << 8));
+	    conv.type    = (short)(r[10] | (r[11] << 8));
+	    conv.options = (short)(r[12] | (r[13] << 8));
+	    P_SpawnMapThing (&conv);
+	}
+	Z_Free (data);
+	return;
+    }
+
     mt = (mapthing_t *)data;
     for (i=0 ; i<numthings ; i++, mt++)
     {
@@ -591,10 +619,51 @@ void P_LoadLineDefs (int lump)
     vertex_t*		v1;
     vertex_t*		v2;
 	
-    numlines = W_LumpLength (lump) / sizeof(maplinedef_t);
-    lines = Z_Malloc (numlines*sizeof(line_t),PU_LEVEL,0);	
+    // Hexen-format LINEDEFS are 16 bytes (v1, v2, flags, special:BYTE, args[5],
+    // sidenum[2]) against DOOM's 14 (v1, v2, flags, special, tag, sidenum[2]).
+    // Reading one as the other is what walked off the end of the lump and
+    // access-violated on every hexen.wad level load.
+    numlines = W_LumpLength (lump) / (hexen_map_format ? 16 : (int)sizeof(maplinedef_t));
+    lines = Z_Malloc (numlines*sizeof(line_t),PU_LEVEL,0);
     memset (lines, 0, numlines*sizeof(line_t));
     data = W_CacheLumpNum (lump,PU_STATIC);
+
+    if (hexen_map_format)
+    {
+	const byte* r = (const byte*) data;
+	ld = lines;
+	for (i = 0 ; i < numlines ; i++, r += 16, ld++)
+	{
+	    ld->flags = (short)(r[4] | (r[5] << 8));
+	    // Hexen's special is a 1-byte ACS/line-type id with 5 args and NO tag.
+	    // Its numbering has nothing to do with DOOM's, so running it would fire
+	    // arbitrary unrelated DOOM specials.  Drop it: the level loads and renders,
+	    // and doors/scripts simply do nothing until there is an ACS layer.
+	    ld->special = 0;
+	    ld->tag     = 0;
+	    v1 = ld->v1 = &vertexes[(unsigned short)(r[0] | (r[1] << 8))];
+	    v2 = ld->v2 = &vertexes[(unsigned short)(r[2] | (r[3] << 8))];
+	    ld->dx = v2->x - v1->x;
+	    ld->dy = v2->y - v1->y;
+	    if (!ld->dx)      ld->slopetype = ST_VERTICAL;
+	    else if (!ld->dy) ld->slopetype = ST_HORIZONTAL;
+	    else ld->slopetype = (FixedDiv (ld->dy, ld->dx) > 0) ? ST_POSITIVE : ST_NEGATIVE;
+
+	    if (v1->x < v2->x) { ld->bbox[BOXLEFT] = v1->x; ld->bbox[BOXRIGHT] = v2->x; }
+	    else               { ld->bbox[BOXLEFT] = v2->x; ld->bbox[BOXRIGHT] = v1->x; }
+	    if (v1->y < v2->y) { ld->bbox[BOXBOTTOM] = v1->y; ld->bbox[BOXTOP] = v2->y; }
+	    else               { ld->bbox[BOXBOTTOM] = v2->y; ld->bbox[BOXTOP] = v1->y; }
+
+	    ld->sidenum[0] = (short)(r[12] | (r[13] << 8));
+	    ld->sidenum[1] = (short)(r[14] | (r[15] << 8));
+	    if (ld->sidenum[0] == (short)0xffff) ld->sidenum[0] = -1;
+	    if (ld->sidenum[1] == (short)0xffff) ld->sidenum[1] = -1;
+	    ld->frontsector = (ld->sidenum[0] != -1) ? sides[ld->sidenum[0]].sector : 0;
+	    ld->backsector  = (ld->sidenum[1] != -1) ? sides[ld->sidenum[1]].sector : 0;
+	}
+	Z_Free (data);
+	return;
+    }
 	
     mld = (maplinedef_t *)data;
     ld = lines;
@@ -1121,6 +1190,19 @@ P_SetupLevel
     // UDMF (TEXTMAP) map?  Parse the text geometry + GL/ZDBSP nodes instead of the
     // eight binary lumps.  udmf_map is remembered for the THINGS load below.
     udmf_map = UDMF_IsMap (lumpnum);
+
+    // Hexen-format map?  The marker is a BEHAVIOR lump (compiled ACS) right after
+    // BLOCKMAP.  Detect it per-map rather than from the IWAD, since a PWAD can ship
+    // Hexen-format maps for any game -- and it decides how wide the LINEDEFS and
+    // THINGS records are (16/20 bytes vs DOOM's 14/10).
+    hexen_map_format = 0;
+    if (!udmf_map && lumpnum + ML_BLOCKMAP + 1 < numlumps
+	&& !strncasecmp (lumpinfo[lumpnum + ML_BLOCKMAP + 1].name, "BEHAVIOR", 8))
+    {
+	hexen_map_format = 1;
+	printf ("P_SetupLevel: %s is a Hexen-format map (BEHAVIOR present)\n", lumpname);
+    }
+
     if (udmf_map)
     {
 	UDMF_LoadMap (lumpnum);				// vertexes/sectors/sides/lines + find sub-lumps
