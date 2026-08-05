@@ -46,7 +46,8 @@ rcsid[] = "$Id: p_setup.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #include "p_udmf.h"			// UDMF (TEXTMAP) map support
 #include "p_ai_director.h"
 #include "p_ai_llm.h"
-#include "p_morph.h"		// (M) P_MorphReset -- clear morphs on level load
+#include "p_morph.h"
+#include "p_acs.h"		// (X) ACS -- Hexen BEHAVIOR scripts		// (M) P_MorphReset -- clear morphs on level load
 
 #include "s_sound.h"
 
@@ -542,6 +543,7 @@ void P_LoadThings (int lump)
     {
 	mapthing_t	conv;
 	const byte*	r = (const byte*) data;
+	int		nskipped = 0;
 	numthings = W_LumpLength (lump) / 20;
 	for (i = 0 ; i < numthings ; i++, r += 20)
 	{
@@ -550,8 +552,22 @@ void P_LoadThings (int lump)
 	    conv.angle   = (short)(r[8]  | (r[9]  << 8));
 	    conv.type    = (short)(r[10] | (r[11] << 8));
 	    conv.options = (short)(r[12] | (r[13] << 8));
-	    P_SpawnMapThing (&conv);
+	    // Hexen numbers its map things in its OWN space, unrelated to DOOM's.
+	    // Handing them to P_SpawnMapThing spawns whatever DOOM actor happens to
+	    // share the number -- Hexen thing 89 became DOOM's Icon-of-Sin shooter,
+	    // whose A_BrainSpit then dereferenced a braintargets list that a Hexen map
+	    // never fills, crashing on MAP02/MAP03.  Until there is a Hexen doomednum
+	    // table, spawn ONLY the player starts (1-4, shared by every id-format
+	    // game) and skip the rest -- an empty level beats a wrong, crashing one.
+	    if (conv.type >= 1 && conv.type <= 4)
+		P_SpawnMapThing (&conv);
+	    else if (nskipped < 8)
+	    { printf ("P_SetupLevel: Hexen thing type %d not mapped -- skipped\n",
+		      conv.type); nskipped++; }
+	    else nskipped++;
 	}
+	if (nskipped > 8)
+	    printf ("P_SetupLevel: ... and %d more unmapped Hexen things\n", nskipped - 8);
 	Z_Free (data);
 	return;
     }
@@ -639,7 +655,13 @@ void P_LoadLineDefs (int lump)
 	    // Its numbering has nothing to do with DOOM's, so running it would fire
 	    // arbitrary unrelated DOOM specials.  Drop it: the level loads and renders,
 	    // and doors/scripts simply do nothing until there is an ACS layer.
-	    ld->special = 0;
+	    // Hexen's special is a 1-byte id with 5 args and no tag.  Keep both: the
+	    // ACS bridge (files/p_acs.c P_ExecuteLineSpecial) knows this numbering,
+	    // and dropping them is what left every Hexen level inert.  ld->tag stays
+	    // 0 -- Hexen tags things through the args, not a tag field.
+	    ld->special = r[6];
+	    ld->args[0] = r[7];  ld->args[1] = r[8];  ld->args[2] = r[9];
+	    ld->args[3] = r[10]; ld->args[4] = r[11];
 	    ld->tag     = 0;
 	    v1 = ld->v1 = &vertexes[(unsigned short)(r[0] | (r[1] << 8))];
 	    v2 = ld->v2 = &vertexes[(unsigned short)(r[2] | (r[3] << 8))];
@@ -1252,6 +1274,9 @@ P_SetupLevel
     if (udmf_map)
 	UDMF_LoadThings ();
     else
+	// ACS: the map's BEHAVIOR lump.  After the geometry (OPEN scripts can touch
+	// sectors immediately) and before the things spawn.
+	P_LoadACScripts (hexen_map_format ? lumpnum + ML_BLOCKMAP + 1 : -1);
 	P_LoadThings (lumpnum+ML_THINGS);
     
     // if deathmatch, randomly spawn the active players

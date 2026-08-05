@@ -38,7 +38,7 @@ OBJS = \
 	strife.obj strife_deco.obj strife_mon.obj strife_weapons.obj strife_items.obj strife_stalker.obj p_inv_strife.obj sounds_strife.obj \
 	m_argv.obj m_bbox.obj m_cheat.obj m_controls.obj m_fixed.obj m_menu.obj m_misc.obj \
 	m_random.obj m_swap.obj p_ai_director.obj p_ai_llm.obj p_ai_coop.obj p_ceilng.obj p_doors.obj p_enemy.obj \
-	p_floor.obj p_inter.obj p_invent.obj p_inv_heretic.obj p_lights.obj p_map.obj p_maputl.obj p_mobj.obj p_morph.obj \
+	p_floor.obj p_inter.obj p_invent.obj p_inv_heretic.obj p_lights.obj p_map.obj p_maputl.obj p_mobj.obj p_morph.obj p_acs.obj \
 	p_boomsp.obj p_buddydef.obj p_companion.obj p_genlin.obj p_mbf.obj p_plats.obj p_pspr.obj p_saveg.obj p_secdrone.obj p_setup.obj p_sight.obj p_spec.obj p_udmf.obj \
 	p_switch.obj p_telept.obj p_tick.obj p_turret.obj p_user.obj revmarine.obj r_bsp.obj r_data.obj \
 	r_draw.obj r_main.obj r_plane.obj r_segs.obj r_skydefs.obj r_sky.obj r_things.obj \

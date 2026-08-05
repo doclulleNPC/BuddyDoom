@@ -244,6 +244,10 @@ typedef struct line_s
     // side).  -1 = no track defined.  See p_setup.c + EV_ChangeMusic.
     int		frontmusic;
     int		backmusic;
+
+    // (X) Hexen-format maps: the special's 5 args (Hexen has no tag field -- the
+    // tag is args[0] for most specials).  Zero on DOOM/Boom/UDMF maps.
+    byte	args[5];
 } line_t;
 
 
