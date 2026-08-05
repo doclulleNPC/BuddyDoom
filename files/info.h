@@ -221,6 +221,18 @@ typedef enum
     SPR_XSSF,		// stalker spit projectile (XSSF)
     SPR_XDRA,		// death wyvern / dragon (XDRA)
     SPR_XDRF,		// dragon fireball (XDRF)
+    SPR_XMNT,		// minotaur / dark servant (XMNT)
+    SPR_XFX1,		// minotaur mace ball (XFX1)
+    SPR_XFX3,		// minotaur floor fire (XFX3)
+    SPR_XMNS,		// minotaur teleport smoke (XMNS)
+    SPR_XABA,		// korax bat (XABA)
+    SPR_XPIG,		// pig -- Hexen morph creature (XPIG)
+    SPR_XPLA,		// fighter class boss (XPLA -- Hexen PLAY)
+    SPR_XCLE,		// cleric class boss (XCLE)
+    SPR_XMAG,		// mage class boss (XMAG)
+    SPR_XFSF,		// fighter boss Quietus bolt (XFSF)
+    SPR_XSPI,		// cleric boss holy spirit (XSPI)
+    SPR_XMS2,		// mage boss Bloodscourge shot (XMS2)
     // (H) Heretic artifact pickup sprites (hereticstuff.wad, 4-char Heretic codes).
     // MUST stay in lock-step with sprnames[] in info.c -- a mismatch shifts every
     // later sprite.  files/p_inv_heretic.c registers the pickup actors that use them.
@@ -1433,6 +1445,10 @@ typedef enum
     S_XFDM_ATK1, S_XFDM_ATK2, S_XFDM_ATK3, S_XFDM_ATK4,
     S_XFDM_PAIN1,
     S_XFDM_DIE1, S_XFDM_DIE2, S_XFDM_DIE3, S_XFDM_DIE4,
+    S_XFDM_DIE5, S_XFDM_DIE6, S_XFDM_DIE7,
+    // Afrit death splotches: the two scorch marks thrown out by the final burst
+    S_XFDS_DROP1, S_XFDS_LAND1, S_XFDS_REST1,
+    S_XFDS_DROP2, S_XFDS_LAND2, S_XFDS_REST2,
     // Fire Demon fireball projectile
     S_XFDB_MOVE1, S_XFDB_MOVE2, S_XFDB_MOVE3,
     S_XFDB_BOOM1, S_XFDB_BOOM2, S_XFDB_BOOM3, S_XFDB_BOOM4, S_XFDB_BOOM5,
@@ -1759,6 +1775,59 @@ typedef enum
     S_XSF3_EXP1, S_XSF3_EXP2, S_XSF3_EXP3, S_XSF3_EXP4, S_XSF3_EXP5,
     S_XSF4_1, S_XSF4_2, S_XSF4_3,
     S_XSF4_D1, S_XSF4_D2, S_XSF4_D3, S_XSF4_D4, S_XSF4_D5,
+    // (X) Minotaur / Dark Servant + its mace ball, floor fire and exit smoke
+    S_XMNT_LOOK1, S_XMNT_LOOK2,
+    S_XMNT_WALK1, S_XMNT_WALK2, S_XMNT_WALK3, S_XMNT_WALK4,
+    S_XMNT_ATK1_1, S_XMNT_ATK1_2, S_XMNT_ATK1_3,
+    S_XMNT_ATK2_1, S_XMNT_ATK2_2, S_XMNT_ATK2_3,
+    S_XMNT_ATK3_1, S_XMNT_ATK3_2, S_XMNT_ATK3_3,
+    S_XMNT_PAIN1, S_XMNT_PAIN2,
+    S_XMNT_DIE1, S_XMNT_DIE2, S_XMNT_DIE3, S_XMNT_DIE4, S_XMNT_DIE5,
+    S_XMNT_DIE6, S_XMNT_DIE7, S_XMNT_DIE8, S_XMNT_DIE9,
+    S_XMF1_MOVE1, S_XMF1_MOVE2,
+    S_XMF1_BOOM1, S_XMF1_BOOM2, S_XMF1_BOOM3, S_XMF1_BOOM4, S_XMF1_BOOM5, S_XMF1_BOOM6,
+    S_XMF2_MOVE1,
+    S_XMF2_BOOM1, S_XMF2_BOOM2, S_XMF2_BOOM3, S_XMF2_BOOM4, S_XMF2_BOOM5,
+    S_XMF3_MOVE1, S_XMF3_MOVE2, S_XMF3_MOVE3, S_XMF3_MOVE4, S_XMF3_MOVE5,
+    S_XMF3_MOVE6, S_XMF3_MOVE7, S_XMF3_MOVE8, S_XMF3_MOVE9,
+    S_XMNS_1, S_XMNS_2, S_XMNS_3, S_XMNS_4, S_XMNS_5, S_XMNS_6,
+    S_XMNS_7, S_XMNS_8, S_XMNS_9,
+    // (X) Korax's bat
+    S_XBAT_1, S_XBAT_2, S_XBAT_3, S_XBAT_DIE,
+    // (X) Pig -- the Hexen morph creature
+    S_XPIG_LOOK1,
+    S_XPIG_WALK1, S_XPIG_WALK2, S_XPIG_WALK3, S_XPIG_WALK4,
+    S_XPIG_PAIN1,
+    S_XPIG_ATK1, S_XPIG_ATK2,
+    S_XPIG_DIE1, S_XPIG_DIE2, S_XPIG_DIE3, S_XPIG_DIE4,
+    S_XPIG_DIE5, S_XPIG_DIE6, S_XPIG_DIE7, S_XPIG_DIE8,
+    // (X) Fighter class boss + its Quietus bolt
+    S_XFTR_LOOK1,
+    S_XFTR_RUN1, S_XFTR_RUN2, S_XFTR_RUN3, S_XFTR_RUN4,
+    S_XFTR_ATK1, S_XFTR_ATK2,
+    S_XFTR_PAIN1, S_XFTR_PAIN2,
+    S_XFTR_DIE1, S_XFTR_DIE2, S_XFTR_DIE3, S_XFTR_DIE4,
+    S_XFTR_DIE5, S_XFTR_DIE6, S_XFTR_DIE7,
+    S_XFSF_MOVE1, S_XFSF_MOVE2, S_XFSF_MOVE3,
+    S_XFSF_BOOM1, S_XFSF_BOOM2, S_XFSF_BOOM3, S_XFSF_BOOM4, S_XFSF_BOOM5,
+    // (X) Cleric class boss + its holy spirit
+    S_XCLR_LOOK1,
+    S_XCLR_RUN1, S_XCLR_RUN2, S_XCLR_RUN3, S_XCLR_RUN4,
+    S_XCLR_ATK1, S_XCLR_ATK2, S_XCLR_ATK3,
+    S_XCLR_PAIN1, S_XCLR_PAIN2,
+    S_XCLR_DIE1, S_XCLR_DIE2, S_XCLR_DIE3, S_XCLR_DIE4,
+    S_XCLR_DIE5, S_XCLR_DIE6, S_XCLR_DIE7, S_XCLR_DIE8, S_XCLR_DIE9,
+    S_XSPI_MOVE1, S_XSPI_MOVE2, S_XSPI_MOVE3, S_XSPI_MOVE4,
+    S_XSPI_BOOM1, S_XSPI_BOOM2, S_XSPI_BOOM3, S_XSPI_BOOM4, S_XSPI_BOOM5,
+    // (X) Mage class boss + its Bloodscourge shot
+    S_XMGE_LOOK1,
+    S_XMGE_RUN1, S_XMGE_RUN2, S_XMGE_RUN3, S_XMGE_RUN4,
+    S_XMGE_ATK1, S_XMGE_ATK2,
+    S_XMGE_PAIN1, S_XMGE_PAIN2,
+    S_XMGE_DIE1, S_XMGE_DIE2, S_XMGE_DIE3, S_XMGE_DIE4,
+    S_XMGE_DIE5, S_XMGE_DIE6, S_XMGE_DIE7,
+    S_XMS2_MOVE1, S_XMS2_MOVE2, S_XMS2_MOVE3, S_XMS2_MOVE4,
+    S_XMS2_BOOM1, S_XMS2_BOOM2, S_XMS2_BOOM3, S_XMS2_BOOM4, S_XMS2_BOOM5,
     // (H) Heretic weapons -- PL1 staff + gold wand psprites/puffs (files/heretic_weapons.c)
     S_HWP_STAFFREADY, S_HWP_STAFFDOWN, S_HWP_STAFFUP,
     S_HWP_STAFFATK1_1, S_HWP_STAFFATK1_2, S_HWP_STAFFATK1_3,
@@ -2040,6 +2109,8 @@ typedef enum {
     MT_XDEMON_FX,	// chaos serpent fireball projectile
     MT_XFIREDEMON,	// Hexen fire demon / afrit (flying, lobs fireballs)
     MT_XFIREDEMON_FX,	// fire demon fireball projectile
+    MT_XFIREDEMON_SPL1,	// afrit death splotch A (scorch mark left by the burst)
+    MT_XFIREDEMON_SPL2,	// afrit death splotch B
     MT_XWRAITH,		// Hexen reiver / wraith (floating, melee + bolt)
     MT_XWRAITH_FX,	// reiver bolt projectile
     MT_XBISHOP,		// Hexen dark bishop (floating caster, melee + missile)
@@ -2177,6 +2248,17 @@ typedef enum {
     MT_XDEMON2, MT_XDEMON2_FX, MT_XWRAITHB,
     MT_XKORAX, MT_XKORAX_BOLT, MT_XKORAX_SPIRIT,
     MT_XHERESIARCH, MT_XSORCFX1, MT_XSORCFX2, MT_XSORCFX3, MT_XSORCFX4,
+    // (X) Minotaur / Dark Servant + mace ball / floor-fire mortar / floor flame / smoke
+    MT_XMINOTAUR, MT_XMNTFX1, MT_XMNTFX2, MT_XMNTFX3, MT_XMNTSMOKE,
+    MT_XBAT,		// (X) Korax's bat
+    MT_XPIG,		// (X) pig -- the Hexen morph creature (files/p_morph.c)
+    // (X) "Mash" variants: ghostly, bloodless clones that leave no corpse.  Hexen
+    // ednums 100-103; they reuse their normal counterpart's states.
+    MT_XETTIN_MASH, MT_XCENTAUR_MASH, MT_XDEMON_MASH, MT_XDEMON2_MASH,
+    // (X) Fighter / Cleric / Mage class bosses + their 4th-weapon bolts
+    MT_XFIGHTERBOSS, MT_XFSWORDFX,
+    MT_XCLERICBOSS,  MT_XHOLYFX,
+    MT_XMAGEBOSS,    MT_XMSTAFFFX,
     // (H) Heretic weapon puffs (files/heretic_weapons.c)
     MT_HWP_STAFFPUFF, MT_HWP_GWANDPUFF,
     // (H) Heretic weapons phase 2-4 projectiles/puffs

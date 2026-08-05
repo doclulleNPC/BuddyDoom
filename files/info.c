@@ -68,6 +68,8 @@ char *sprnames_builtin[NUMSPRITES] = {
     "XCEN","XCTF","XDEM","XDMF",						// Hexen centaur/serpent + projectiles
     "XFDM","XFDB","XWRT","XWRB","XBIS","XBPF",				// Hexen fire demon / reiver / bishop + projectiles
     "XICE","XICP","XSSP","XSSF","XDRA","XDRF",				// Hexen wendigo / stalker / dragon + projectiles
+    "XMNT","XFX1","XFX3","XMNS","XABA","XPIG",				// Hexen minotaur + mace ball / floor fire / smoke, bat, pig
+    "XPLA","XCLE","XMAG","XFSF","XSPI","XMS2",				// Hexen fighter/cleric/mage class bosses + their 4th-weapon bolts
     // (H) Heretic artifact pickup sprites -- lock-step with spritenum_t (info.h)
     "PTN1","SPHL","PWBK","TRCH","FBMB","INVU","INVS","ATLP",
     "SOAR","EGGC","HCHK",			// Wings / Morph Ovum / morph chicken

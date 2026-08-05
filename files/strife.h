@@ -24,4 +24,9 @@ int  Strife_Available (void);
 // mobjtype (MT_S*), or -1 for an unported Strife thing (skip it).
 int  P_StrifeThingType (int doomednum);
 
+// Map a name ("acolyte"/"reaver"/"crusader"/...) to a Strife mobjtype for the console
+// `summon`, or -1 if unknown / strife1.wad's sprites aren't loaded.  Names follow
+// gzdoom's Strife actor classes (files/strife_mon.c).
+int  Strife_Mon_TypeByName (const char* s);
+
 #endif

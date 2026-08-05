@@ -54,6 +54,8 @@
 //
 //-----------------------------------------------------------------------------
 
+#include <string.h>
+
 #include "doomdef.h"
 #include "doomstat.h"
 #include "m_random.h"
@@ -66,6 +68,7 @@
 #include "m_fixed.h"
 #include "p_mobj.h"
 #include "r_defs.h"	// (known gotcha: pulls in struct defs info.h leans on)
+#include "strife.h"	// Strife_Available -- gate the console name lookup
 
 extern state_t   *states;
 extern mobjinfo_t *mobjinfo;
@@ -1147,6 +1150,63 @@ static void ST (statenum_t s, spritenum_t spr, int frame, int tics,
     states[s].action.acp1 = act;
     states[s].nextstate   = next;
     states[s].misc1 = states[s].misc2 = 0;
+}
+
+// Map a name to a Strife mobjtype for the console `summon`, or -1 if unknown.
+// Names are GZDoom's Strife actor class names lowercased (see
+// ../gzdoom/wadsrc/static/zscript/actors/strife + mapinfo/strife.txt DoomEdNums),
+// with the short aliases people actually type.  Where a name is already taken by an
+// earlier game's table in C_MobjByName (bishop/stalker/zombie/spectre are Hexen or
+// DOOM), the "strife*" spelling is the one that always resolves.
+int Strife_Mon_TypeByName (const char* s)
+{
+    static const struct { const char* n; short t; } tbl[] = {
+	// grunts
+	{"acolyte",MT_S_GUARD1},	{"acolytetan",MT_S_GUARD1},
+	{"acolytered",MT_S_GUARD2},	{"acolyterust",MT_S_GUARD3},
+	{"acolytegray",MT_S_GUARD4},	{"acolytedgreen",MT_S_GUARD5},
+	{"acolytegold",MT_S_GUARD6},	{"acolytelgreen",MT_S_GUARD7},
+	{"acolyteblue",MT_S_GUARD8},	{"acolyteshadow",MT_S_SHADOWGUARD},
+	{"acolytetobe",MT_S_BECOMING},	{"becoming",MT_S_BECOMING},
+	{"templar",MT_S_PGUARD},
+	{"reaver",MT_S_REAVER},
+	{"zombie",MT_S_ZOMBIE},		{"strifezombie",MT_S_ZOMBIE},
+	{"zombiespawner",MT_S_ZOMBIESPAWNER},
+	{"rebel",MT_S_REBEL1},		{"rebel1",MT_S_REBEL1},
+	{"rebel2",MT_S_REBEL2},		{"rebel3",MT_S_REBEL3},
+	{"rebel4",MT_S_REBEL4},		{"rebel5",MT_S_REBEL5},
+	{"rebel6",MT_S_REBEL6},
+	{"peasant",MT_S_PEASANT1},	{"beggar",MT_S_BEGGAR1},
+	{"kneelingguy",MT_S_KNEELING_GUY},
+	// machines / bosses
+	{"crusader",MT_S_CRUSADER},
+	{"sentinel",MT_S_SENTINEL},
+	{"inquisitor",MT_S_INQUISITOR},
+	{"stalker",MT_S_STALKER},	{"strifestalker",MT_S_STALKER},
+	{"strifebishop",MT_S_BISHOP},	{"bishop",MT_S_BISHOP},
+	{"programmer",MT_S_PROGRAMMER},
+	{"loremaster",MT_S_PRIEST},	{"priest",MT_S_PRIEST},
+	{"oracle",MT_S_ORACLE},
+	{"macil",MT_S_RLEADER},		{"macil1",MT_S_RLEADER},
+	{"macil2",MT_S_RLEADER2},
+	{"entityboss",MT_S_ENTITY},	{"entity",MT_S_ENTITY},
+	{"entitysecond",MT_S_SUBENTITY},{"subentity",MT_S_SUBENTITY},
+	{"alienspectre",MT_S_SPECTRE_A},{"alienspectre1",MT_S_SPECTRE_A},
+	{"alienspectre2",MT_S_SPECTRE_B},{"alienspectre3",MT_S_SPECTRE_C},
+	{"alienspectre4",MT_S_SPECTRE_D},{"alienspectre5",MT_S_SPECTRE_E},
+	// turrets / hazards
+	{"ceilingturret",MT_S_TURRET},	{"strifeturret",MT_S_TURRET},
+	{"forcefieldguard",MT_S_FIELDGUARD},
+	{NULL,0}
+    };
+    int i;
+
+    if (!s || !s[0] || !Strife_Available ())
+	return -1;
+    for (i = 0; tbl[i].n; i++)
+	if (!strcmp (s, tbl[i].n))
+	    return tbl[i].t;
+    return -1;
 }
 
 void Strife_Mon_Init (void)

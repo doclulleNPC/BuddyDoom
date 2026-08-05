@@ -39,7 +39,12 @@
 #include "tables.h"		// finesine/finecosine/ANG45/ANG90/ANGLETOFINESHIFT
 #include "sounds.h"
 #include "p_mobj.h"
+#include "d_player.h"		// player_t -- A_XMinotaurAtk3 squishes the view
 #include "hexen.h"
+
+#ifndef ONFLOORZ
+#define ONFLOORZ	MININT		// p_local.h; not pulled in here (enum clashes)
+#endif
 
 extern state_t *states;
 extern mobjinfo_t *mobjinfo;
@@ -59,6 +64,8 @@ extern mobj_t*	P_SpawnMobj (fixed_t x, fixed_t y, fixed_t z, mobjtype_t type);
 extern boolean	P_SetMobjState (mobj_t* mobj, statenum_t state);
 extern mobj_t*	P_SpawnMonsterChecked (fixed_t x, fixed_t y, mobjtype_t type);
 extern mobj_t*	P_SpawnMissile (mobj_t* source, mobj_t* dest, mobjtype_t type);
+extern void	P_CheckMissileSpawn (mobj_t* th);
+extern fixed_t	P_AproxDistance (fixed_t dx, fixed_t dy);
 
 // Hexen's HITDICE(d) melee damage = ((P_Random() & 7) + 1) * d.  (mirrors hexen.c)
 #define HITDICE(d)	(((P_Random () & 7) + 1) * (d))
@@ -287,6 +294,198 @@ static void ST (statenum_t s, spritenum_t spr, int frame, int tics,
     states[s].action.acp1 = act;
     states[s].nextstate   = next;
     states[s].misc1 = states[s].misc2 = 0;
+}
+
+// ---------------------------------------------------------------------------
+// Minotaur / Dark Servant (crispy hexen/p_enemy.c A_Minotaur*).  Simplifications,
+// all forced by this engine's mobj_t having no args[]/special1/special2:
+//   * the summoned-servant life cycle is gone -- the fade-in ritual (A_MinotaurFade*,
+//     S_MNTR_SPAWN*), the friendly A_MinotaurLook/Chase/Roam wander and the expiry
+//     timer.  It spawns hostile, looks and chases like every other monster here.
+//   * the CHARGE attack (S_MNTR_ATK4_1 / A_MinotaurCharge) needs a per-actor duration
+//     counter (crispy args[4]); dropped, so A_MinotaurDecide is a two-way roll
+//     between the floor-fire attack and the hammer swing.
+//   * A_MinotaurAtk3's "swing again" repeat used special2; dropped.
+// ---------------------------------------------------------------------------
+
+// Hammer swing: pure melee, HITDICE(4) = 4..32.
+void A_XMinotaurAtk1 (mobj_t* actor)
+{
+    if (!actor->target)
+	return;
+    S_StartSound (actor, sfx_x_mnatk);
+    if (P_CheckMeleeRange (actor))
+	P_DamageMobj (actor->target, actor, actor, HITDICE (4));
+}
+
+// Floor fire: a mortar that skitters along the ground spawning flames.
+void A_XMinotaurAtk3 (mobj_t* actor)
+{
+    mobj_t* mo;
+
+    if (!actor->target)
+	return;
+    if (P_CheckMeleeRange (actor))
+    {
+	P_DamageMobj (actor->target, actor, actor, HITDICE (3));
+	if (actor->target->player)		// squish the view (crispy)
+	    actor->target->player->deltaviewheight = -16*FRACUNIT;
+	return;
+    }
+    mo = P_SpawnMissile (actor, actor->target, MT_XMNTFX2);
+    if (mo)
+	S_StartSound (mo, sfx_x_mnhit);
+}
+
+// Pick between the floor fire and the hammer (crispy A_MinotaurDecide, minus the
+// charge branch): close to a grounded target -> floor fire, else fall through to
+// the swing the current state chain already leads into.
+void A_XMinotaurDecide (mobj_t* actor)
+{
+    mobj_t*	target = actor->target;
+    fixed_t	dist;
+
+    if (!target)
+	return;
+    dist = P_AproxDistance (actor->x - target->x, actor->y - target->y);
+    if (target->z == target->floorz && dist < 9*64*FRACUNIT && P_Random () < 100)
+	P_SetMobjState (actor, S_XMNT_ATK3_1);
+    else
+	A_FaceTarget (actor);
+}
+
+// Mace-ball volley: melee if it can reach, else a five-wide fan of MT_XMNTFX1.
+void A_XMinotaurAtk2 (mobj_t* actor)
+{
+    if (!actor->target)
+	return;
+    S_StartSound (actor, sfx_x_mnatk);
+    if (P_CheckMeleeRange (actor))
+    {
+	P_DamageMobj (actor->target, actor, actor, HITDICE (3));
+	return;
+    }
+    Korax_FireFan (actor, MT_XMNTFX1, 5);
+}
+
+// The floor-fire mortar lays a flame on the ground under itself each tic
+// (crispy A_MntrFloorFire).
+void A_XMntrFloorFire (mobj_t* actor)
+{
+    mobj_t*	mo;
+    int		r1 = (P_Random () - P_Random ());
+    int		r2 = (P_Random () - P_Random ());
+
+    actor->z = actor->floorz;
+    mo = P_SpawnMobj (actor->x + (r2 << 10), actor->y + (r1 << 10), ONFLOORZ,
+		      MT_XMNTFX3);
+    if (!mo)
+	return;
+    mo->target = actor->target;
+    mo->momx = 1;			// force block checking (crispy)
+    P_CheckMissileSpawn (mo);
+}
+
+// Puff of smoke partway through the death (crispy A_SmokePuffExit).
+void A_XMinotaurSmoke (mobj_t* actor)
+{
+    P_SpawnMobj (actor->x, actor->y, actor->z, MT_XMNTSMOKE);
+}
+
+// Korax's bat: flap along, drifting up and down, and expire on its own.
+void A_BatMove (mobj_t* actor)
+{
+    angle_t	a;
+
+    if (actor->reactiontime && --actor->reactiontime == 0)
+    {
+	P_SetMobjState (actor, S_NULL);
+	return;
+    }
+    actor->angle += (P_Random () < 128) ? (ANG45/8) : -(ANG45/8);
+    a = actor->angle >> ANGLETOFINESHIFT;
+    actor->momx = FixedMul (actor->info->speed, finecosine[a]);
+    actor->momy = FixedMul (actor->info->speed, finesine[a]);
+    actor->momz = (P_Random () < 128) ? FRACUNIT/2 : -FRACUNIT/2;
+}
+
+// Pig: a weak bite (crispy A_PigAttack, minus the morph-timer poll which
+// files/p_morph.c owns here).
+void A_PigAttack (mobj_t* actor)
+{
+    if (!actor->target)
+	return;
+    if (P_CheckMeleeRange (actor))
+    {
+	P_DamageMobj (actor->target, actor, actor, 2 + (P_Random () & 1));
+	S_StartSound (actor, sfx_x_pgatk);
+    }
+}
+
+// Pig pain: squeal and hop (crispy A_PigPain).
+void A_PigPain (mobj_t* actor)
+{
+    A_Pain (actor);
+    if (actor->z <= actor->floorz)
+	actor->momz = 7*FRACUNIT/2;
+}
+
+// ---------------------------------------------------------------------------
+// Fighter / Cleric / Mage class bosses (crispy MT_*_BOSS).  Each is a player-model
+// duelist that fires its class's 4th weapon.  Simplifications:
+//   * A_FastChase (the strafe-and-shoot chase) needs special2 as a strafe timer;
+//     plain A_Chase is used, so they close in rather than circle-strafe.
+//   * A_ClassBossHealth (x5 HP in co-op) needs special1; dropped.
+//   * the attacks are the real thing minus the weapon-specific plumbing: crispy's
+//     Quietus/Bloodscourge fans are reproduced with the same spreads, and the
+//     Wraithverge's spirit-splitting seeker is flattened to a single seeker.
+//   * xdeath (A_SkullPop) and the ice death are dropped, like every other Hexen
+//     monster in this port.
+// ---------------------------------------------------------------------------
+
+// Quietus: a five-wide bolt fan (crispy A_FSwordAttack2).
+void A_XFighterAttack (mobj_t* actor)
+{
+    if (!actor->target)
+	return;
+    S_StartSound (actor, sfx_x_fbatk);
+    Korax_FireFan (actor, MT_XFSWORDFX, 5);
+}
+
+// Wraithverge: one holy seeker (crispy A_CHolyAttack3 spawns MT_HOLY_MISSILE,
+// which immediately splits into three tracking spirits -- flattened to one here).
+void A_XClericAttack (mobj_t* actor)
+{
+    mobj_t* mo;
+
+    if (!actor->target)
+	return;
+    S_StartSound (actor, sfx_x_cbatk);
+    mo = P_SpawnMissile (actor, actor->target, MT_XHOLYFX);
+    if (mo)
+	mo->tracer = actor->target;		// A_Tracer needs the homing target
+}
+
+// Bloodscourge: three seekers, straight and +/-5 degrees (crispy A_MStaffAttack2).
+void A_XMageAttack (mobj_t* actor)
+{
+    int	i;
+
+    if (!actor->target)
+	return;
+    S_StartSound (actor, sfx_x_mbatk);
+    for (i = 0; i < 3; i++)
+    {
+	mobj_t*	mo = P_SpawnMissile (actor, actor->target, MT_XMSTAFFFX);
+	angle_t	a;
+	if (!mo)
+	    continue;
+	mo->tracer = actor->target;
+	mo->angle += (angle_t)((i - 1) * (ANG45 / 9));		// ~5 deg
+	a = mo->angle >> ANGLETOFINESHIFT;
+	mo->momx = FixedMul (mo->info->speed, finecosine[a]);
+	mo->momy = FixedMul (mo->info->speed, finesine[a]);
+    }
 }
 
 void Hexen_Mon_Init (void)
@@ -604,6 +803,350 @@ void Hexen_Mon_Init (void)
     m->speed = 12*FRACUNIT; m->radius = 10*FRACUNIT; m->height = 10*FRACUNIT; m->mass = 100;
     m->damage = 10; m->activesound = sfx_None;
     m->flags = MF_NOBLOCKMAP|MF_MISSILE|MF_NOGRAVITY|MF_DROPOFF|MF_SHADOW; m->flags2 = 0; m->raisestate = S_NULL;
+
+    // ---- Minotaur / Dark Servant (crispy S_MNTR_*).  Sprite XMNT: A-D walk,
+    //      E pain/death, F charge, G-H swing wind-up, I hammer, J-K mace throw. ----
+    ST (S_XMNT_LOOK1,   SPR_XMNT,  0, 10, (actionf_p1)A_Look,          S_XMNT_LOOK2);
+    ST (S_XMNT_LOOK2,   SPR_XMNT,  1, 10, (actionf_p1)A_Look,          S_XMNT_LOOK1);
+    ST (S_XMNT_WALK1,   SPR_XMNT,  0,  5, (actionf_p1)A_Chase,         S_XMNT_WALK2);
+    ST (S_XMNT_WALK2,   SPR_XMNT,  1,  5, (actionf_p1)A_Chase,         S_XMNT_WALK3);
+    ST (S_XMNT_WALK3,   SPR_XMNT,  2,  5, (actionf_p1)A_Chase,         S_XMNT_WALK4);
+    ST (S_XMNT_WALK4,   SPR_XMNT,  3,  5, (actionf_p1)A_Chase,         S_XMNT_WALK1);
+    ST (S_XMNT_ATK1_1,  SPR_XMNT,  6, 10, (actionf_p1)A_FaceTarget,    S_XMNT_ATK1_2);
+    ST (S_XMNT_ATK1_2,  SPR_XMNT,  7,  7, (actionf_p1)A_FaceTarget,    S_XMNT_ATK1_3);
+    ST (S_XMNT_ATK1_3,  SPR_XMNT,  8, 12, (actionf_p1)A_XMinotaurAtk1,  S_XMNT_WALK1);
+    ST (S_XMNT_ATK2_1,  SPR_XMNT,  6, 10, (actionf_p1)A_XMinotaurDecide,S_XMNT_ATK2_2);
+    ST (S_XMNT_ATK2_2,  SPR_XMNT,  9,  4, (actionf_p1)A_FaceTarget,    S_XMNT_ATK2_3);
+    ST (S_XMNT_ATK2_3,  SPR_XMNT, 10,  9, (actionf_p1)A_XMinotaurAtk2,  S_XMNT_WALK1);
+    ST (S_XMNT_ATK3_1,  SPR_XMNT,  6, 10, (actionf_p1)A_FaceTarget,    S_XMNT_ATK3_2);
+    ST (S_XMNT_ATK3_2,  SPR_XMNT,  7,  7, (actionf_p1)A_FaceTarget,    S_XMNT_ATK3_3);
+    ST (S_XMNT_ATK3_3,  SPR_XMNT,  8, 12, (actionf_p1)A_XMinotaurAtk3,  S_XMNT_WALK1);
+    ST (S_XMNT_PAIN1,   SPR_XMNT,  4,  3, NULL,                        S_XMNT_PAIN2);
+    ST (S_XMNT_PAIN2,   SPR_XMNT,  4,  6, (actionf_p1)A_Pain,          S_XMNT_WALK1);
+    ST (S_XMNT_DIE1,    SPR_XMNT,  4,  6, NULL,                        S_XMNT_DIE2);
+    ST (S_XMNT_DIE2,    SPR_XMNT,  4,  2, (actionf_p1)A_Scream,        S_XMNT_DIE3);
+    ST (S_XMNT_DIE3,    SPR_XMNT,  4,  5, (actionf_p1)A_XMinotaurSmoke, S_XMNT_DIE4);
+    ST (S_XMNT_DIE4,    SPR_XMNT,  4,  5, NULL,                        S_XMNT_DIE5);
+    ST (S_XMNT_DIE5,    SPR_XMNT,  4,  5, (actionf_p1)A_Fall,          S_XMNT_DIE6);
+    ST (S_XMNT_DIE6,    SPR_XMNT,  4,  5, NULL,                        S_XMNT_DIE7);
+    ST (S_XMNT_DIE7,    SPR_XMNT,  4,  5, NULL,                        S_XMNT_DIE8);
+    ST (S_XMNT_DIE8,    SPR_XMNT,  4,  5, NULL,                        S_XMNT_DIE9);
+    ST (S_XMNT_DIE9,    SPR_XMNT,  4, 10, NULL,                        S_NULL);
+
+    // Mace ball (crispy S_MNTRFX1_*) -- fullbright.
+    ST (S_XMF1_MOVE1, SPR_XFX1, 32768, 6, NULL, S_XMF1_MOVE2);
+    ST (S_XMF1_MOVE2, SPR_XFX1, 32769, 6, NULL, S_XMF1_MOVE1);
+    ST (S_XMF1_BOOM1, SPR_XFX1, 32770, 5, NULL, S_XMF1_BOOM2);
+    ST (S_XMF1_BOOM2, SPR_XFX1, 32771, 5, NULL, S_XMF1_BOOM3);
+    ST (S_XMF1_BOOM3, SPR_XFX1, 32772, 5, NULL, S_XMF1_BOOM4);
+    ST (S_XMF1_BOOM4, SPR_XFX1, 32773, 5, NULL, S_XMF1_BOOM5);
+    ST (S_XMF1_BOOM5, SPR_XFX1, 32774, 5, NULL, S_XMF1_BOOM6);
+    ST (S_XMF1_BOOM6, SPR_XFX1, 32775, 5, NULL, S_NULL);
+
+    // Floor-fire mortar (crispy S_MNTRFX2_*): loops on itself laying flames.
+    ST (S_XMF2_MOVE1, SPR_XFX3,     0, 2, (actionf_p1)A_XMntrFloorFire, S_XMF2_MOVE1);
+    ST (S_XMF2_BOOM1, SPR_XFX3, 32776, 4, NULL,                        S_XMF2_BOOM2);
+    ST (S_XMF2_BOOM2, SPR_XFX3, 32777, 4, NULL,                        S_XMF2_BOOM3);
+    ST (S_XMF2_BOOM3, SPR_XFX3, 32778, 4, NULL,                        S_XMF2_BOOM4);
+    ST (S_XMF2_BOOM4, SPR_XFX3, 32779, 4, NULL,                        S_XMF2_BOOM5);
+    ST (S_XMF2_BOOM5, SPR_XFX3, 32780, 4, NULL,                        S_NULL);
+
+    // The flame the mortar leaves behind (crispy S_MNTRFX3_*).
+    ST (S_XMF3_MOVE1, SPR_XFX3, 32771, 4, NULL, S_XMF3_MOVE2);
+    ST (S_XMF3_MOVE2, SPR_XFX3, 32770, 4, NULL, S_XMF3_MOVE3);
+    ST (S_XMF3_MOVE3, SPR_XFX3, 32769, 5, NULL, S_XMF3_MOVE4);
+    ST (S_XMF3_MOVE4, SPR_XFX3, 32770, 5, NULL, S_XMF3_MOVE5);
+    ST (S_XMF3_MOVE5, SPR_XFX3, 32771, 5, NULL, S_XMF3_MOVE6);
+    ST (S_XMF3_MOVE6, SPR_XFX3, 32772, 5, NULL, S_XMF3_MOVE7);
+    ST (S_XMF3_MOVE7, SPR_XFX3, 32773, 4, NULL, S_XMF3_MOVE8);
+    ST (S_XMF3_MOVE8, SPR_XFX3, 32774, 4, NULL, S_XMF3_MOVE9);
+    ST (S_XMF3_MOVE9, SPR_XFX3, 32775, 4, NULL, S_NULL);
+
+    // Death smoke (crispy S_MINOSMOKEX*, trimmed to 9 of the 17 frames).
+    ST (S_XMNS_1, SPR_XMNS, 0, 3, NULL, S_XMNS_2);
+    ST (S_XMNS_2, SPR_XMNS, 1, 3, NULL, S_XMNS_3);
+    ST (S_XMNS_3, SPR_XMNS, 2, 3, NULL, S_XMNS_4);
+    ST (S_XMNS_4, SPR_XMNS, 3, 3, NULL, S_XMNS_5);
+    ST (S_XMNS_5, SPR_XMNS, 4, 3, NULL, S_XMNS_6);
+    ST (S_XMNS_6, SPR_XMNS, 5, 3, NULL, S_XMNS_7);
+    ST (S_XMNS_7, SPR_XMNS, 6, 3, NULL, S_XMNS_8);
+    ST (S_XMNS_8, SPR_XMNS, 7, 3, NULL, S_XMNS_9);
+    ST (S_XMNS_9, SPR_XMNS, 8, 3, NULL, S_NULL);
+
+    m = &mobjinfo[MT_XMINOTAUR];
+    m->doomednum = -1;        m->spawnstate  = S_XMNT_LOOK1; m->spawnhealth = 2500;
+    m->seestate  = S_XMNT_WALK1; m->seesound = sfx_x_mnsit;  m->reactiontime = 8;
+    m->attacksound = sfx_x_mnatk;m->painstate = S_XMNT_PAIN1;m->painchance = 25;
+    m->painsound = sfx_x_mnpai;  m->meleestate = S_XMNT_ATK1_1; m->missilestate = S_XMNT_ATK2_1;
+    m->deathstate = S_XMNT_DIE1; m->xdeathstate = S_NULL;    m->deathsound = sfx_x_mndth;
+    m->speed = 16; m->radius = 28*FRACUNIT; m->height = 100*FRACUNIT; m->mass = 800;
+    m->damage = 7; m->activesound = sfx_x_mnact;
+    m->flags = MF_SOLID|MF_SHOOTABLE|MF_COUNTKILL; m->flags2 = 0; m->raisestate = S_NULL;
+
+    m = &mobjinfo[MT_XMNTFX1];
+    m->doomednum = -1;        m->spawnstate  = S_XMF1_MOVE1; m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_XMF1_BOOM1;m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
+    m->speed = 20*FRACUNIT; m->radius = 10*FRACUNIT; m->height = 6*FRACUNIT; m->mass = 100;
+    m->damage = 3; m->activesound = sfx_None;
+    m->flags = MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY; m->flags2 = 0; m->raisestate = S_NULL;
+
+    m = &mobjinfo[MT_XMNTFX2];
+    m->doomednum = -1;        m->spawnstate  = S_XMF2_MOVE1; m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_XMF2_BOOM1;m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
+    m->speed = 14*FRACUNIT; m->radius = 5*FRACUNIT; m->height = 12*FRACUNIT; m->mass = 100;
+    m->damage = 4; m->activesound = sfx_None;
+    m->flags = MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY; m->flags2 = 0; m->raisestate = S_NULL;
+
+    m = &mobjinfo[MT_XMNTFX3];
+    m->doomednum = -1;        m->spawnstate  = S_XMF3_MOVE1; m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_XMF2_BOOM1;m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
+    m->speed = 0; m->radius = 8*FRACUNIT; m->height = 16*FRACUNIT; m->mass = 100;
+    m->damage = 4; m->activesound = sfx_None;
+    m->flags = MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY; m->flags2 = 0; m->raisestate = S_NULL;
+
+    m = &mobjinfo[MT_XMNTSMOKE];
+    m->doomednum = -1;        m->spawnstate  = S_XMNS_1;   m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_NULL;      m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
+    m->speed = 0; m->radius = 20*FRACUNIT; m->height = 16*FRACUNIT; m->mass = 100;
+    m->damage = 0; m->activesound = sfx_None;
+    m->flags = MF_NOBLOCKMAP|MF_NOGRAVITY|MF_SHADOW; m->flags2 = 0; m->raisestate = S_NULL;
+
+    // ---- Korax's bat (crispy S_BAT*) ----
+    ST (S_XBAT_1,   SPR_XABA, 0, 2, (actionf_p1)A_BatMove, S_XBAT_2);
+    ST (S_XBAT_2,   SPR_XABA, 1, 2, (actionf_p1)A_BatMove, S_XBAT_3);
+    ST (S_XBAT_3,   SPR_XABA, 2, 2, (actionf_p1)A_BatMove, S_XBAT_1);
+    ST (S_XBAT_DIE, SPR_XABA, 0, 2, NULL,                  S_NULL);
+
+    m = &mobjinfo[MT_XBAT];
+    m->doomednum = -1;        m->spawnstate  = S_XBAT_1;   m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_XBAT_DIE;  m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
+    // reactiontime doubles as the bat's lifetime here (A_BatMove counts it down);
+    // crispy keeps that in args[], which this mobj_t hasn't got.  ~3s of flapping.
+    m->reactiontime = 3*TICRATE;
+    m->speed = 5*FRACUNIT; m->radius = 3*FRACUNIT; m->height = 3*FRACUNIT; m->mass = 100;
+    m->damage = 0; m->activesound = sfx_x_batscr;
+    m->flags = MF_NOBLOCKMAP|MF_NOGRAVITY|MF_MISSILE; m->flags2 = 0; m->raisestate = S_NULL;
+
+    // ---- Pig: the Hexen morph creature (crispy S_PIG_*).  Sprite XPIG: A-D walk,
+    //      E-L death.  A_PigLook/A_PigChase in crispy only poll the morph timer
+    //      before delegating, so plain A_Look/A_Chase are used here (files/p_morph.c
+    //      ages the morph itself). ----
+    ST (S_XPIG_LOOK1, SPR_XPIG,  1, 10, (actionf_p1)A_Look,       S_XPIG_LOOK1);
+    ST (S_XPIG_WALK1, SPR_XPIG,  0,  3, (actionf_p1)A_Chase,      S_XPIG_WALK2);
+    ST (S_XPIG_WALK2, SPR_XPIG,  1,  3, (actionf_p1)A_Chase,      S_XPIG_WALK3);
+    ST (S_XPIG_WALK3, SPR_XPIG,  2,  3, (actionf_p1)A_Chase,      S_XPIG_WALK4);
+    ST (S_XPIG_WALK4, SPR_XPIG,  3,  3, (actionf_p1)A_Chase,      S_XPIG_WALK1);
+    ST (S_XPIG_PAIN1, SPR_XPIG,  3,  4, (actionf_p1)A_PigPain,    S_XPIG_WALK1);
+    ST (S_XPIG_ATK1,  SPR_XPIG,  0,  5, (actionf_p1)A_FaceTarget, S_XPIG_ATK2);
+    ST (S_XPIG_ATK2,  SPR_XPIG,  0, 10, (actionf_p1)A_PigAttack,  S_XPIG_WALK1);
+    ST (S_XPIG_DIE1,  SPR_XPIG,  4,  4, (actionf_p1)A_Scream,     S_XPIG_DIE2);
+    ST (S_XPIG_DIE2,  SPR_XPIG,  5,  3, (actionf_p1)A_Fall,       S_XPIG_DIE3);
+    ST (S_XPIG_DIE3,  SPR_XPIG,  6,  4, NULL,                     S_XPIG_DIE4);
+    ST (S_XPIG_DIE4,  SPR_XPIG,  7,  3, NULL,                     S_XPIG_DIE5);
+    ST (S_XPIG_DIE5,  SPR_XPIG,  8,  4, NULL,                     S_XPIG_DIE6);
+    ST (S_XPIG_DIE6,  SPR_XPIG,  9,  4, NULL,                     S_XPIG_DIE7);
+    ST (S_XPIG_DIE7,  SPR_XPIG, 10,  4, NULL,                     S_XPIG_DIE8);
+    ST (S_XPIG_DIE8,  SPR_XPIG, 11, -1, NULL,                     S_NULL);
+
+    m = &mobjinfo[MT_XPIG];
+    m->doomednum = -1;        m->spawnstate  = S_XPIG_LOOK1; m->spawnhealth = 25;
+    m->seestate  = S_XPIG_WALK1; m->seesound = sfx_x_pgact;  m->reactiontime = 8;
+    m->attacksound = sfx_x_pgatk;m->painstate = S_XPIG_PAIN1;m->painchance = 128;
+    m->painsound = sfx_x_pgpai;  m->meleestate = S_XPIG_ATK1;m->missilestate = S_NULL;
+    m->deathstate = S_XPIG_DIE1; m->xdeathstate = S_NULL;    m->deathsound = sfx_x_pgdth;
+    m->speed = 10; m->radius = 12*FRACUNIT; m->height = 22*FRACUNIT; m->mass = 60;
+    m->damage = 0; m->activesound = sfx_x_pgact;
+    m->flags = MF_SOLID|MF_SHOOTABLE|MF_COUNTKILL; m->flags2 = 0; m->raisestate = S_NULL;
+
+    // ---- "Mash" variants (Hexen ednums 100-103): the same actor, but bloodless,
+    //      ghostly and with NO death sequence -- they simply vanish when killed.
+    //      They reuse their normal counterpart's states, so no new states here.
+    //      crispy renders them MF_ALTSHADOW (40% alpha); this engine has no alpha
+    //      blending, so MF_SHADOW (the spectre fuzz) stands in. ----
+    m = &mobjinfo[MT_XETTIN_MASH];
+    *m = mobjinfo[MT_XETTIN];
+    m->doomednum = -1; m->deathstate = S_NULL; m->xdeathstate = S_NULL;
+    m->flags |= MF_NOBLOOD | MF_SHADOW;
+
+    m = &mobjinfo[MT_XCENTAUR_MASH];
+    *m = mobjinfo[MT_XCENTAUR];
+    m->doomednum = -1; m->deathstate = S_NULL; m->xdeathstate = S_NULL;
+    m->flags |= MF_NOBLOOD | MF_SHADOW;
+
+    m = &mobjinfo[MT_XDEMON_MASH];
+    *m = mobjinfo[MT_XDEMON];
+    m->doomednum = -1; m->deathstate = S_NULL; m->xdeathstate = S_NULL;
+    m->flags |= MF_NOBLOOD | MF_SHADOW;
+
+    m = &mobjinfo[MT_XDEMON2_MASH];
+    *m = mobjinfo[MT_XDEMON2];
+    m->doomednum = -1; m->deathstate = S_NULL; m->xdeathstate = S_NULL;
+    m->flags |= MF_NOBLOOD | MF_SHADOW;
+
+    // ---- Fighter class boss (crispy S_FIGHTER*, sprite XPLA = Hexen PLAY) ----
+    ST (S_XFTR_LOOK1, SPR_XPLA,  0,  5, (actionf_p1)A_Look,          S_XFTR_LOOK1);
+    ST (S_XFTR_RUN1,  SPR_XPLA,  0,  4, (actionf_p1)A_Chase,         S_XFTR_RUN2);
+    ST (S_XFTR_RUN2,  SPR_XPLA,  1,  4, (actionf_p1)A_Chase,         S_XFTR_RUN3);
+    ST (S_XFTR_RUN3,  SPR_XPLA,  2,  4, (actionf_p1)A_Chase,         S_XFTR_RUN4);
+    ST (S_XFTR_RUN4,  SPR_XPLA,  3,  4, (actionf_p1)A_Chase,         S_XFTR_RUN1);
+    ST (S_XFTR_ATK1,  SPR_XPLA,  4,  8, (actionf_p1)A_FaceTarget,    S_XFTR_ATK2);
+    ST (S_XFTR_ATK2,  SPR_XPLA,  5,  8, (actionf_p1)A_XFighterAttack,S_XFTR_RUN1);
+    ST (S_XFTR_PAIN1, SPR_XPLA,  6,  4, NULL,                        S_XFTR_PAIN2);
+    ST (S_XFTR_PAIN2, SPR_XPLA,  6,  4, (actionf_p1)A_Pain,          S_XFTR_RUN1);
+    ST (S_XFTR_DIE1,  SPR_XPLA,  7,  6, NULL,                        S_XFTR_DIE2);
+    ST (S_XFTR_DIE2,  SPR_XPLA,  8,  6, (actionf_p1)A_Scream,        S_XFTR_DIE3);
+    ST (S_XFTR_DIE3,  SPR_XPLA,  9,  6, NULL,                        S_XFTR_DIE4);
+    ST (S_XFTR_DIE4,  SPR_XPLA, 10,  6, NULL,                        S_XFTR_DIE5);
+    ST (S_XFTR_DIE5,  SPR_XPLA, 11,  6, (actionf_p1)A_Fall,          S_XFTR_DIE6);
+    ST (S_XFTR_DIE6,  SPR_XPLA, 12,  6, NULL,                        S_XFTR_DIE7);
+    ST (S_XFTR_DIE7,  SPR_XPLA, 13, -1, NULL,                        S_NULL);
+
+    ST (S_XFSF_MOVE1, SPR_XFSF, 32768, 3, NULL,                S_XFSF_MOVE2);
+    ST (S_XFSF_MOVE2, SPR_XFSF, 32769, 3, NULL,                S_XFSF_MOVE3);
+    ST (S_XFSF_MOVE3, SPR_XFSF, 32770, 3, NULL,                S_XFSF_MOVE1);
+    ST (S_XFSF_BOOM1, SPR_XFSF, 32771, 4, NULL,                S_XFSF_BOOM2);
+    ST (S_XFSF_BOOM2, SPR_XFSF, 32772, 3, NULL,                S_XFSF_BOOM3);
+    ST (S_XFSF_BOOM3, SPR_XFSF, 32773, 4, NULL,                S_XFSF_BOOM4);
+    ST (S_XFSF_BOOM4, SPR_XFSF, 32774, 3, NULL,                S_XFSF_BOOM5);
+    ST (S_XFSF_BOOM5, SPR_XFSF, 32775, 4, NULL,                S_NULL);
+
+    m = &mobjinfo[MT_XFIGHTERBOSS];
+    m->doomednum = -1;        m->spawnstate  = S_XFTR_LOOK1; m->spawnhealth = 800;
+    m->seestate  = S_XFTR_RUN1;  m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_x_fbatk;m->painstate = S_XFTR_PAIN1;m->painchance = 50;
+    m->painsound = sfx_x_fbpai;  m->meleestate = S_NULL;   m->missilestate = S_XFTR_ATK1;
+    m->deathstate = S_XFTR_DIE1; m->xdeathstate = S_NULL;  m->deathsound = sfx_x_fbdth;
+    m->speed = 25; m->radius = 16*FRACUNIT; m->height = 64*FRACUNIT; m->mass = 100;
+    m->damage = 0; m->activesound = sfx_None;
+    m->flags = MF_SOLID|MF_SHOOTABLE|MF_COUNTKILL; m->flags2 = 0; m->raisestate = S_NULL;
+
+    m = &mobjinfo[MT_XFSWORDFX];
+    m->doomednum = -1;        m->spawnstate  = S_XFSF_MOVE1; m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_XFSF_BOOM1;m->xdeathstate = S_NULL;  m->deathsound = sfx_x_mnexp;
+    m->speed = 30*FRACUNIT; m->radius = 16*FRACUNIT; m->height = 8*FRACUNIT; m->mass = 100;
+    m->damage = 8; m->activesound = sfx_None;
+    m->flags = MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY; m->flags2 = 0; m->raisestate = S_NULL;
+
+    // ---- Cleric class boss (crispy S_CLERIC*, sprite XCLE) ----
+    ST (S_XCLR_LOOK1, SPR_XCLE,  0,  5, (actionf_p1)A_Look,         S_XCLR_LOOK1);
+    ST (S_XCLR_RUN1,  SPR_XCLE,  0,  4, (actionf_p1)A_Chase,        S_XCLR_RUN2);
+    ST (S_XCLR_RUN2,  SPR_XCLE,  1,  4, (actionf_p1)A_Chase,        S_XCLR_RUN3);
+    ST (S_XCLR_RUN3,  SPR_XCLE,  2,  4, (actionf_p1)A_Chase,        S_XCLR_RUN4);
+    ST (S_XCLR_RUN4,  SPR_XCLE,  3,  4, (actionf_p1)A_Chase,        S_XCLR_RUN1);
+    ST (S_XCLR_ATK1,  SPR_XCLE,  4,  8, (actionf_p1)A_FaceTarget,   S_XCLR_ATK2);
+    ST (S_XCLR_ATK2,  SPR_XCLE,  5,  8, (actionf_p1)A_FaceTarget,   S_XCLR_ATK3);
+    ST (S_XCLR_ATK3,  SPR_XCLE,  6, 10, (actionf_p1)A_XClericAttack,S_XCLR_RUN1);
+    ST (S_XCLR_PAIN1, SPR_XCLE,  7,  4, NULL,                       S_XCLR_PAIN2);
+    ST (S_XCLR_PAIN2, SPR_XCLE,  7,  4, (actionf_p1)A_Pain,         S_XCLR_RUN1);
+    ST (S_XCLR_DIE1,  SPR_XCLE,  8,  6, NULL,                       S_XCLR_DIE2);
+    ST (S_XCLR_DIE2,  SPR_XCLE, 10,  6, (actionf_p1)A_Scream,       S_XCLR_DIE3);
+    ST (S_XCLR_DIE3,  SPR_XCLE, 11,  6, NULL,                       S_XCLR_DIE4);
+    ST (S_XCLR_DIE4,  SPR_XCLE, 11,  6, NULL,                       S_XCLR_DIE5);
+    ST (S_XCLR_DIE5,  SPR_XCLE, 12,  6, (actionf_p1)A_Fall,         S_XCLR_DIE6);
+    ST (S_XCLR_DIE6,  SPR_XCLE, 13,  6, NULL,                       S_XCLR_DIE7);
+    ST (S_XCLR_DIE7,  SPR_XCLE, 14,  6, NULL,                       S_XCLR_DIE8);
+    ST (S_XCLR_DIE8,  SPR_XCLE, 15,  6, NULL,                       S_XCLR_DIE9);
+    ST (S_XCLR_DIE9,  SPR_XCLE, 16, -1, NULL,                       S_NULL);
+
+    // Holy spirit: crispy tracks with A_CHolySeek; A_Tracer (the revenant homing
+    // this port already reuses for MT_XSORCFX1) stands in.
+    ST (S_XSPI_MOVE1, SPR_XSPI, 32783, 3, (actionf_p1)A_Tracer, S_XSPI_MOVE2);
+    ST (S_XSPI_MOVE2, SPR_XSPI, 32783, 3, (actionf_p1)A_Tracer, S_XSPI_MOVE3);
+    ST (S_XSPI_MOVE3, SPR_XSPI, 32783, 3, (actionf_p1)A_Tracer, S_XSPI_MOVE4);
+    ST (S_XSPI_MOVE4, SPR_XSPI, 32783, 3, (actionf_p1)A_Tracer, S_XSPI_MOVE1);
+    ST (S_XSPI_BOOM1, SPR_XSPI, 16, 3, NULL, S_XSPI_BOOM2);
+    ST (S_XSPI_BOOM2, SPR_XSPI, 17, 3, NULL, S_XSPI_BOOM3);
+    ST (S_XSPI_BOOM3, SPR_XSPI, 18, 3, NULL, S_XSPI_BOOM4);
+    ST (S_XSPI_BOOM4, SPR_XSPI, 19, 3, NULL, S_XSPI_BOOM5);
+    ST (S_XSPI_BOOM5, SPR_XSPI, 20, 3, NULL, S_NULL);
+
+    m = &mobjinfo[MT_XCLERICBOSS];
+    m->doomednum = -1;        m->spawnstate  = S_XCLR_LOOK1; m->spawnhealth = 800;
+    m->seestate  = S_XCLR_RUN1;  m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_x_cbatk;m->painstate = S_XCLR_PAIN1;m->painchance = 50;
+    m->painsound = sfx_x_cbpai;  m->meleestate = S_NULL;   m->missilestate = S_XCLR_ATK1;
+    m->deathstate = S_XCLR_DIE1; m->xdeathstate = S_NULL;  m->deathsound = sfx_x_cbdth;
+    m->speed = 25; m->radius = 16*FRACUNIT; m->height = 64*FRACUNIT; m->mass = 100;
+    m->damage = 0; m->activesound = sfx_None;
+    m->flags = MF_SOLID|MF_SHOOTABLE|MF_COUNTKILL; m->flags2 = 0; m->raisestate = S_NULL;
+
+    m = &mobjinfo[MT_XHOLYFX];
+    m->doomednum = -1;        m->spawnstate  = S_XSPI_MOVE1; m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_XSPI_BOOM1;m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
+    m->speed = 30*FRACUNIT; m->radius = 15*FRACUNIT; m->height = 8*FRACUNIT; m->mass = 100;
+    m->damage = 4; m->activesound = sfx_None;
+    m->flags = MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY|MF_SHADOW;
+    m->flags2 = 0; m->raisestate = S_NULL;
+
+    // ---- Mage class boss (crispy S_MAGE*, sprite XMAG) ----
+    ST (S_XMGE_LOOK1, SPR_XMAG,     0,  5, (actionf_p1)A_Look,       S_XMGE_LOOK1);
+    ST (S_XMGE_RUN1,  SPR_XMAG,     0,  4, (actionf_p1)A_Chase,      S_XMGE_RUN2);
+    ST (S_XMGE_RUN2,  SPR_XMAG,     1,  4, (actionf_p1)A_Chase,      S_XMGE_RUN3);
+    ST (S_XMGE_RUN3,  SPR_XMAG,     2,  4, (actionf_p1)A_Chase,      S_XMGE_RUN4);
+    ST (S_XMGE_RUN4,  SPR_XMAG,     3,  4, (actionf_p1)A_Chase,      S_XMGE_RUN1);
+    ST (S_XMGE_ATK1,  SPR_XMAG,     4,  8, (actionf_p1)A_FaceTarget, S_XMGE_ATK2);
+    ST (S_XMGE_ATK2,  SPR_XMAG, 32773,  8, (actionf_p1)A_XMageAttack,S_XMGE_RUN1);
+    ST (S_XMGE_PAIN1, SPR_XMAG,     6,  4, NULL,                     S_XMGE_PAIN2);
+    ST (S_XMGE_PAIN2, SPR_XMAG,     6,  4, (actionf_p1)A_Pain,       S_XMGE_RUN1);
+    ST (S_XMGE_DIE1,  SPR_XMAG,     7,  6, NULL,                     S_XMGE_DIE2);
+    ST (S_XMGE_DIE2,  SPR_XMAG,     8,  6, (actionf_p1)A_Scream,     S_XMGE_DIE3);
+    ST (S_XMGE_DIE3,  SPR_XMAG,     9,  6, NULL,                     S_XMGE_DIE4);
+    ST (S_XMGE_DIE4,  SPR_XMAG,    10,  6, NULL,                     S_XMGE_DIE5);
+    ST (S_XMGE_DIE5,  SPR_XMAG,    11,  6, (actionf_p1)A_Fall,       S_XMGE_DIE6);
+    ST (S_XMGE_DIE6,  SPR_XMAG,    12,  6, NULL,                     S_XMGE_DIE7);
+    ST (S_XMGE_DIE7,  SPR_XMAG,    13, -1, NULL,                     S_NULL);
+
+    // Bloodscourge shot: crispy seeks with A_MStaffTrack -- A_Tracer stands in.
+    ST (S_XMS2_MOVE1, SPR_XMS2, 32768, 2, (actionf_p1)A_Tracer, S_XMS2_MOVE2);
+    ST (S_XMS2_MOVE2, SPR_XMS2, 32769, 2, (actionf_p1)A_Tracer, S_XMS2_MOVE3);
+    ST (S_XMS2_MOVE3, SPR_XMS2, 32770, 2, (actionf_p1)A_Tracer, S_XMS2_MOVE4);
+    ST (S_XMS2_MOVE4, SPR_XMS2, 32771, 2, (actionf_p1)A_Tracer, S_XMS2_MOVE1);
+    ST (S_XMS2_BOOM1, SPR_XMS2, 32772, 4, NULL, S_XMS2_BOOM2);
+    ST (S_XMS2_BOOM2, SPR_XMS2, 32773, 5, NULL, S_XMS2_BOOM3);
+    ST (S_XMS2_BOOM3, SPR_XMS2, 32774, 5, NULL, S_XMS2_BOOM4);
+    ST (S_XMS2_BOOM4, SPR_XMS2, 32775, 5, NULL, S_XMS2_BOOM5);
+    ST (S_XMS2_BOOM5, SPR_XMS2, 32776, 4, NULL, S_NULL);
+
+    m = &mobjinfo[MT_XMAGEBOSS];
+    m->doomednum = -1;        m->spawnstate  = S_XMGE_LOOK1; m->spawnhealth = 800;
+    m->seestate  = S_XMGE_RUN1;  m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_x_mbatk;m->painstate = S_XMGE_PAIN1;m->painchance = 50;
+    m->painsound = sfx_x_mbpai;  m->meleestate = S_NULL;   m->missilestate = S_XMGE_ATK1;
+    m->deathstate = S_XMGE_DIE1; m->xdeathstate = S_NULL;  m->deathsound = sfx_x_mbdth;
+    m->speed = 25; m->radius = 16*FRACUNIT; m->height = 64*FRACUNIT; m->mass = 100;
+    m->damage = 0; m->activesound = sfx_None;
+    m->flags = MF_SOLID|MF_SHOOTABLE|MF_COUNTKILL; m->flags2 = 0; m->raisestate = S_NULL;
+
+    m = &mobjinfo[MT_XMSTAFFFX];
+    m->doomednum = -1;        m->spawnstate  = S_XMS2_MOVE1; m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_XMS2_BOOM1;m->xdeathstate = S_NULL;  m->deathsound = sfx_x_mbexp;
+    m->speed = 17*FRACUNIT; m->radius = 20*FRACUNIT; m->height = 8*FRACUNIT; m->mass = 100;
+    m->damage = 4; m->activesound = sfx_None;
+    m->flags = MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY; m->flags2 = 0; m->raisestate = S_NULL;
 }
 
 // ---------------------------------------------------------------------------
@@ -616,9 +1159,24 @@ int Hexen_Mon_TypeByName (const char* name)
     if (!strcmp (name, "demon2") || !strcmp (name, "serpent2")
 	|| !strcmp (name, "chaosserpent2")) return MT_XDEMON2;
     if (!strcmp (name, "wraithb") || !strcmp (name, "buriedwraith")
-	|| !strcmp (name, "reiverb")) return MT_XWRAITHB;
+	|| !strcmp (name, "reiverb")
+	|| !strcmp (name, "wraithburied")) return MT_XWRAITHB;	// gzdoom WraithBuried
     if (!strcmp (name, "korax")) return MT_XKORAX;
     if (!strcmp (name, "heresiarch") || !strcmp (name, "sorcerer")
 	|| !strcmp (name, "sorcboss")) return MT_XHERESIARCH;
+    // gzdoom calls the Heretic Maulotaur "Minotaur" and the Hexen Dark Servant
+    // "MinotaurFriend" (raven/minotaur.zs); "minotaur"/"maulotaur" stay Heretic's
+    // (files/heretic.c, resolved first), so this one answers to the Hexen names.
+    if (!strcmp (name, "minotaurfriend") || !strcmp (name, "darkservant")
+	|| !strcmp (name, "maulator")) return MT_XMINOTAUR;
+    if (!strcmp (name, "bat")) return MT_XBAT;
+    if (!strcmp (name, "pig")) return MT_XPIG;
+    if (!strcmp (name, "fighterboss") || !strcmp (name, "fighter")) return MT_XFIGHTERBOSS;
+    if (!strcmp (name, "clericboss")  || !strcmp (name, "cleric"))  return MT_XCLERICBOSS;
+    if (!strcmp (name, "mageboss")    || !strcmp (name, "mage"))    return MT_XMAGEBOSS;
+    if (!strcmp (name, "ettinmash")) return MT_XETTIN_MASH;
+    if (!strcmp (name, "centaurmash")) return MT_XCENTAUR_MASH;
+    if (!strcmp (name, "demon1mash") || !strcmp (name, "serpentmash")) return MT_XDEMON_MASH;
+    if (!strcmp (name, "demon2mash") || !strcmp (name, "serpent2mash")) return MT_XDEMON2_MASH;
     return -1;
 }

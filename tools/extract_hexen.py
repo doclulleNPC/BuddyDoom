@@ -47,6 +47,11 @@ MONSTER_SPRITES = [
     "KORX", "ABAT",                                         # korax (final boss) + bats
     "PIGY",                                                 # pig (morph)
     "FDTH",                                                 # generic burning death
+    # NOTE: APPEND-ONLY below this line.  make_rename() assigns names greedily in
+    # list order, so inserting a code EARLIER can steal a name an existing code
+    # already holds and silently invalidate every SPR_X* in files/info.c.  New
+    # codes go at the end; diff tools/hexen_sprite_map.txt after every re-run.
+    "PLAY", "CLER", "MAGE",                                 # fighter/cleric/mage class bosses
 ]
 
 # ---------------------------------------------------------------------------
@@ -113,6 +118,7 @@ SOUND_KEYWORDS = (
     "kor", "serp", "srp", "demat", "raith", "rath", "wrbl", "drag", "sor", "sbt",
     "bish", "bsh", "fired", "fdmn", "pig", "icedth", "icemv", "icebrk", "frosty",
     "icpr", "vamp", "bats", "glbh", "srfc", "mumpun", "squeal", "slurp", "shlurp",
+    "bite", "impact",		# PigAttack (BITE4) + MaulatorMissileHit (IMPACT3)
     # weapons
     "axe", "ham", "hmhit", "punch", "sword", "holy", "spirt", "clhmm", "mageball",
     "wand", "blastr", "mage4", "cone3", "gnt", "wepele", "strike1", "strike3",

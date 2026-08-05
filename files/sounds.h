@@ -395,6 +395,24 @@ typedef enum
     sfx_x_dratk,
     sfx_x_drdth,
     sfx_x_drhit,
+    // Minotaur / Dark Servant (files/hexen_mon.c) -- hexen.wad SNDINFO "Maulator*".
+    sfx_x_mnsit,
+    sfx_x_mnact,
+    sfx_x_mnpai,
+    sfx_x_mnatk,	// MaulatorHamSwing
+    sfx_x_mnhit,	// MaulatorHamHit (the floor-fire mortar)
+    sfx_x_mnexp,	// MaulatorMissileHit -- also FighterSwordExplode (same lump)
+    sfx_x_mndth,
+    // Fighter / Cleric / Mage class bosses (files/hexen_mon.c).
+    sfx_x_fbpai, sfx_x_fbdth, sfx_x_fbatk,
+    sfx_x_cbpai, sfx_x_cbdth, sfx_x_cbatk,
+    sfx_x_mbpai, sfx_x_mbdth, sfx_x_mbatk, sfx_x_mbexp,
+    // Pig (Hexen morph creature) + Korax's bats.
+    sfx_x_pgact,
+    sfx_x_pgpai,
+    sfx_x_pgatk,
+    sfx_x_pgdth,
+    sfx_x_batscr,	// BatScream
     // Hexen poison shroom / cloud (files/hexen.c) -- native Hexen lump names, no rename:
     // copy STRETCH3 / PUFF1 straight from hexen.wad into a loaded WAD (I_SfxLumpFor
     // resolves the bare name when no ds-prefixed lump exists).

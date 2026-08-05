@@ -920,6 +920,26 @@ int Heretic_TypeByName (const char* name)
     if (!strcmp (name, "maulotaur")||!strcmp (name, "minotaur")) return MT_HMINOTAUR;
     if (!strcmp (name, "ironlich") ||!strcmp (name, "lich"))     return MT_HIRONLICH;
     if (!strcmp (name, "dsparil") ||!strcmp (name, "sorcerer")) return MT_HDSPARIL;
+    // gzdoom class-name aliases (../gzdoom/wadsrc/static/zscript/actors/heretic) for
+    // the same ten, plus the leader/ghost variants from heretic_mvar.c.
+    if (!strcmp (name, "hereticimp")) return MT_HIMP;
+    if (!strcmp (name, "hereticimpleader") || !strcmp (name, "gargoyleleader")
+	|| !strcmp (name, "impleader"))                     return MT_HIMPLEADER;
+    if (!strcmp (name, "mummyleader") || !strcmp (name, "nitrogolem")
+	|| !strcmp (name, "golemleader"))                   return MT_HMUMMYLEADER;
+    if (!strcmp (name, "mummyghost") || !strcmp (name, "golemghost"))
+							    return MT_HMUMMYGHOST;
+    if (!strcmp (name, "mummyleaderghost") || !strcmp (name, "nitrogolemghost"))
+							    return MT_HMUMMYLEADERGHOST;
+    if (!strcmp (name, "knightghost") || !strcmp (name, "undeadghost"))
+							    return MT_HKNIGHTGHOST;
+    if (!strcmp (name, "sorcerer1") || !strcmp (name, "dsparil1")
+	|| !strcmp (name, "dsparilmount"))                  return MT_HSORC1;
+    if (!strcmp (name, "sorcerer2") || !strcmp (name, "dsparil2")) return MT_HDSPARIL;
+    if (!strcmp (name, "lichling"))                         return MT_LICHLING;
+    if (!strcmp (name, "chicken"))                          return MT_CHICKEN;
+    if (!strcmp (name, "pod"))                              return MT_HPOD;
+    if (!strcmp (name, "volcano"))                          return MT_HVOLCANO;
     return -1;
 }
 

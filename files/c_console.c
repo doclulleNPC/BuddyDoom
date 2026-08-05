@@ -34,6 +34,8 @@
 #include "heretic.h"		// Heretic_SpawnMummy (console spawn)
 #include "hexen.h"		// Hexen monsters (console spawn)
 #include "freedoom.h"		// Freedoom monsters (console spawn)
+#include "strife.h"		// Strife monsters (console spawn)
+#include "r_state.h"		// sprites[]/numsprites -- "has this thing got art?" test
 #include "info.h"		// mobjtype_t, MT_*
 #include "d_items.h"		// weaponinfo (give <weapon> -> its ammo)
 #include "m_fixed.h"		// FixedMul
@@ -245,17 +247,68 @@ static const char* C_KeyName (int k)
     return b;
 }
 
+// True if `type`'s spawn frame has art in the loaded WADs.  The additive game packs
+// reserve mobjtypes that only render once their sprite WAD is present, and the vanilla
+// DOOM2 monsters are absent from a DOOM1 IWAD -- summoning either would drop an
+// invisible actor.  Same test the *_Available() gates use, generalized.
+static boolean C_HasSprite (int type)
+{
+    extern mobjinfo_t*	mobjinfo;
+    extern state_t*	states;
+    int			spr;
+
+    if (type < 0 || type >= num_mobjtypes)
+	return false;
+    if (!mobjinfo[type].spawnstate)
+	return false;
+    spr = states[mobjinfo[type].spawnstate].sprite;
+    return spr >= 0 && spr < numsprites && sprites[spr].numframes > 0;
+}
+
 // Map a short name to a thing type for the "spawn" command.
+//
+// The vanilla DOOM table below carries gzdoom's actor class names lowercased (see
+// ../gzdoom/wadsrc/static/zscript/actors/doom) plus the short spellings people type,
+// so `summon revenant` / `summon archvile` / `summon cacodemon` work the same way they
+// do in gzdoom.  A name that resolves to a type with NO art in this IWAD (DOOM2
+// monsters under a DOOM1 IWAD) falls through to the additive packs below, so
+// e.g. "revenant" still finds the Freedoom actor when freedoomstuff.wad supplies it.
 static int C_MobjByName (const char* s)
 {
-    if (!strcmp(s,"imp"))				 return MT_TROOP;
-    if (!strcmp(s,"demon") || !strcmp(s,"pinky"))	 return MT_SERGEANT;
-    if (!strcmp(s,"spectre"))				 return MT_SHADOWS;
-    if (!strcmp(s,"baron"))				 return MT_BRUISER;
-    if (!strcmp(s,"zombie") || !strcmp(s,"zombieman"))	 return MT_POSSESSED;
-    if (!strcmp(s,"shotgunner") || !strcmp(s,"sergeant")) return MT_SHOTGUY;
-    if (!strcmp(s,"lostsoul") || !strcmp(s,"soul"))	 return MT_SKULL;
-    if (!strcmp(s,"barrel"))				 return MT_BARREL;
+    static const struct { const char* n; short t; } doomtbl[] = {
+	{"zombieman",MT_POSSESSED},	{"zombie",MT_POSSESSED},
+	{"shotgunguy",MT_SHOTGUY},	{"shotgunner",MT_SHOTGUY},
+	{"sergeant",MT_SHOTGUY},
+	{"chaingunguy",MT_CHAINGUY},	{"chaingunner",MT_CHAINGUY},
+	{"chainguy",MT_CHAINGUY},
+	{"doomimp",MT_TROOP},		{"imp",MT_TROOP},
+	{"demon",MT_SERGEANT},		{"pinky",MT_SERGEANT},
+	{"spectre",MT_SHADOWS},
+	{"cacodemon",MT_HEAD},		{"caco",MT_HEAD},
+	{"lostsoul",MT_SKULL},		{"soul",MT_SKULL},
+	{"painelemental",MT_PAIN},	{"pain",MT_PAIN},
+	{"baronofhell",MT_BRUISER},	{"baron",MT_BRUISER},
+	{"hellknight",MT_KNIGHT},	{"knight2",MT_KNIGHT},
+	{"revenant",MT_UNDEAD},		{"skeleton",MT_UNDEAD},
+	{"fatso",MT_FATSO},		{"mancubus",MT_FATSO},
+	{"arachnotron",MT_BABY},	{"baby",MT_BABY},
+	{"archvile",MT_VILE},		{"vile",MT_VILE},
+	{"cyberdemon",MT_CYBORG},	{"cyber",MT_CYBORG},
+	{"spidermastermind",MT_SPIDER},	{"mastermind",MT_SPIDER},
+	{"spider",MT_SPIDER},
+	{"wolfensteinss",MT_WOLFSS},	{"wolfss",MT_WOLFSS},
+	{"ss",MT_WOLFSS},
+	{"commanderkeen",MT_KEEN},	{"keen",MT_KEEN},
+	{"bossbrain",MT_BOSSBRAIN},	{"romero",MT_BOSSBRAIN},
+	{"bosseye",MT_BOSSSPIT},	{"bossspit",MT_BOSSSPIT},
+	{"explosivebarrel",MT_BARREL},	{"barrel",MT_BARREL},
+	{NULL,0}
+    };
+    int i;
+
+    for (i = 0; doomtbl[i].n; i++)
+	if (!strcmp (s, doomtbl[i].n) && C_HasSprite (doomtbl[i].t))
+	    return doomtbl[i].t;
     // Heretic monsters (mummy/clink/gargoyle) -- only when hereticstuff.wad is loaded.
     // ("imp" stays the DOOM imp above; the Heretic one is "gargoyle".)
     if (s[0] && Heretic_Available ())
@@ -292,6 +345,13 @@ static int C_MobjByName (const char* s)
 	    int d = ID24_TypeByName (s);
 	    if (d >= 0) return d;
 	}
+    }
+    // Strife monsters/bosses (acolyte/reaver/crusader/...) -- only in strife_mode,
+    // where strife1.wad's sprites are loaded (files/strife_mon.c).
+    if (s[0])
+    {
+	int t = Strife_Mon_TypeByName (s);
+	if (t >= 0) return t;
     }
     // Numeric arg -> editor number: summon ANY DEHACKED thing by its ednum.
     if (s[0] >= '0' && s[0] <= '9')
@@ -529,7 +589,7 @@ static void C_Execute (char* line)
     {
 	int t = C_MobjByName (args);
 	if (t < 0)
-	    C_Printf ("usage: summon <imp|demon|spectre|baron|zombie|shotgunner|lostsoul|barrel|...>  -- or a buddy name (summon frank) or editor number (summon 30001)");
+	    C_Printf ("summon: unknown thing '%s' -- try `dumpspawnables`, a buddy name (summon frank) or an editor number (summon 30001)", args);
 	else if (pl->mo)
 	{
 	    unsigned	an = pl->mo->angle >> ANGLETOFINESHIFT;
@@ -552,7 +612,7 @@ static void C_Execute (char* line)
 	// like summon, but the monster is FRIENDLY: it hunts other monsters, not you.
 	int t = C_MobjByName (args);
 	if (t < 0)
-	    C_Printf ("usage: summonfriend <imp|demon|baron|mummy|clink|gargoyle|...>");
+	    C_Printf ("summonfriend: unknown thing '%s' -- try `dumpspawnables`", args);
 	else if (pl->mo)
 	{
 	    unsigned	an = pl->mo->angle >> ANGLETOFINESHIFT;
@@ -722,12 +782,26 @@ static void C_Execute (char* line)
     }
     else if (!strcmp(cmd, "dumpspawnables"))
     {
-	C_Printf ("DOOM: imp demon spectre baron zombie shotgunner lostsoul barrel cacodemon");
+	// Names are gzdoom's actor classes lowercased (plus short aliases); only the
+	// ones that actually resolve in THIS IWAD are listed.
+	C_Printf ("DOOM: zombieman shotgunguy doomimp demon spectre cacodemon lostsoul baronofhell cyberdemon spidermastermind barrel");
 	if (gamemode == commercial || Freedoom_Available ())
-	    C_Printf ("DOOM2: revenant mancubus archvile arachnotron chaingunner hellknight painelemental ss keen");
+	    C_Printf ("DOOM2: chaingunguy revenant fatso arachnotron archvile hellknight painelemental wolfensteinss commanderkeen bossbrain");
 	if (Heretic_Available ())
-	    C_Printf ("Heretic: mummy clink gargoyle knight");
-	C_Printf ("spawn with: summon | summonfriend | summonfoe <name>");
+	    C_Printf ("Heretic: mummy mummyleader mummyghost clink gargoyle hereticimpleader knight knightghost beast wizard snake maulotaur ironlich sorcerer1 dsparil lichling chicken pod");
+	if (Hexen_Available ())
+	{
+	    C_Printf ("Hexen: ettin centaur slaughtaur serpent demon2 afrit reiver wraithburied bishop wendigo stalker stalkerboss wyvern korax heresiarch");
+	    C_Printf ("Hexen deco/items: barrel bucket cauldron firebull walltorch candle chandelier armor shrub pottery bell xmastree ... (see hexen.c)");
+	}
+	if (Strife_Available ())
+	    C_Printf ("Strife: acolyte templar reaver crusader sentinel stalker inquisitor strifebishop programmer loremaster oracle macil entityboss alienspectre1-5 zombie rebel peasant ceilingturret");
+	{
+	    extern int ID24_Available (void);
+	    if (ID24_Available ())
+		C_Printf ("ID24: ghoul banshee mindweaver shocktrooper vassago tyrant tyrant2");
+	}
+	C_Printf ("spawn with: summon | summonfriend | summonfoe <name>   (also: summon <editor number>)");
     }
     else if (!strcmp(cmd, "where") || !strcmp(cmd, "buddy") || !strcmp(cmd, "comp"))
     {

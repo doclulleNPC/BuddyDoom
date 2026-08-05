@@ -118,6 +118,25 @@ void A_FiredAttack (mobj_t* actor)
 	S_StartSound (actor, actor->info->attacksound);
 }
 
+// Afrit death burst (crispy A_FiredSplotch): as the corpse bursts it throws out the
+// two scorch-mark splotches, which arc away and settle on the floor.
+void A_FiredSplotch (mobj_t* actor)
+{
+    mobj_t*	mo;
+    int		i;
+
+    for (i = 0; i < 2; i++)
+    {
+	mo = P_SpawnMobj (actor->x, actor->y, actor->z,
+			  i ? MT_XFIREDEMON_SPL2 : MT_XFIREDEMON_SPL1);
+	if (!mo)
+	    continue;
+	mo->momx = (P_Random () - 128) << 11;
+	mo->momy = (P_Random () - 128) << 11;
+	mo->momz = FRACUNIT*3 + (P_Random () << 10);
+    }
+}
+
 // Reiver / Wraith melee: drains health (crispy A_WraithMelee).  HITDICE(2)=2..16.
 void A_WraithMelee (mobj_t* actor)
 {
@@ -495,10 +514,26 @@ void Hexen_Init (void)
     ST (S_XFDM_ATK3,  SPR_XFDM, 32778,  5, (actionf_p1)A_FiredAttack, S_XFDM_ATK4);
     ST (S_XFDM_ATK4,  SPR_XFDM, 32778,  5, (actionf_p1)A_FiredAttack, S_XFDM_WALK1);
     ST (S_XFDM_PAIN1, SPR_XFDM, 32771,  6, (actionf_p1)A_Pain,        S_XFDM_WALK1);
+    // Death runs all the way through Hexen's burst: the body burns down (D, L) and
+    // then bursts apart (M, N, O) throwing out two scorch splotches.  crispy splits
+    // this over deathstate + crashstate (played when the falling corpse lands); this
+    // engine has no crashstate field, so the burst is chained onto the death frames.
     ST (S_XFDM_DIE1,  SPR_XFDM, 32771,  4, (actionf_p1)A_FaceTarget,  S_XFDM_DIE2);
     ST (S_XFDM_DIE2,  SPR_XFDM, 32779,  4, (actionf_p1)A_Scream,      S_XFDM_DIE3);
     ST (S_XFDM_DIE3,  SPR_XFDM, 32779,  4, (actionf_p1)A_Fall,        S_XFDM_DIE4);
-    ST (S_XFDM_DIE4,  SPR_XFDM, 32779, -1, NULL,                      S_NULL);
+    ST (S_XFDM_DIE4,  SPR_XFDM, 32779,  4, NULL,                      S_XFDM_DIE5);
+    ST (S_XFDM_DIE5,  SPR_XFDM,    12,  5, NULL,                      S_XFDM_DIE6);
+    ST (S_XFDM_DIE6,  SPR_XFDM,    13,  5, NULL,                      S_XFDM_DIE7);
+    ST (S_XFDM_DIE7,  SPR_XFDM,    14,  5, (actionf_p1)A_FiredSplotch,S_NULL);
+
+    // The two splotches the burst throws out (crispy S_FIRED_CORPSE1..6): they arc
+    // away for a few tics and then rest as scorch marks (frames Y / Z).
+    ST (S_XFDS_DROP1, SPR_XFDM, 15,  3, NULL,                         S_XFDS_LAND1);
+    ST (S_XFDS_LAND1, SPR_XFDM, 15,  6, NULL,                         S_XFDS_REST1);
+    ST (S_XFDS_REST1, SPR_XFDM, 24, -1, NULL,                         S_NULL);
+    ST (S_XFDS_DROP2, SPR_XFDM, 16,  3, NULL,                         S_XFDS_LAND2);
+    ST (S_XFDS_LAND2, SPR_XFDM, 16,  6, NULL,                         S_XFDS_REST2);
+    ST (S_XFDS_REST2, SPR_XFDM, 25, -1, NULL,                         S_NULL);
 
     // Fire Demon fireball (crispy S_FIRED_FX6_*).
     ST (S_XFDB_MOVE1, SPR_XFDB, 32768, 5, NULL,                       S_XFDB_MOVE2);
@@ -529,6 +564,22 @@ void Hexen_Init (void)
     m->speed = 10*FRACUNIT; m->radius = 10*FRACUNIT; m->height = 6*FRACUNIT; m->mass = 15;
     m->damage = 1; m->activesound = sfx_None;	// crispy MT_FIREDEMON_FX6 damage = 1
     m->flags = MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY; m->raisestate = S_NULL;
+
+    // Afrit death splotches (crispy MT_FIREDEMON_SPLOTCH1/2): inert scorch marks,
+    // thrown by A_FiredSplotch and left lying where they land.
+    m = &mobjinfo[MT_XFIREDEMON_SPL1];
+    m->doomednum = -1;        m->spawnstate  = S_XFDS_DROP1; m->spawnhealth = 1000;
+    m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
+    m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
+    m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
+    m->deathstate = S_NULL;      m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
+    m->speed = 0; m->radius = 3*FRACUNIT; m->height = 16*FRACUNIT; m->mass = 100;
+    m->damage = 0; m->activesound = sfx_None;
+    m->flags = MF_NOBLOCKMAP|MF_DROPOFF|MF_CORPSE; m->raisestate = S_NULL;
+
+    m = &mobjinfo[MT_XFIREDEMON_SPL2];
+    *m = mobjinfo[MT_XFIREDEMON_SPL1];
+    m->spawnstate = S_XFDS_DROP2;
 
     // ---- Reiver / Wraith (crispy S_WRAITH_*; the rise-from-ground init and ice
     //      death are simplified away).  Floating undead: melee drains health, also
@@ -933,9 +984,12 @@ int Hexen_TypeByName (const char* name)
     if (!name || !name[0]) return -1;
     if (!strcmp (name, "ettin")) return MT_XETTIN;
     if (!strcmp (name, "centaur")) return MT_XCENTAUR;
-    if (!strcmp (name, "slaughtaur")) return MT_XSLAUGHTAUR;
+    if (!strcmp (name, "slaughtaur") || !strcmp (name, "centaurleader")) return MT_XSLAUGHTAUR;
     // "demon" stays the DOOM pinky (resolved earlier in C_MobjByName); use "serpent".
-    if (!strcmp (name, "serpent") || !strcmp (name, "chaosserpent")) return MT_XDEMON;
+    // NOTE gzdoom names the Chaos Serpent "Demon1" and reserves "Serpent" for the
+    // liquid ambusher we call "stalker" -- both gzdoom spellings resolve too.
+    if (!strcmp (name, "serpent") || !strcmp (name, "chaosserpent")
+	|| !strcmp (name, "demon1")) return MT_XDEMON;
     if (!strcmp (name, "afrit") || !strcmp (name, "firedemon")) return MT_XFIREDEMON;
     if (!strcmp (name, "reiver") || !strcmp (name, "wraith")) return MT_XWRAITH;
     if (!strcmp (name, "bishop") || !strcmp (name, "darkbishop")) return MT_XBISHOP;

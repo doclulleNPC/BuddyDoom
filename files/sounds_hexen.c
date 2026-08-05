@@ -70,6 +70,28 @@ static const struct { char* name; int priority; } hexen_sfx[] =
     { "mage4",    70  },	// DragonAttack
     { "dragdie2", 70  },	// DragonDeath
     { "mageball", 70  },	// DragonFireballExplode
+    { "minsit1",  98  },	// MaulatorSight  (minotaur / dark servant)
+    { "minact2",  120 },	// MaulatorActive
+    { "minpain4", 96  },	// MaulatorPain
+    { "hamblo8a", 70  },	// MaulatorHamSwing
+    { "hamfir1",  70  },	// MaulatorHamHit  (floor-fire mortar)
+    { "impact3",  70  },	// MaulatorMissileHit / FighterSwordExplode
+    { "mindth4",  70  },	// MaulatorDeath
+    { "fgtpain",  96  },	// PlayerFighterPain       (fighter boss)
+    { "fgtcdth",  70  },	// PlayerFighterCrazyDeath
+    { "sword2",   70  },	// FighterSwordFire
+    { "plrpain3", 96  },	// PlayerClericPain        (cleric boss)
+    { "plrcdth",  70  },	// PlayerClericCrazyDeath
+    { "holy3",    70  },	// HolySymbolFire
+    { "mgpain",   96  },	// PlayerMagePain          (mage boss)
+    { "mgcdth",   70  },	// PlayerMageCrazyDeath
+    { "mage4",    70  },	// MageStaffFire
+    { "mageball", 70  },	// MageStaffExplode
+    { "pigrunt1", 98  },	// PigActive1
+    { "pigpain2", 96  },	// PigPain
+    { "bite4",    70  },	// PigAttack
+    { "pigdth2",  70  },	// PigDeath
+    { "bats",     32  },	// BatScream
     { "stretch3", 20  },	// PoisonShroomPain  (shroom pulse/pain flinch)
     { "puff1",    32  },	// PoisonShroomDeath (cloud burst via A_Scream; shroom death)
 };
