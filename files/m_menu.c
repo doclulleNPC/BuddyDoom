@@ -383,6 +383,7 @@ void M_DrawFeatures(void);
 void M_Crosshair(int choice);		// Options -> Crosshair submenu
 void M_CrosshairType(int choice);	// cycle Off / Cross / Dot / Big
 void M_CrosshairColor(int choice);	// cycle Green / White / Red / Yellow / Blue
+void M_CrosshairHealth(int choice);	// toggle health-coloured crosshair
 void M_HitIndicator(int choice);	// toggle the directional damage ring
 void M_ColoredNumbers(int choice);	// toggle coloured status-bar numbers
 void M_DrawCrosshair(void);
@@ -464,13 +465,15 @@ enum
 {
     xh_type,		// Off / Cross / Dot / Big Cross
     xh_color,		// Green / White / Red / Yellow / Blue
+    xh_health,		// colour by player health instead of the fixed colour
     xh_end
 } crosshair_e;
 
 menuitem_t CrosshairMenu[]=
 {
     {2,"",	M_CrosshairType,'t'},	// left/right cycles the shape
-    {2,"",	M_CrosshairColor,'c'}	// left/right cycles the colour
+    {2,"",	M_CrosshairColor,'c'},	// left/right cycles the colour
+    {1,"",	M_CrosshairHealth,'h'}	// select toggles health colouring
 };
 
 menu_t  CrosshairDef =
@@ -1810,6 +1813,20 @@ void M_DrawCrosshair(void)
     M_WriteText (x+130, y+LINEHEIGHT*xh_type,  M_XHairTypeNames[t]);
     M_WriteText (x,     y+LINEHEIGHT*xh_color, "Color");
     M_WriteText (x+130, y+LINEHEIGHT*xh_color, M_XHairColorNames[c]);
+    { extern int crosshair_health;
+      M_WriteText (x,     y+LINEHEIGHT*xh_health, "Color By Health");
+      M_WriteText (x+130, y+LINEHEIGHT*xh_health, crosshair_health ? "On" : "Off"); }
+}
+
+// Options -> Crosshair -> Color By Health: tint the crosshair by the player's
+// health instead of the fixed colour above (Woof's hud_crosshair_health).  The
+// chosen colour still sets the BRIGHTNESS -- only the hue follows health.
+void M_CrosshairHealth(int choice)
+{
+    extern int crosshair_health;
+    (void)choice;
+    crosshair_health = !crosshair_health;
+    M_SaveDefaults ();
 }
 
 void M_VideoRes(int choice)

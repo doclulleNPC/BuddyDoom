@@ -61,6 +61,9 @@ void R_InitTranMap (void);
 // lookup by name. For animation?
 int R_FlatNumForName (char* name);
 
+// -1 instead of a warning + flat 0 when the name is not a flat (r_data.c).
+int R_CheckFlatNumForName (char* name);
+
 
 // Called by P_Ticker for switches and animations,
 // returns the texture number for the texture name.

@@ -94,6 +94,10 @@ int		crosshair = 0;
 // resolved to the nearest PLAYPAL entry so it looks right in DOOM/Heretic/Hexen
 // (their palettes differ).  Set from Options -> Crosshair.
 int		crosshair_color = 0;
+// Colour the crosshair by the player's health instead of the fixed colour above
+// (Woof's hud_crosshair_health).  Same bands as the status bar: <25 red, <50 gold,
+// <=100 green, above max blue, and grey while invulnerable.
+int		crosshair_health = 0;
 
 static void XHairPix (int x, int y, int col)
 {
@@ -151,6 +155,27 @@ void R_DrawCrosshair (void)
     cx  = viewwindowx + scaledviewwidth/2;
     cy  = viewwindowy + viewheight/2;
     col = XHairColorIndex ();			// user-selected colour (nearest palette)
+
+    // Health colouring (Woof CRByHealth): run the chosen colour through the matching
+    // Boom colour range rather than substituting a fixed palette index, so the
+    // crosshair keeps its brightness and only its HUE moves -- a bright green cross
+    // turns bright red, a dim one turns dim red.  Same tables the status-bar numbers
+    // use (v_png.c), so the two always agree on what "low health" looks like.
+    if (crosshair_health)
+    {
+	player_t*	pl = &players[displayplayer];
+	int		hp = pl->health;
+	const byte*	tr;
+
+	tr = V_ColorRange ((pl->powers[pw_invulnerability] || (pl->cheats & CF_GODMODE))
+				       ? VP_CR_GRAY
+			 : hp <  25   ? VP_CR_RED
+			 : hp <  50   ? VP_CR_GOLD
+			 : hp <= 100  ? VP_CR_GREEN
+			 : VP_CR_BLUE2);
+	if (tr)
+	    col = tr[col];
+    }
 
     if (crosshair == 2)				// filled dot
     {

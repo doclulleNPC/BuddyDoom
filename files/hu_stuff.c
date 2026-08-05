@@ -409,11 +409,15 @@ void HU_Init(void)
     {
 	int	lump;
 
-	if (heretic_mode)
+	// Raven's games (Heretic AND Hexen) use FONTAxx (FONTA01='!'); DOOM/Strife use
+	// STCFNxxx.  Branch on gametype, not heretic_mode: hexen.wad has no STCFN* at
+	// all, so it took the DOOM path, every glyph missed, and the last-resort
+	// W_CacheLumpName("STCFN033") below I_Errored -- "W_GetNumForName: STCFN033 not
+	// found!" was Hexen dying at HUD init on every launch.
+	if (heretic_mode || gametype == GT_HEXEN)
 	{
-	    // Heretic uses FONTAxx (FONTA01='!'); some punctuation glyphs are absent,
-	    // so fall back to FONTA01 for any missing one (phase 1 -- a proper Heretic
-	    // HUD font is a later phase).  Avoids W_GetNumForName I_Erroring on a miss.
+	    // Some punctuation glyphs are absent from FONTA, so fall back to FONTA01
+	    // for any missing one (a proper Raven HUD font is a later phase).
 	    sprintf(buffer, "FONTA%02d", (j++ - HU_FONTSTART) + 1);
 	    lump = W_CheckNumForName(buffer);
 	    if (lump < 0)
@@ -425,10 +429,15 @@ void HU_Init(void)
 	    lump = W_CheckNumForName(buffer);
 	}
 
+	// Last resort: whichever base glyph this IWAD actually has, then any glyph we
+	// already loaded.  NEVER W_CacheLumpName a name that might not exist -- that is
+	// a fatal error, and "one missing HUD glyph" must not kill the game.
+	if (lump < 0) lump = W_CheckNumForName("STCFN033");
+	if (lump < 0) lump = W_CheckNumForName("FONTA01");
 	if (lump >= 0)
 	    hu_font[i] = (patch_t *) W_CacheLumpNum(lump, PU_STATIC);
 	else
-	    hu_font[i] = (patch_t *) W_CacheLumpName("STCFN033", PU_STATIC);
+	    hu_font[i] = i ? hu_font[i-1] : NULL;
     }
 
 }

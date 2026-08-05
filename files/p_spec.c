@@ -179,25 +179,46 @@ void P_InitPicAnims (void)
 
 	if (lastanim >= anims + MAXANIMS) break;   // don't overflow the table
 
-	// BOTH ends must exist.  Vanilla only checked startname, so an animation
-	// whose LAST frame is missing -- or whose two frames land out of order
-	// because a PWAD redefines one of them and W_CheckNumForName (last match
-	// wins) picks the new copy -- fell through to the "bad cycle" I_Error below
-	// and killed the whole game over one animated flat.  Skip such an entry with
-	// a warning instead: the flat still draws, it just does not animate.
+	// BOTH ends must exist.  Vanilla only checked startname, and for FLATS it
+	// checked it with W_CheckNumForName -- the whole lump directory, not the flat
+	// namespace.  Any lump of that name anywhere passed the gate: hexen.wad has a
+	// SOUND called BLOOD1, so loading it sent the DOOM "BLOOD1..BLOOD3" flat
+	// animation straight past the guard, both R_FlatNumForName lookups then failed
+	// and returned 0, numpics came out 1, and the game died with
+	// "P_InitPicAnims: bad cycle from BLOOD1 to BLOOD3".
+	//
+	// So resolve in the RIGHT namespace (R_CheckFlatNumForName), require both ends,
+	// and say which animation was dropped rather than skipping in silence -- a
+	// missing animation is worth one startup line, and it is how you find the WAD
+	// responsible.
 	if (istexture)
 	{
-	    if (R_CheckTextureNumForName(startname) == -1) continue;
-	    if (R_CheckTextureNumForName(endname)   == -1) continue;
+	    if (R_CheckTextureNumForName(startname) == -1
+		|| R_CheckTextureNumForName(endname) == -1)
+	    {
+		printf ("P_InitPicAnims: texture animation %s..%s incomplete -- skipped\n",
+			startname, endname);
+		continue;
+	    }
 	    lastanim->picnum  = R_TextureNumForName (endname);
 	    lastanim->basepic = R_TextureNumForName (startname);
 	}
 	else
 	{
-	    if (W_CheckNumForName(startname) == -1) continue;
-	    if (W_CheckNumForName(endname)   == -1) continue;
-	    lastanim->picnum  = R_FlatNumForName (endname);
-	    lastanim->basepic = R_FlatNumForName (startname);
+	    int b = R_CheckFlatNumForName (startname);
+	    int e = R_CheckFlatNumForName (endname);
+	    if (b == -1 || e == -1)
+	    {
+		// Absent entirely (a non-DOOM IWAD) is normal and silent; present but
+		// half-there means a PWAD shipped part of the set, which is worth saying.
+		if (b != -1 || e != -1)
+		    printf ("P_InitPicAnims: flat animation %s..%s incomplete "
+			    "(%s missing) -- skipped\n",
+			    startname, endname, (b == -1) ? startname : endname);
+		continue;
+	    }
+	    lastanim->picnum  = e;
+	    lastanim->basepic = b;
 	}
 
 	lastanim->istexture = istexture;

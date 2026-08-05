@@ -1001,6 +1001,22 @@ void R_InitTranMap (void)
 // R_FlatNumForName
 // Retrieval, get a flat number for a flat name.
 //
+// Like R_FlatNumForName but reports -1 instead of warning + defaulting to flat 0.
+// P_InitPicAnims needs this: "is there a flat called BLOOD1?" is a real question,
+// and answering it with 0 is what produced the bogus "bad cycle" I_Error.
+int R_CheckFlatNumForName (char* name)
+{
+    extern lumpinfo_t*	lumpinfo;
+    int			k;
+
+    // Search from the end so a PWAD flat overriding an IWAD one of the same name
+    // wins (mirrors W_CheckNumForName's last-match rule).
+    for (k = numflats-1 ; k >= 0 ; k--)
+	if (!strncasecmp (lumpinfo[flatlumps[k]].name, name, 8))
+	    return k;
+    return -1;
+}
+
 int R_FlatNumForName (char* name)
 {
     extern lumpinfo_t*	lumpinfo;
