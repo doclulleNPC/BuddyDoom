@@ -197,9 +197,13 @@ STlib_updatePercent
 ( st_percent_t*		per,
   int			refresh )
 {
+    // The '%' takes the SAME translation as the digits it belongs to.  Drawing it
+    // with a plain V_DrawPatch (as this did) left a red percent sign hanging off a
+    // green health readout -- the sign is part of the number, not decoration.
+    // (Woof makes "always gray" a separate option; here it simply matches.)
     if (refresh && *per->n.on)
-	V_DrawPatch(per->n.x, per->n.y, FG, per->p);
-    
+	V_DrawPatchTranslated(per->n.x, per->n.y, FG, per->p, st_num_xlat);
+
     STlib_updateNum(&per->n, refresh);
 }
 

@@ -229,6 +229,7 @@ extern int	viewheight;
 extern int	mouseSensitivity;
 extern int	showMessages;
 extern int	show_buddy_hud;	// hu_buddy.c -- companion top-of-screen HUD
+int		colored_numbers = 1;	// st_stuff.c -- coloured HUD numbers
 extern int	show_inventory_hud;	// hu_buddy.c -- (J) artifact inventory readout
 extern int	buddy_select;		// m_menu.c -- selected co-op buddy (Buddy menu)
 extern int	buddy_color;		// m_menu.c -- buddy player-colour index (Buddy menu)
@@ -269,6 +270,11 @@ default_t	defaults[] =
     {"music_volume",&snd_MusicVolume, 8},
     {"show_messages",&showMessages, 1},
     {"show_buddy_hud",&show_buddy_hud, 1},
+    // Boom/MBF coloured status-bar numbers (st_stuff.c) -- health/armor/ammo
+    // tinted by value.  Woof defaults its sts_colored_numbers off; this fork has
+    // drawn coloured health/armor for a while, so ON keeps that and Options ->
+    // Features turns it off.
+    {"colored_numbers",&colored_numbers, 1},
     {"show_inventory_hud",&show_inventory_hud, 1},	// (J) artifact inventory readout
     {"buddy_select",&buddy_select, 0},			// Buddy menu: 0=Marine, 1..N=BUDDYDEF roster index
     {"buddy_color",&buddy_color, 0},			// Buddy menu: player-colour index (0=Green)

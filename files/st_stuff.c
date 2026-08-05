@@ -340,6 +340,8 @@ static patch_t*		armsbg;
 static patch_t*		arms[6][2]; 
 
 // ready-weapon widget
+extern int colored_numbers;	// m_misc.c config -- Options -> Features
+
 static st_number_t	w_ready;
 
  // in deathmatch only, summary of frags stats
@@ -1062,7 +1064,28 @@ void ST_drawWidgets(boolean refresh)
     // used by w_frags widget
     st_fragson = deathmatch && st_statusbaron; 
 
-    STlib_updateNum(&w_ready, refresh);
+    // Ready ammo, coloured by fraction of the clip left (Boom: <25% red, <50% gold,
+    // over max blue, else green).  A backpack doubles maxammo, so halve it back or
+    // every count would read "full" once you pick one up -- same fix as Woof's.
+    {
+	extern const byte* st_num_xlat;
+	ammotype_t at = weaponinfo[plyr->readyweapon].ammo;
+	st_num_xlat = NULL;
+	if (colored_numbers && at != am_noammo && plyr->maxammo[at] > 0)
+	{
+	    int mx = plyr->maxammo[at];
+	    int am = plyr->ammo[at];
+	    if (plyr->backpack) mx /= 2;
+	    st_num_xlat = (plyr->powers[pw_invulnerability] || (plyr->cheats & CF_GODMODE))
+			    ? V_ColorRange (VP_CR_GRAY)
+			: V_ColorRange (am * 100 < 25 * mx ? VP_CR_RED
+				      : am * 100 < 50 * mx ? VP_CR_GOLD
+				      : am > mx            ? VP_CR_BLUE2
+				      : VP_CR_GREEN);
+	}
+	STlib_updateNum(&w_ready, refresh);
+	st_num_xlat = NULL;
+    }
 
     for (i=0;i<4;i++)
     {
@@ -1070,13 +1093,34 @@ void ST_drawWidgets(boolean refresh)
 	STlib_updateNum(&w_maxammo[i], refresh);
     }
 
-    // Colour the health + armor numbers by value like MBF (<25 red, <50 gold, <=100 green, else blue).
+    // Coloured numbers (Boom/MBF, config `colored_numbers`, Options -> Features):
+    // health and armor by value -- <25 red, <50 gold, <=100 green, above max blue --
+    // and the ready-ammo count by how full the clip is, which is the reading you
+    // actually want mid-fight.  Invulnerability greys everything out, like Woof.
+    // Set st_num_xlat around each widget; NULL restores the stock red font.
     extern const byte* st_num_xlat;
-    st_num_xlat = V_HealthTrans (plyr->health);
-    STlib_updatePercent(&w_health, refresh);
-    st_num_xlat = V_HealthTrans (plyr->armorpoints);
-    STlib_updatePercent(&w_armor, refresh);
-    st_num_xlat = NULL;				// ammo / frags stay the default red font
+    if (colored_numbers)
+    {
+	boolean invul = (plyr->powers[pw_invulnerability] || (plyr->cheats & CF_GODMODE));
+	const byte* gray = V_ColorRange (VP_CR_GRAY);
+
+	st_num_xlat = invul ? gray : V_HealthTrans (plyr->health);
+	STlib_updatePercent(&w_health, refresh);
+	// Armor: the ARMOUR CLASS decides, not the point count -- 0 none, 1 green
+	// armor, 2 blue -- so the colour tells you which vest you are wearing.
+	st_num_xlat = invul ? gray
+		    : V_ColorRange (!plyr->armortype     ? VP_CR_RED
+				  : plyr->armortype == 1 ? VP_CR_GREEN
+				  : VP_CR_BLUE2);
+	STlib_updatePercent(&w_armor, refresh);
+	st_num_xlat = NULL;
+    }
+    else
+    {
+	st_num_xlat = NULL;
+	STlib_updatePercent(&w_health, refresh);
+	STlib_updatePercent(&w_armor, refresh);
+    }
 
     STlib_updateBinIcon(&w_armsbg, refresh);
 

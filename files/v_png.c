@@ -18,6 +18,7 @@
 //
 //-----------------------------------------------------------------------------
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -61,41 +62,138 @@ static byte VP_Nearest (int r, int g, int b)
     return (byte) best;
 }
 
-// ---- health-colour translation tables (green/yellow/red) -------------------
+// ---- colour-range translation tables (Boom CR_*) ---------------------------
 // A "translation" is a 256-entry palette remap applied per pixel by
-// V_DrawPatchTranslated.  We build a luminance-preserving colourise for each hue,
-// so any source colour (the gray HUD font OR the red status-bar numbers) becomes
-// the target hue at the same brightness.
+// V_DrawPatchTranslated.  Building one by ramping RGB from a pixel's luminance
+// (what this used to do) comes out muddy: the status-bar font is a shaded RED
+// ramp, and forcing it through e.g. (L/2, L, L/2) throws its saturation away and
+// then nearest-matches into whatever DOOM's palette happens to have nearby.
+//
+// So do it the way Boom/Woof/Crispy do (../woof/src/v_trans.c V_Colorize): go to
+// HSV, keep the pixel's VALUE (its shading), force saturation, rotate the HUE to
+// the target colour, come back.  The font keeps its highlights and drop shadow and
+// simply changes colour.  The per-range tweaks below are Woof's, verbatim --
+// green and gold shift hue slightly with brightness, which is what stops them
+// reading as flat poster paint.
 
-static byte	vp_xlat_grn[256], vp_xlat_yel[256], vp_xlat_red[256], vp_xlat_blu[256];
-static boolean	vp_xlat_ready;
+typedef struct { double x, y, z; } vp_vec;
 
-static void VP_BuildHealthXlats (void)
+#define VP_CTOL	0.0001
+
+static void VP_RGBtoHSV (const vp_vec* rgb, vp_vec* hsv)
 {
-    int i;
-    if (!vp_pal_ready) VP_LoadPalette ();
-    for (i = 0; i < 256; i++)
+    double r = rgb->x, g = rgb->y, b = rgb->z;
+    double cmax = r, cmin = r, h, sat, v;
+
+    if (g > cmax) cmax = g;   if (g < cmin) cmin = g;
+    if (b > cmax) cmax = b;   if (b < cmin) cmin = b;
+    v = cmax;
+    sat = (cmax > VP_CTOL) ? (cmax - cmin) / cmax : 0.0;
+    if (sat < VP_CTOL)
+	h = 0.0;
+    else
     {
-	int r = vp_pal[i][0], g = vp_pal[i][1], b = vp_pal[i][2];
-	int L = (r*77 + g*150 + b*29) >> 8;		// luminance 0..255
-	// A lighter green (mix some white in) instead of dark fully-saturated pure
-	// green, so the healthy-HP readout (buddy + player) reads as a normal green.
-	vp_xlat_grn[i] = VP_Nearest (L/2, L, L/2);
-	vp_xlat_yel[i] = VP_Nearest (L, L*13/16, 0);	// gold (MBF cr_gold), not pure yellow
-	vp_xlat_red[i] = VP_Nearest (L, 0, 0);
-	vp_xlat_blu[i] = VP_Nearest (L/2, L/2, L);	// >max readout (mega health/armor)
+	double cd = cmax - cmin;
+	double rc = (cmax - r) / cd, gc = (cmax - g) / cd, bc = (cmax - b) / cd;
+	if      (r == cmax) h = bc - gc;
+	else if (g == cmax) h = 2.0 + rc - bc;
+	else                h = 4.0 + gc - rc;
+	h *= 60.0;
+	if (h < 0.0) h += 360.0;
     }
-    vp_xlat_ready = true;
+    hsv->x = h / 360.0; hsv->y = sat; hsv->z = v;
 }
 
-// MBF/Boom status-bar colour for a health/armor value: <25 red, <50 gold, <=100 green, else blue.
+static void VP_HSVtoRGB (const vp_vec* hsv, vp_vec* rgb)
+{
+    double h = hsv->x * 360.0, sat = hsv->y, v = hsv->z;
+
+    if (sat < VP_CTOL) { rgb->x = rgb->y = rgb->z = v; return; }
+    if (h >= 360.0) h -= 360.0;
+    h /= 60.0;
+    {
+	int    i = (int) floor (h);
+	double f = h - i;
+	double pp = v * (1.0 - sat);
+	double q  = v * (1.0 - sat * f);
+	double t  = v * (1.0 - sat * (1.0 - f));
+	switch (i)
+	{
+	  case 0:  rgb->x = v;  rgb->y = t;  rgb->z = pp; break;
+	  case 1:  rgb->x = q;  rgb->y = v;  rgb->z = pp; break;
+	  case 2:  rgb->x = pp; rgb->y = v;  rgb->z = t;  break;
+	  case 3:  rgb->x = pp; rgb->y = q;  rgb->z = v;  break;
+	  case 4:  rgb->x = t;  rgb->y = pp; rgb->z = v;  break;
+	  default: rgb->x = v;  rgb->y = pp; rgb->z = q;  break;
+	}
+    }
+}
+
+static byte vp_cr[VP_NCR][256];
+static boolean vp_cr_ready;
+
+static void VP_BuildColorRanges (void)
+{
+    int cr, i;
+
+    if (!vp_pal_ready) VP_LoadPalette ();
+    for (cr = 0; cr < VP_NCR; cr++)
+	for (i = 0; i < 256; i++)
+	{
+	    vp_vec rgb, hsv;
+	    rgb.x = vp_pal[i][0] / 255.0;
+	    rgb.y = vp_pal[i][1] / 255.0;
+	    rgb.z = vp_pal[i][2] / 255.0;
+	    VP_RGBtoHSV (&rgb, &hsv);
+
+	    if (cr == VP_CR_GRAY)
+		hsv.y = 0.0;				// drop all colour, keep shading
+	    else
+	    {
+		hsv.y = 1.0;				// full saturation (crispy)
+		switch (cr)
+		{
+		  case VP_CR_RED:
+		    hsv.x = 0.0;
+		    break;
+		  case VP_CR_GREEN:
+		    hsv.x = (144.0 * hsv.z + 120.0 * (1.0 - hsv.z)) / 360.0;
+		    break;
+		  case VP_CR_GOLD:
+		    hsv.x = (7.0 + 53.0 * hsv.z) / 360.0;
+		    hsv.y = 1.0 - 0.4 * hsv.z;
+		    hsv.z = (hsv.z < 0.2 ? hsv.z : 0.2) + 0.8 * hsv.z;
+		    break;
+		  case VP_CR_BLUE2:
+		  default:
+		    hsv.x = 240.0 / 360.0;
+		    break;
+		}
+	    }
+	    VP_HSVtoRGB (&hsv, &rgb);
+	    vp_cr[cr][i] = VP_Nearest ((int)(rgb.x * 255.0 + 0.5),
+				       (int)(rgb.y * 255.0 + 0.5),
+				       (int)(rgb.z * 255.0 + 0.5));
+	}
+    vp_cr_ready = true;
+}
+
+// One of the VP_CR_* ranges, or NULL for "no remap" (VP_CR_NONE).
+const byte* V_ColorRange (int cr)
+{
+    if (cr <= VP_CR_NONE || cr >= VP_NCR) return NULL;
+    if (!vp_cr_ready) VP_BuildColorRanges ();
+    return vp_cr[cr];
+}
+
+// MBF/Boom status-bar colour for a health/armor value: <25 red, <50 gold,
+// <=100 green, else blue.
 const byte* V_HealthTrans (int hp)
 {
-    if (!vp_xlat_ready) VP_BuildHealthXlats ();
-    if (hp <  25) return vp_xlat_red;
-    if (hp <  50) return vp_xlat_yel;
-    if (hp <= 100) return vp_xlat_grn;
-    return vp_xlat_blu;
+    return V_ColorRange (hp <  25 ? VP_CR_RED
+		       : hp <  50 ? VP_CR_GOLD
+		       : hp <= 100 ? VP_CR_GREEN
+		       : VP_CR_BLUE2);
 }
 
 // ---- buddy player-colour remaps --------------------------------------------

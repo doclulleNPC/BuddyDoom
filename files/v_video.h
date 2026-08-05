@@ -148,7 +148,12 @@ void V_DrawFullscreenLumpName (const char* name);
 // (trans == NULL -> no remap).  Used for the enlarged, recoloured buddy preview.
 void V_DrawPatchScaledTranslated (int x, int y, int scrn, patch_t* patch, int sc, const byte* trans);
 
-// 256-entry health-colour translation: >75 green, >25 yellow, else red.  v_png.c.
+// Boom CR_* colour ranges, built by an HSV hue-rotate that keeps each pixel's
+// shading (v_png.c; the algorithm is ../woof/src/v_trans.c V_Colorize).
+enum { VP_CR_NONE = -1, VP_CR_RED = 0, VP_CR_GOLD, VP_CR_GREEN, VP_CR_BLUE2,
+       VP_CR_GRAY, VP_NCR };
+const byte* V_ColorRange (int cr);
+
 const byte* V_HealthTrans (int hp);
 
 // ---- buddy player-colour remaps (v_png.c) ----------------------------------

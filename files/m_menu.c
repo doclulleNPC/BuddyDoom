@@ -384,6 +384,7 @@ void M_Crosshair(int choice);		// Options -> Crosshair submenu
 void M_CrosshairType(int choice);	// cycle Off / Cross / Dot / Big
 void M_CrosshairColor(int choice);	// cycle Green / White / Red / Yellow / Blue
 void M_HitIndicator(int choice);	// toggle the directional damage ring
+void M_ColoredNumbers(int choice);	// toggle coloured status-bar numbers
 void M_DrawCrosshair(void);
 
 menuitem_t OptionsMenu[]=
@@ -491,6 +492,7 @@ enum
     feat_footclip,	// (H) sink actors into liquid
     feat_autoswitch,	// auto-raise a newly picked-up weapon
     feat_hitind,	// directional damage indicator (red hit ring)
+    feat_colnum,	// coloured status-bar numbers (health/armor/ammo)
     feat_runspeed,	// player run-speed percentage
     feat_weaponpower,	// player weapon-damage percentage
     feat_end
@@ -502,6 +504,7 @@ menuitem_t FeaturesMenu[]=
     {1,"",	M_ToggleFootclip,'f'},
     {1,"",	M_ToggleAutoswitch,'w'},
     {1,"",	M_HitIndicator,'h'},		// select toggles the directional damage ring
+    {1,"",	M_ColoredNumbers,'c'},		// select toggles coloured HUD numbers
     {2,"",	M_RunSpeed,'r'},		// left/right cycles 100..300%
     {2,"",	M_WeaponPower,'p'}		// left/right cycles 50..500%
 };
@@ -1732,6 +1735,9 @@ void M_DrawFeatures(void)
     { extern int damage_indicator;
       M_WriteText (x,     y+LINEHEIGHT*feat_hitind,   "Hit Indicator");
       M_WriteText (x+130, y+LINEHEIGHT*feat_hitind,   damage_indicator ? "On" : "Off"); }
+    { extern int colored_numbers;
+      M_WriteText (x,     y+LINEHEIGHT*feat_colnum,   "Colored Numbers");
+      M_WriteText (x+130, y+LINEHEIGHT*feat_colnum,   colored_numbers ? "On" : "Off"); }
     M_WriteText (x,     y+LINEHEIGHT*feat_runspeed,   "Run Speed");
     snprintf (buf, sizeof buf, "%d%%", run_speed);
     M_WriteText (x+130, y+LINEHEIGHT*feat_runspeed,   buf);
@@ -1778,6 +1784,16 @@ void M_HitIndicator(int choice)
     extern int damage_indicator;
     (void)choice;
     damage_indicator = !damage_indicator;
+    M_SaveDefaults ();
+}
+
+// Options -> Features -> Colored Numbers: tint the status-bar health / armor /
+// ready-ammo counts by value (Boom/MBF; `colored_numbers`, drawn in st_stuff.c).
+void M_ColoredNumbers(int choice)
+{
+    extern int colored_numbers;
+    (void)choice;
+    colored_numbers = !colored_numbers;
     M_SaveDefaults ();
 }
 
