@@ -1497,6 +1497,123 @@ static void ST_StrifeDrawer (void)
 	ST_SDrNumber (plyr->ammo[weaponinfo[plyr->readyweapon].ammo], wd + 311, 162, s_fong);
 }
 
+// ===========================================================================
+//  Hexen status bar
+//
+//  Same deal as the Heretic bar above: hexen.wad has no DOOM status-bar art, so
+//  the DOOM bar renders black + "!".  Hexen's own bar IS present (H2BAR frame,
+//  STATBAR overlay, IN*/INRED* numbers, SMALLIN* small digits, the CHAIN +
+//  LIFEGEM health slider, LFEDGE/RTEDGE caps) -- draw that instead.  Layout is
+//  crispy-doom hexen/sb_bar.c DrawMainBar; drawn straight to screen 0 in base
+//  (320x200) coords, so it needs none of the DOOM screens[4]/ST_HEIGHT compositing.
+//
+//  Hexen's own player fields do not exist here (this engine runs Hexen CONTENT
+//  inside DOOM's playsim -- no mana pair, no per-class armour classes), so the two
+//  mana slots show the ready weapon's DOOM ammo and the armour readout shows
+//  armorpoints directly rather than Hexen's fixed-point /5.  Same compromise the
+//  Heretic bar makes, and it keeps the bar honest about what the playsim has.
+//  The artifact/inventory row and the class-specific weapon pieces are omitted.
+// ===========================================================================
+
+static patch_t*	x_h2bar;
+static patch_t*	x_statbar;
+static patch_t*	x_chain;
+static patch_t*	x_lifegem;
+static patch_t*	x_lfedge;
+static patch_t*	x_rtedge;
+static patch_t*	x_armcls;
+static patch_t*	x_manacls;
+static patch_t*	x_manabrt[2];
+static patch_t*	x_manadim[2];
+static patch_t*	x_inum[10];
+static patch_t*	x_rnum[10];		// INRED* -- health below 25
+static patch_t*	x_smnum[10];
+static int	x_sb_loaded = 0;
+
+static void ST_HexenLoad (void)
+{
+    int i; char nm[9];
+    if (x_sb_loaded) return;
+    x_sb_loaded = 1;
+    x_h2bar   = ST_HCache ("H2BAR");
+    x_statbar = ST_HCache ("STATBAR");
+    x_chain   = ST_HCache ("CHAIN");
+    x_lifegem = ST_HCache ("LIFEGEM");
+    x_lfedge  = ST_HCache ("LFEDGE");
+    x_rtedge  = ST_HCache ("RTEDGE");
+    x_armcls  = ST_HCache ("ARMCLS");
+    x_manacls = ST_HCache ("MANACLS");
+    x_manabrt[0] = ST_HCache ("MANABRT1"); x_manabrt[1] = ST_HCache ("MANABRT2");
+    x_manadim[0] = ST_HCache ("MANADIM1"); x_manadim[1] = ST_HCache ("MANADIM2");
+    for (i = 0; i < 10; i++) { sprintf (nm, "IN%d", i);      x_inum[i]  = ST_HCache (nm); }
+    for (i = 0; i < 10; i++) { sprintf (nm, "INRED%d", i);   x_rnum[i]  = ST_HCache (nm); }
+    for (i = 0; i < 10; i++) { sprintf (nm, "SMALLIN%d", i); x_smnum[i] = ST_HCache (nm); }
+}
+
+// crispy DrINumber: right-aligned 3-digit run, 8px pitch.  `set` picks the green
+// (IN*) or red (INRED*) digits -- Hexen turns the health readout red below 25.
+static void ST_XDrINumber (int val, int x, int y, patch_t** set)
+{
+    int oldval = val;
+    if (val < 0)   val = 0;
+    if (val > 999) val = 999;
+    if (val > 99 && set[val/100])                  V_DrawPatch (x,      y, 0, set[val/100]);
+    val %= 100;
+    if ((val > 9 || oldval > 99) && set[val/10])   V_DrawPatch (x + 8,  y, 0, set[val/10]);
+    val %= 10;
+    if (set[val])                                  V_DrawPatch (x + 16, y, 0, set[val]);
+}
+
+static void ST_XDrSmallNumber (int val, int x, int y)
+{
+    if (val < 0) val = 0;
+    if (val > 999) val = 999;
+    if (val > 99 && x_smnum[val/100]) V_DrawPatch (x,     y, 0, x_smnum[val/100]);
+    if (val > 9  && x_smnum[(val/10)%10]) V_DrawPatch (x + 4, y, 0, x_smnum[(val/10)%10]);
+    if (x_smnum[val%10])              V_DrawPatch (x + 8, y, 0, x_smnum[val%10]);
+}
+
+static void ST_HexenDrawer (void)
+{
+    int hp, ammo = 0, i;
+    int wd = WIDESCREENDELTA;	// 320-wide bar centred in widescreen (0 in 4:3)
+
+    if (!plyr) return;
+    ST_HexenLoad ();
+
+    if (x_h2bar)   V_DrawPatch (wd + 0,  134, 0, x_h2bar);	// full bar frame
+    if (x_statbar) V_DrawPatch (wd + 38, 162, 0, x_statbar);	// stat overlay
+
+    // Health -- red digits below 25, exactly like Hexen.
+    hp = plyr->health;
+    if (x_armcls) V_DrawPatch (wd + 41, 178, 0, x_armcls);	// clear the well first
+    ST_XDrINumber (hp, wd + 40, 176, (hp >= 25) ? x_inum : x_rnum);
+
+    // "Mana": this playsim has no mana pair, so both wells show the ready weapon's
+    // DOOM ammo -- lit when there is some, dim when empty (Hexen's MANABRT/MANADIM).
+    if (weaponinfo[plyr->readyweapon].ammo != am_noammo)
+	ammo = plyr->ammo[weaponinfo[plyr->readyweapon].ammo];
+    for (i = 0; i < 2; i++)
+    {
+	patch_t* icon = ammo ? x_manabrt[i] : x_manadim[i];
+	int      ix   = i ? 110 : 77;
+	if (x_manacls) V_DrawPatch (wd + ix, 178, 0, x_manacls);
+	if (icon)      V_DrawPatch (wd + ix, 164, 0, icon);
+	ST_XDrSmallNumber (ammo, wd + ix + 2, 181);
+    }
+
+    // Armour
+    if (x_armcls) V_DrawPatch (wd + 255, 178, 0, x_armcls);
+    ST_XDrINumber (plyr->armorpoints, wd + 250, 176, x_inum);
+
+    // Health chain: the gem slides along it, capped by the two edge pieces.
+    hp = plyr->health; if (hp < 0) hp = 0; if (hp > 100) hp = 100;
+    if (x_chain)   V_DrawPatch (wd + 28 + (((hp * 196) / 100) % 9), 193, 0, x_chain);
+    if (x_lifegem) V_DrawPatch (wd + 7 + ((hp * 11) / 5), 193, 0, x_lifegem);
+    if (x_lfedge)  V_DrawPatch (wd + 0,   193, 0, x_lfedge);
+    if (x_rtedge)  V_DrawPatch (wd + 277, 193, 0, x_rtedge);
+}
+
 void ST_Drawer (boolean fullscreen, boolean refresh)
 {
 
@@ -1512,6 +1629,14 @@ void ST_Drawer (boolean fullscreen, boolean refresh)
     {
 	if (st_statusbaron)
 	    ST_HereticDrawer ();
+	return;
+    }
+
+    // Hexen: same story as Heretic -- hexen.wad has no DOOM bar art.
+    if (gametype == GT_HEXEN)
+    {
+	if (st_statusbaron)
+	    ST_HexenDrawer ();
 	return;
     }
 
@@ -1544,8 +1669,13 @@ static patch_t* ST_CachePatch (const char* name)
 {
     if (W_CheckNumForName ((char*)name) < 0)
     {
-	if (heretic_mode)	name = "FONTA01";
-	else if (strife_mode)	name = "STCFN033";
+	// Pick by what the loaded IWAD actually HAS, not by a per-game flag: every new
+	// game otherwise needs another `else if` here and a matching one in
+	// STlib_init, and missing either is a fatal W_GetNumForName at startup --
+	// which is how Hexen died first on STTNUM0 and then on STTMINUS.
+	if      (W_CheckNumForName ("FONTA01")  >= 0) name = "FONTA01";	 // Raven (Heretic/Hexen)
+	else if (W_CheckNumForName ("STCFN033") >= 0) name = "STCFN033"; // DOOM/Strife
+	else					      return NULL;	 // nothing usable
     }
     return (patch_t *) W_CacheLumpName ((char*)name, PU_STATIC);
 }

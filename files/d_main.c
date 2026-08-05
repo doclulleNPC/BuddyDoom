@@ -1202,6 +1202,16 @@ void IdentifyVersion (void)
 		mode = commercial;		// Strife uses the Doom II MAPxx format
 		printf ("%s IWAD detected -- strife mode\n", lbl[0] ? lbl : "Strife");
 	    }
+	    else if (iwid == IWID_HEXEN
+		     || (iwid == IWID_NONE && strstr (low, "hexen")))
+	    {
+		// gametype was never set for Hexen, so every `gametype == GT_HEXEN`
+		// branch in the engine was dead code and hexen.wad fell through the
+		// DOOM paths -- which is why it died loading DOOM's status-bar art.
+		gametype = GT_HEXEN;
+		mode = commercial;		// Hexen uses the Doom II MAPxx format
+		printf ("%s IWAD detected -- hexen mode\n", lbl[0] ? lbl : "Hexen");
+	    }
 	}
 	// doom.wad is BOTH the registered (3-episode) and the Ultimate/retail (4-episode) IWAD --
 	// same filename, only the content differs.  If a "registered" doom.wad actually has an

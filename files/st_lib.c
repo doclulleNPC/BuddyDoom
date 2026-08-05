@@ -60,16 +60,22 @@ patch_t*		sttminus;
 
 void STlib_init(void)
 {
-    // Neither heretic.wad nor strife1.wad has STTMINUS -- substitute a patch that game
-    // is guaranteed to have (same reasoning as ST_CachePatch in st_stuff.c: get through
-    // init; the DOOM bar is never drawn in those games anyway).
+    // Heretic, Hexen and Strife have no STTMINUS -- substitute something the loaded
+    // IWAD definitely has (same reasoning as ST_CachePatch in st_stuff.c: just get
+    // through init; those games draw their own bar, never this patch).
+    //
+    // Pick by what is PRESENT rather than by a per-game flag: one more game meant one
+    // more `else if` here and in ST_CachePatch, and forgetting either is a fatal
+    // W_GetNumForName at startup -- which is exactly how Hexen died on STTNUM0 and
+    // then on STTMINUS.
     const char* nm = "STTMINUS";
     if (W_CheckNumForName ("STTMINUS") < 0)
     {
-	if (heretic_mode)	nm = "FONTA01";
-	else if (strife_mode)	nm = "STCFN033";
+	if      (W_CheckNumForName ("FONTA01")  >= 0) nm = "FONTA01";	// Raven (Heretic/Hexen)
+	else if (W_CheckNumForName ("STCFN033") >= 0) nm = "STCFN033";	// DOOM/Strife
     }
-    sttminus = (patch_t *) W_CacheLumpName((char*)nm, PU_STATIC);
+    sttminus = (W_CheckNumForName ((char*)nm) >= 0)
+	     ? (patch_t *) W_CacheLumpName ((char*)nm, PU_STATIC) : NULL;
 }
 
 // Per-pixel palette translation for the next number drawn (NULL = none).  Set by
