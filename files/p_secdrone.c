@@ -221,7 +221,7 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
     useClip  = bot->ammo[am_clip]  >= DRONE_CLIP_COST;
     useShell = bot->ammo[am_shell] >= DRONE_SHELL_COST;
     if (!heretic_mode && !useClip && !useShell)
-	return;					// the DOOM drone burns ammo; the Heretic lichling is free
+	return;					// DOOM drone + Strife Stalker burn ammo; only the Heretic lichling is free
 
     heavyFire   = bot->damagecount >= DRONE_PAIN_THRESH;
     surrounded  = threats >= DRONE_ENEMY_COUNT;
@@ -236,8 +236,8 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
 	useClip = clipCapped;			// burning overflow -> spend the capped pool
 
     // One companion special per game family -- same deploy decision, different actor and
-    // message.  Heretic gets the Lichling, Strife the Stalker; both are free, only the
-    // DOOM tech drone costs ammo.
+    // message.  Heretic gets the Lichling (free); the DOOM tech drone and the Strife Stalker
+    // both cost ammo (bullets/shells), so only the Heretic path skips the ammo spend below.
     {
 	int ctype = heretic_mode ? MT_LICHLING
 		  : (gametype == GT_STRIFE) ? MT_STALKERBUDDY : MT_SECDRONE;
@@ -249,7 +249,7 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
 	if (!d)
 	    return;
 
-	if (!heretic_mode)			// only the DOOM drone spends ammo
+	if (!heretic_mode)			// DOOM drone + Strife Stalker spend ammo; Heretic lichling is free
 	{
 	    if (useClip) bot->ammo[am_clip]  -= DRONE_CLIP_COST;
 	    else         bot->ammo[am_shell] -= DRONE_SHELL_COST;
