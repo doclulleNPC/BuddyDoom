@@ -41,6 +41,7 @@ void A_Chase (mobj_t* actor);
 #define DRONE_LOW_HP		30		// buddy HP at/below this = last-resort panic
 #define DRONE_CLIP_COST		50		// bullets, else...
 #define DRONE_SHELL_COST	25		// ...shells
+#define DRONE_SPAWN_GRACE	(3*TICRATE)	// no deploy in the first ~3 s of a level (before any fight)
 
 //
 // A_SecDroneShot -- fire one laser at the current target (the volley of 3 comes from
@@ -194,6 +195,14 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
     int		threats;
 
     if (!bot || !bot->mo || bot->playerstate != PST_LIVE)
+	return;
+
+    // The companion is an EMERGENCY asset -- never conjure one at level start, before any
+    // fighting.  On a fresh map leveltime is ~0, and a buddy that spawns next to (or amid)
+    // still-asleep or pre-aggroed monsters could otherwise trip "surrounded"/heavy-fire on
+    // tic 1 and pop a Stalker/drone the instant the map loads (reported in Strife).  A short
+    // grace period suppresses that spawn-time deploy while leaving mid-level rescues intact.
+    if (leveltime < DRONE_SPAWN_GRACE)
 	return;
 
     // Cheap gates before the per-tic threat scan; only a critically hurt buddy may
