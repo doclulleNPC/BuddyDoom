@@ -15,6 +15,10 @@ void Hexen_Init (void);
 
 // True if hexenstuff.wad's sprites are loaded -- spawn Hexen monsters only then, else
 // they'd render as a blank (0-frame) sprite.
+// In hexen mode, point the SPR_X* slots at hexen.wad's NATIVE sprite codes --
+// without it every Hexen actor is invisible there.  Before R_Init.
+void Hexen_RemapNativeSprites (void);
+
 int  Hexen_Available (void);
 
 // Map a name ("ettin"/...) to a Hexen mobjtype, or -1 if unknown.

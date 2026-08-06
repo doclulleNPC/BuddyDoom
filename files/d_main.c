@@ -1866,7 +1866,8 @@ printf("added\n");
 
     Heretic_RemapNativeSprites ();	// heretic_mode: point H* sprites at heretic.wad's native codes
 					//   (must run BEFORE R_Init builds sprites[] from sprnames[])
-    { extern void Strife_RemapNativeSprites(void); Strife_RemapNativeSprites (); }	// strife_mode: S* -> native
+    { extern void Strife_RemapNativeSprites(void); Strife_RemapNativeSprites (); }
+    Hexen_RemapNativeSprites ();	// hexen_mode: SPR_X* -> hexen.wad native codes	// strife_mode: S* -> native
     printf ("R_Init: Init DOOM refresh daemon - ");
     R_Init ();
     { extern void P_InitTerrainTypes(void); P_InitTerrainTypes (); }	// (H) floorpic->liquid table (needs flats from R_Init)

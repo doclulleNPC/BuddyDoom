@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "doomdef.h"
+#include "doomstat.h"	// gametype (GT_HEXEN)
 #include "info.h"
 #include "m_random.h"
 #include "m_fixed.h"
@@ -974,6 +975,45 @@ void Hexen_Init (void)
 // Spawn helpers (console "summon" + director)
 // ---------------------------------------------------------------------------
 // hexenstuff.wad's renamed sprites loaded?  Test the PARSED sprite, not a lump name.
+// ---------------------------------------------------------------------------
+// Hexen_RemapNativeSprites
+//
+// The additive Hexen actors reference the RENAMED sprite codes that
+// tools/extract_hexen.py puts in hexenstuff.wad (XETT, XCEN, ...), because inside
+// DOOM those codes must not collide with DOOM's own.  When hexen.wad is the IWAD
+// that is backwards: hexenstuff.wad is not loaded at all, the X* codes match
+// nothing, and every Hexen monster spawns INVISIBLE -- present and solid, just
+// never drawn.
+//
+// So in hexen mode point each SPR_X* slot back at the native code that is actually
+// in hexen.wad (ETTN, CENT, ...).  Same trick Heretic_RemapNativeSprites and
+// Strife_RemapNativeSprites already play for their games.  The pair table is
+// generated from the extractor's own rename map, so the two cannot drift.
+//
+// MUST run before R_Init builds sprites[] from sprnames[].
+// ---------------------------------------------------------------------------
+void Hexen_RemapNativeSprites (void)
+{
+    static const struct { const char* ren; const char* nat; } tbl[] =
+    {
+#include "hexen_spr_native.inc"
+    };
+    extern char**	sprnames;
+    extern int		num_sprites;
+    int			i, k;
+
+    if (gametype != GT_HEXEN)
+	return;
+
+    for (i = 0; i < num_sprites; i++)
+	for (k = 0; k < (int)(sizeof tbl / sizeof tbl[0]); k++)
+	    if (!strncmp (sprnames[i], tbl[k].ren, 4))
+	    {
+		sprnames[i] = (char*) tbl[k].nat;
+		break;
+	    }
+}
+
 int Hexen_Available (void)
 {
     return numsprites > SPR_XETT && sprites[SPR_XETT].numframes > 0;
