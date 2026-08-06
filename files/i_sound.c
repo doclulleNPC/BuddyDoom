@@ -318,6 +318,17 @@ addsfx
     int		rightvol;
     int		leftvol;
 
+    // Play nothing if there is no sound to play.  I_InitSound returns early on a
+    // machine with no audio device (and on a mixing-buffer alloc failure) WITHOUT
+    // allocating `lengths` or precaching S_sfx[].data -- but the playsim keeps
+    // calling S_StartSound regardless, since sound is not supposed to be a
+    // prerequisite for running the game.  Without this guard the first monster to
+    // wake up read lengths[sfxid] through a NULL pointer and took the process down.
+    // Also re-checks the sfx id: s_sound.c bounds it against num_sfx, but a caller
+    // reaching I_StartSound directly need not have.
+    if (!lengths || sfxid < 1 || sfxid >= num_sfx || !S_sfx[sfxid].data)
+	return -1;
+
     // Sweep and clear finished streams
     if (!use_old_mixer) {
         for (i = 0; i < NUM_CHANNELS; i++) {
