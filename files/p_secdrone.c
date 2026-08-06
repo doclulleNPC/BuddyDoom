@@ -39,8 +39,12 @@ void A_Chase (mobj_t* actor);
 #define DRONE_COOLDOWN		(35*12)		// ~12 s between buddy deployments
 #define DRONE_MAX_ACTIVE	1		// cap on simultaneous friendly drones
 #define DRONE_LOW_HP		30		// buddy HP at/below this = last-resort panic
-#define DRONE_CLIP_COST		50		// bullets, else...
-#define DRONE_SHELL_COST	25		// ...shells
+// Companion deploy ammo cost -- every game charges now, but the pools/amounts differ.
+// The buddy pays the PRIMARY pool when it can afford it, else the FALLBACK pool.
+#define DRONE_CLIP_COST		50		// DOOM/Strife primary: bullets / rifle rounds (am_clip)
+#define DRONE_SHELL_COST	25		// DOOM/Strife fallback: shells / bolts     (am_shell)
+#define LICH_CLIP_COST		30		// Heretic primary: Gold Wand crystals      (am_clip)
+#define LICH_CELL_COST		20		// Heretic fallback: Dragon Claw orbs       (am_cell)
 #define DRONE_SPAWN_GRACE	(3*TICRATE)	// no deploy in the first ~3 s of a level (before any fight)
 
 //
@@ -189,9 +193,11 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
 {
     static int	cooldown = 0;
     mobj_t*	d;
-    boolean	useClip, useShell;
+    ammotype_t	prim, fall;			// which ammo pools this game's companion costs
+    int		pcost, fcost;			// ...and how much of each
+    boolean	usePrim, useFall;
     boolean	heavyFire, surrounded, lowHP;
-    boolean	clipCapped, shellCapped, atCap;
+    boolean	primCapped, fallCapped, atCap;
     int		threats;
 
     if (!bot || !bot->mo || bot->playerstate != PST_LIVE)
@@ -218,26 +224,31 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
 
     if (cooldown > 0 && !lowHP) { cooldown--; return; }
 
-    useClip  = bot->ammo[am_clip]  >= DRONE_CLIP_COST;
-    useShell = bot->ammo[am_shell] >= DRONE_SHELL_COST;
-    if (!heretic_mode && !useClip && !useShell)
-	return;					// DOOM drone + Strife Stalker burn ammo; only the Heretic lichling is free
+    // Per-game companion ammo cost (all games charge now; the pools/amounts differ).
+    // Heretic's Lichling costs Gold Wand crystals / Dragon Claw orbs; DOOM's drone and
+    // Strife's Stalker cost bullets/rifle-rounds then shells/bolts.
+    if (heretic_mode) { prim = am_clip; pcost = LICH_CLIP_COST;  fall = am_cell;  fcost = LICH_CELL_COST;  }
+    else              { prim = am_clip; pcost = DRONE_CLIP_COST; fall = am_shell; fcost = DRONE_SHELL_COST; }
+
+    usePrim = bot->ammo[prim] >= pcost;
+    useFall = bot->ammo[fall] >= fcost;
+    if (!usePrim && !useFall)
+	return;					// can't afford the companion in any pool -> hold
 
     heavyFire   = bot->damagecount >= DRONE_PAIN_THRESH;
     surrounded  = threats >= DRONE_ENEMY_COUNT;
-    clipCapped  = useClip  && bot->maxammo[am_clip]  > 0 && bot->ammo[am_clip]  >= bot->maxammo[am_clip];
-    shellCapped = useShell && bot->maxammo[am_shell] > 0 && bot->ammo[am_shell] >= bot->maxammo[am_shell];
-    atCap       = clipCapped || shellCapped;
+    primCapped  = usePrim && bot->maxammo[prim] > 0 && bot->ammo[prim] >= bot->maxammo[prim];
+    fallCapped  = useFall && bot->maxammo[fall] > 0 && bot->ammo[fall] >= bot->maxammo[fall];
+    atCap       = primCapped || fallCapped;
 
     if (!heavyFire && !surrounded && !atCap && !lowHP)
 	return;					// safe and not overflowing -> hold
 
     if (atCap && !heavyFire && !surrounded && !lowHP)
-	useClip = clipCapped;			// burning overflow -> spend the capped pool
+	usePrim = primCapped;			// burning overflow -> spend the capped pool
 
-    // One companion special per game family -- same deploy decision, different actor and
-    // message.  Heretic gets the Lichling (free); the DOOM tech drone and the Strife Stalker
-    // both cost ammo (bullets/shells), so only the Heretic path skips the ammo spend below.
+    // One companion special per game family -- same deploy decision, different actor,
+    // message and ammo cost.  Heretic gets the Lichling, Strife the Stalker, DOOM the drone.
     {
 	int ctype = heretic_mode ? MT_LICHLING
 		  : (gametype == GT_STRIFE) ? MT_STALKERBUDDY : MT_SECDRONE;
@@ -249,11 +260,8 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
 	if (!d)
 	    return;
 
-	if (!heretic_mode)			// DOOM drone + Strife Stalker spend ammo; Heretic lichling is free
-	{
-	    if (useClip) bot->ammo[am_clip]  -= DRONE_CLIP_COST;
-	    else         bot->ammo[am_shell] -= DRONE_SHELL_COST;
-	}
+	if (usePrim) bot->ammo[prim] -= pcost;	// every game pays its ammo cost
+	else         bot->ammo[fall] -= fcost;
 	cooldown = DRONE_COOLDOWN;
 	players[consoleplayer].message = heretic_mode ? "[Buddy] Summoning a Lichling!"
 	    : (gametype == GT_STRIFE) ? "[Buddy] Releasing a Stalker!"
