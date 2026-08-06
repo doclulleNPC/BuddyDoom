@@ -48,6 +48,7 @@
 
 extern state_t *states;
 extern mobjinfo_t *mobjinfo;
+extern int num_mobjtypes;
 
 // engine action funcs / helpers we call (declared by hand -- no public header)
 extern void	A_Look (mobj_t*);
@@ -1153,6 +1154,66 @@ void Hexen_Mon_Init (void)
 // Name -> mobjtype for the console "summon" command / director (extends the
 // hexen.c Hexen_TypeByName table; the orchestrator wires these into the lookup).
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Map-thing numbers.
+//
+// The additive Hexen actors are installed with doomednum -1 because they are
+// normally SUMMON-ONLY: this engine's map path is DOOM's, and a real Hexen ednum
+// left in the table would shadow a DOOM/Heretic map thing (Hexen's 9 is the
+// Maulotaur, DOOM's is a Shotgun Guy spot).  On an actual Hexen-format map that
+// is exactly backwards -- the numbers ARE Hexen's -- so P_SetupLevel calls this
+// once, in hexen mode only, to hand every ported actor its real number.
+//
+// Numbers are Hexen's own (crispy-doom/src/hexen/info.c doomednum fields).
+// Anything not ported keeps -1 and its map things are skipped with a log.
+// ---------------------------------------------------------------------------
+// Hexen map-thing number -> mobjtype, or -1 for an unported thing.
+//
+// Scanning ALL of mobjinfo[] is wrong here and was the MAP02/03/05 crash: DOOM's
+// own actors answer first, so Hexen's thing 89 resolved to DOOM's MT_BOSSSPIT and
+// A_BrainSpit walked a braintargets list a Hexen map never fills.  Search ONLY the
+// additive Hexen block (its monsters through the deco/item types, stopping before
+// the Strife reservations), which is the only range Hexen_SetMapEdnums touches.
+int P_HexenThingType (int doomednum)
+{
+    int i;
+    if (doomednum <= 0) return -1;
+    for (i = MT_XETTIN; i < MT_S_FIELDGUARD && i < num_mobjtypes; i++)
+	if (mobjinfo[i].doomednum == doomednum)
+	    return i;
+    return -1;
+}
+
+void Hexen_SetMapEdnums (void)
+{
+    static const struct { short type; short ednum; } tbl[] =
+    {
+	{ MT_XETTIN,        10030 },
+	{ MT_XCENTAUR,        107 },
+	{ MT_XSLAUGHTAUR,     115 },	// CentaurLeader
+	{ MT_XDEMON,           31 },	// Chaos Serpent (green)
+	{ MT_XDEMON2,        8080 },	// Chaos Serpent (brown)
+	{ MT_XFIREDEMON,    10060 },	// Afrit
+	{ MT_XWRAITH,          34 },	// Reiver
+	{ MT_XWRAITHB,      10011 },	// Reiver (buried)
+	{ MT_XBISHOP,         114 },
+	{ MT_XICEGUY,        8020 },	// Wendigo
+	{ MT_XSTALKER,        121 },	// Serpent
+	{ MT_XSTALKERBOSS,    120 },	// Serpent Leader
+	{ MT_XDRAGON,         254 },	// Death Wyvern
+	{ MT_XKORAX,        10200 },
+	{ MT_XHERESIARCH,   10080 },
+	{ MT_XMINOTAUR,         9 },	// Maulotaur / Dark Servant
+	{ MT_XFIGHTERBOSS,  10100 },
+	{ MT_XCLERICBOSS,   10101 },
+	{ MT_XMAGEBOSS,     10102 },
+	{ 0, 0 }
+    };
+    int i;
+    for (i = 0; tbl[i].ednum; i++)
+	mobjinfo[tbl[i].type].doomednum = tbl[i].ednum;
+}
+
 int Hexen_Mon_TypeByName (const char* name)
 {
     if (!name || !name[0]) return -1;

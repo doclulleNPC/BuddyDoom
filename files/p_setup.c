@@ -521,6 +521,26 @@ void P_LoadNodes (int lump)
 // height), marked by a BEHAVIOR lump.  DOOM/Boom/UDMF maps leave it 0.
 int	hexen_map_format = 0;
 
+// True if some mobjtype claims this Hexen map-thing number.  Used to decide
+// whether a Hexen THINGS record can be spawned at all -- see P_LoadThings.
+static boolean P_HexenEdnumKnown (int ednum)
+{
+    extern mobjinfo_t*	mobjinfo;
+    extern int		num_mobjtypes;
+    int			i;
+
+    if (ednum <= 0) return false;
+    // ONLY the additive Hexen block may claim a Hexen map number.  Scanning every
+    // mobjtype let DOOM's own actors answer: Hexen thing 89 matched DOOM's
+    // MT_BOSSSPIT (ednum 89), so the Icon-of-Sin shooter spawned on a Hexen map and
+    // A_BrainSpit walked a braintargets list that is never filled there.  The block
+    // runs from the first Hexen monster to the start of the Strife reservations.
+    for (i = MT_XETTIN; i < MT_S_FIELDGUARD && i < num_mobjtypes; i++)
+	if (mobjinfo[i].doomednum == ednum)
+	    return true;
+    return false;
+}
+
 // P_LoadThings
 //
 void P_LoadThings (int lump)
@@ -552,14 +572,15 @@ void P_LoadThings (int lump)
 	    conv.angle   = (short)(r[8]  | (r[9]  << 8));
 	    conv.type    = (short)(r[10] | (r[11] << 8));
 	    conv.options = (short)(r[12] | (r[13] << 8));
-	    // Hexen numbers its map things in its OWN space, unrelated to DOOM's.
-	    // Handing them to P_SpawnMapThing spawns whatever DOOM actor happens to
-	    // share the number -- Hexen thing 89 became DOOM's Icon-of-Sin shooter,
-	    // whose A_BrainSpit then dereferenced a braintargets list that a Hexen map
-	    // never fills, crashing on MAP02/MAP03.  Until there is a Hexen doomednum
-	    // table, spawn ONLY the player starts (1-4, shared by every id-format
-	    // game) and skip the rest -- an empty level beats a wrong, crashing one.
-	    if (conv.type >= 1 && conv.type <= 4)
+	    // Hexen numbers its map things in its OWN space, unrelated to DOOM's, and
+	    // Hexen_SetMapEdnums() (below, hexen mode only) has retagged the ported
+	    // actors with those numbers.  Player starts 1-4 are shared by every
+	    // id-format game and always work.  Anything still unresolved is SKIPPED
+	    // rather than passed to P_SpawnMapThing, which would spawn whatever DOOM
+	    // actor happens to share the number -- Hexen thing 89 became DOOM's
+	    // Icon-of-Sin shooter, whose A_BrainSpit dereferenced a braintargets list
+	    // a Hexen map never fills and killed MAP02/MAP03.
+	    if ((conv.type >= 1 && conv.type <= 4) || P_HexenEdnumKnown (conv.type))
 		P_SpawnMapThing (&conv);
 	    else if (nskipped < 8)
 	    { printf ("P_SetupLevel: Hexen thing type %d not mapped -- skipped\n",
@@ -1276,6 +1297,10 @@ P_SetupLevel
     else
 	// ACS: the map's BEHAVIOR lump.  After the geometry (OPEN scripts can touch
 	// sectors immediately) and before the things spawn.
+	// Hexen-format map: hand the ported Hexen actors their real map-thing
+	// numbers before THINGS are read (off such a map they stay -1 so they cannot
+	// shadow DOOM/Heretic things).
+	if (hexen_map_format) Hexen_SetMapEdnums ();
 	P_LoadACScripts (hexen_map_format ? lumpnum + ML_BLOCKMAP + 1 : -1);
 	P_LoadThings (lumpnum+ML_THINGS);
     

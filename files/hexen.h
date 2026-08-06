@@ -32,6 +32,15 @@ void Hexen_Deco_Init (void);
 void Hexen_Mon_Init (void);
 int  Hexen_Mon_TypeByName (const char* name);	// "korax"/"heresiarch"/... -> MT_ or -1
 
+// Give every ported Hexen actor its REAL Hexen map-thing number.  Called from
+// P_SetupLevel on a Hexen-format map only -- off a Hexen map those numbers would
+// shadow DOOM/Heretic things (files/hexen_mon.c).
+void Hexen_SetMapEdnums (void);
+
+// Hexen map-thing number -> mobjtype, or -1 if unported.  Searches only the
+// additive Hexen block, so DOOM actors can never answer (files/hexen_mon.c).
+int  P_HexenThingType (int doomednum);
+
 // Spawn a Hexen monster at (x,y) on the floor; NULL if unavailable or type<0.
 struct mobj_s* Hexen_Spawn (int type, fixed_t x, fixed_t y);
 

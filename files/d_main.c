@@ -1757,7 +1757,10 @@ void D_DoomMain (void)
 	// numbers in strife_mode -- and only there, or a Strife ednum would shadow a
 	// DOOM/Heretic one (3002 is both a Strife thing and the Hell Knight).
 	{ extern mobjinfo_t* mobjinfo; int i;
-	  for (i = MT_XZARMORCHUNK; i < MT_S_FIELDGUARD; i++) mobjinfo[i].doomednum = -1;
+	  // ... but NOT in hexen mode: there the map things ARE Hexen's, and
+	  // P_SetupLevel calls Hexen_SetMapEdnums to restore the real numbers.
+	  if (gametype != GT_HEXEN)
+	      for (i = MT_XZARMORCHUNK; i < MT_S_FIELDGUARD; i++) mobjinfo[i].doomednum = -1;
 	  if (!strife_mode)
 	      for (i = MT_S_FIELDGUARD; i < NUMMOBJTYPES; i++) mobjinfo[i].doomednum = -1; }
 	// Per-game SFX tables (files/sounds_heretic.c, files/sounds_hexen.c): fill the

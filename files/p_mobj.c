@@ -40,6 +40,7 @@ rcsid[] = "$Id: p_mobj.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #include "s_sound.h"
 
 #include "heretic.h"		// P_HereticThingType (heretic_mode map-thing resolution)
+#include "hexen.h"		// P_HexenThingType (hexen-format map-thing resolution)
 
 #include "doomstat.h"
 #include "p_spec.h"
@@ -47,6 +48,7 @@ rcsid[] = "$Id: p_mobj.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 void G_PlayerReborn (int player);
 void P_SpawnMapThing (mapthing_t*	mthing);
+extern int hexen_map_format;	// p_setup.c -- this map is Hexen-format
 
 
 //
@@ -835,6 +837,23 @@ void P_SpawnMapThing (mapthing_t* mthing)
 	i = P_HereticThingType (mthing->type);
 	if (i < 0)
 	    return;
+    }
+    else if (hexen_map_format)
+    {
+	// Hexen-format map: resolve through the Hexen table.  Player starts (1-4)
+	// are shared by every id-format game, so let those fall through below.
+	if (mthing->type < 1 || mthing->type > 4)
+	{
+	    i = P_HexenThingType (mthing->type);
+	    if (i < 0)
+		return;
+	}
+	else
+	{
+	    for (i = 0; i < num_mobjtypes; i++)
+		if (mthing->type == mobjinfo[i].doomednum) break;
+	    if (i == num_mobjtypes) return;
+	}
     }
     else if (strife_mode)
     {
