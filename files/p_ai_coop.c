@@ -2277,6 +2277,23 @@ void P_AICoop_BuildCmd (void)
     mo = bot->mo;
     memset (cmd, 0, sizeof(*cmd));
 
+    // Void rescue: a big knockback (e.g. a Cyberdemon rocket) can punch the live buddy
+    // past a boundary wall to OUTSIDE the blockmap grid, where P_CheckPosition walks no
+    // cells -> collision is off and it floats in the void with no way back on its own.
+    // AICoop_OnGrid is a handful of integer ops (no blockmap/line walk -- see line 281),
+    // so it's practically free; throttle to every 5 tics anyway.  Only recall if HOME is
+    // itself on-grid, else re-teleporting to a bad spawn would just loop.  (Mirrors the
+    // damaging-floor rescue below.)
+    if ((gametic % 5) == 0 && coop_home_set
+	&& !AICoop_OnGrid (mo->x, mo->y) && AICoop_OnGrid (coop_home_x, coop_home_y))
+    {
+	P_TeleportMove (mo, coop_home_x, coop_home_y);
+	mo->angle = coop_home_angle;
+	mo->momx = mo->momy = mo->momz = 0;
+	players[consoleplayer].message = "[Buddy] Recovered from the void.";
+	return;					// re-evaluate cleanly next tic (cmd stays zeroed)
+    }
+
     // When surrounded by many enemies, the buddy deploys a friendly Security Drone
     // (costs it 50 bullets or 25 shells; throttled + capped inside).  files/p_secdrone.c.
     P_AICoop_MaybeSpawnDrone (bot);
