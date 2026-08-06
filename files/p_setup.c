@@ -564,6 +564,8 @@ void P_LoadThings (int lump)
 	mapthing_t	conv;
 	const byte*	r = (const byte*) data;
 	int		nskipped = 0;
+	short		unmapped[64];
+	int		nunmapped = 0;
 	numthings = W_LumpLength (lump) / 20;
 	for (i = 0 ; i < numthings ; i++, r += 20)
 	{
@@ -582,13 +584,26 @@ void P_LoadThings (int lump)
 	    // a Hexen map never fills and killed MAP02/MAP03.
 	    if ((conv.type >= 1 && conv.type <= 4) || P_HexenEdnumKnown (conv.type))
 		P_SpawnMapThing (&conv);
-	    else if (nskipped < 8)
-	    { printf ("P_SetupLevel: Hexen thing type %d not mapped -- skipped\n",
-		      conv.type); nskipped++; }
-	    else nskipped++;
+	    else
+	    {
+		// Record DISTINCT unmapped numbers, not one line per thing: a map
+		// places hundreds of the same torch, and what you need is which
+		// TYPES are missing, not how many copies of each.
+		int u;
+		for (u = 0; u < nunmapped; u++)
+		    if (unmapped[u] == conv.type) break;
+		if (u == nunmapped && nunmapped < 64) unmapped[nunmapped++] = conv.type;
+		nskipped++;
+	    }
 	}
-	if (nskipped > 8)
-	    printf ("P_SetupLevel: ... and %d more unmapped Hexen things\n", nskipped - 8);
+	if (nunmapped)
+	{
+	    int u;
+	    printf ("P_SetupLevel: %d thing(s) skipped, %d unmapped Hexen type(s):",
+		    nskipped, nunmapped);
+	    for (u = 0; u < nunmapped; u++) printf (" %d", unmapped[u]);
+	    printf ("\n");
+	}
 	Z_Free (data);
 	return;
     }
