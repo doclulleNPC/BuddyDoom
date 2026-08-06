@@ -515,8 +515,15 @@ void G_DoLoadLevel (void)
     //  setting one.
     // (S) Strife's sky flat is F_SKY001, not DOOM's F_SKY1.  Without this the lookup
     // falls back to flat 0 and every sector using that flat would be drawn as sky.
+    // (X) Hexen's is F_SKY -- same trap, and it is why the sky came out as a SOLID
+    // flat: R_FlatNumForName misses, warns, and returns 0, so skyflatnum became flat
+    // 0.  Sky sectors then drew as an ordinary flat, and whatever sector really used
+    // flat 0 drew as sky.  Picking the right SKY TEXTURE (last commit) cannot help
+    // while the sky FLAG flat is wrong -- nothing was being treated as sky at all.
     if (strife_mode && W_CheckNumForName ("F_SKY001") >= 0)
 	skyflatnum = R_FlatNumForName ("F_SKY001");
+    else if (gametype == GT_HEXEN && W_CheckNumForName ("F_SKY") >= 0)
+	skyflatnum = R_FlatNumForName ("F_SKY");
     else
 	skyflatnum = R_FlatNumForName ( SKYFLATNAME );
 
