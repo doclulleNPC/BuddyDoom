@@ -47,6 +47,7 @@ rcsid[] = "$Id: p_setup.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #include "p_ai_director.h"
 #include "p_ai_llm.h"
 #include "p_morph.h"
+#include "po_man.h"		// (X) polyobjects
 #include "p_acs.h"		// (X) ACS -- Hexen BEHAVIOR scripts		// (M) P_MorphReset -- clear morphs on level load
 
 #include "s_sound.h"
@@ -566,6 +567,8 @@ void P_LoadThings (int lump)
 	int		nskipped = 0;
 	short		unmapped[64];
 	int		nunmapped = 0;
+	static po_spot_t pospots[POLY_MAXOBJS * 2];
+	int		npospots = 0;
 	numthings = W_LumpLength (lump) / 20;
 	for (i = 0 ; i < numthings ; i++, r += 20)
 	{
@@ -582,7 +585,21 @@ void P_LoadThings (int lump)
 	    // actor happens to share the number -- Hexen thing 89 became DOOM's
 	    // Icon-of-Sin shooter, whose A_BrainSpit dereferenced a braintargets list
 	    // a Hexen map never fills and killed MAP02/MAP03.
-	    if ((conv.type >= 1 && conv.type <= 4) || P_HexenEdnumKnown (conv.type))
+	    // Polyobj map things are not actors -- 3000 is where the cluster was drawn,
+	    // 3001/3002 where it belongs.  Collect them for PO_Init instead of trying
+	    // to spawn them.  Hexen puts the polyobj id in the ANGLE field.
+	    if (conv.type >= 3000 && conv.type <= 3002)
+	    {
+		if (npospots < POLY_MAXOBJS * 2)
+		{
+		    pospots[npospots].type = conv.type;
+		    pospots[npospots].id   = conv.angle;
+		    pospots[npospots].x    = conv.x;
+		    pospots[npospots].y    = conv.y;
+		    npospots++;
+		}
+	    }
+	    else if ((conv.type >= 1 && conv.type <= 4) || P_HexenEdnumKnown (conv.type))
 		P_SpawnMapThing (&conv);
 	    else
 	    {
@@ -596,6 +613,7 @@ void P_LoadThings (int lump)
 		nskipped++;
 	    }
 	}
+	PO_Init (pospots, npospots);		// place the polyobjects (step 1)
 	if (nunmapped)
 	{
 	    int u;
