@@ -41,6 +41,9 @@ rcsid[] = "$Id: r_things.c,v 1.5 1997/02/03 16:47:56 b1 Exp $";
 #include "r_local.h"
 
 #include "doomstat.h"
+#ifndef ST_HEXEN_HEIGHT
+#define ST_HEXEN_HEIGHT 66	// Hexen bar: BASE_HEIGHT - H2BAR y (200-134)
+#endif
 
 
 
@@ -979,6 +982,14 @@ void R_DrawPSprite (pspdef_t* psp)
     vis->mobjflags = 0;
     vis->footclip = 0;			// psprites (the weapon) are never foot-clipped
     vis->texturemid = (BASEYCENTER<<FRACBITS)+FRACUNIT/2-(psp->sy-spritetopoffset[lump]);
+
+    // Hexen's status bar is 66px tall (H2BAR at y=134) against DOOM's 32, and at the
+    // largest view sizes the 3D view renders FULL height with the bar drawn over it.
+    // The weapon therefore landed entirely underneath the bar and was painted out --
+    // drawn correctly, just never seen.  Lift it by the extra height so it sits above
+    // the bar.  A larger texturemid draws higher up the screen.
+    if (gametype == GT_HEXEN)
+	vis->texturemid += (ST_HEXEN_HEIGHT - 32) << FRACBITS;
     { extern int statusbar_style, setblocks;   // full bar over a full-height view hides the weapon
       if (statusbar_style == 0 && setblocks <= 10 && viewheight == SCREENHEIGHT)
         vis->texturemid += 16 << FRACBITS; }   // lift by half the 32px bar (centery shift)

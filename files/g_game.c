@@ -537,6 +537,19 @@ void G_DoLoadLevel (void)
 	if (R_CheckTextureNumForName ((char*)sky) >= 0)
 	    skytexture = R_TextureNumForName ((char*)sky);
     }
+    else if (gametype == GT_HEXEN)
+    {
+	// Hexen is `commercial` (MAPxx), so it used to fall into the DOOM II branch
+	// below and ask for SKY1/SKY2/SKY3 by DOOM's map-number rule.  Hexen picks its
+	// sky per map from MAPINFO, which this engine does not parse, and asking for a
+	// texture hexen.wad has not got yields texture 0 -- a garbage sky.  Take
+	// whichever of its skies actually exists, and only then.
+	static const char* const hxsky[] = { "SKY1", "SKY2", "SKY3", NULL };
+	int k;
+	for (k = 0; hxsky[k]; k++)
+	    if (R_CheckTextureNumForName ((char*)hxsky[k]) >= 0)
+		{ skytexture = R_TextureNumForName ((char*)hxsky[k]); break; }
+    }
     else if ( (gamemode == commercial)
 	 || ( gamemode == pack_tnt )
 	 || ( gamemode == pack_plut ) )
