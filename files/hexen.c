@@ -1012,6 +1012,37 @@ void Hexen_RemapNativeSprites (void)
 		sprnames[i] = (char*) tbl[k].nat;
 		break;
 	    }
+
+    // The PLAYER's weapon has the same problem, and worse: hexen.wad contains NONE
+    // of DOOM's weapon psprites (no PUNG, PISG, SHTG, ...), so the weapon in your
+    // hands drew nothing at all.  Hexen's own are all present, so give each DOOM
+    // weapon slot a Hexen weapon of roughly the same role.
+    //
+    // This is a SUBSTITUTION, not Hexen's weapon system: they still fire DOOM's
+    // projectiles and use DOOM's ammo, because that needs player classes and the
+    // four-piece assembly this engine has not got.  But you can see what you are
+    // holding, which beats swinging an invisible nothing.
+    {
+	static const struct { const char* doom; const char* hex; } wpn[] =
+	{
+	    { "PUNG", "FPCH" },		// fist       -> fighter's punch
+	    { "SAWG", "WFHM" },		// chainsaw   -> Hammer of Retribution
+	    { "PISG", "MWND" },		// pistol     -> mage's Sapphire Wand
+	    { "SHTG", "WFAX" },		// shotgun    -> Timon's Axe
+	    { "SHT2", "WCSS" },		// SSG        -> Serpent Staff
+	    { "CHGG", "WCFM" },		// chaingun   -> Firestorm
+	    { "MISG", "WMLG" },		// launcher   -> Arc of Death
+	    { "PLSG", "CMCE" },		// plasma     -> cleric's Mace
+	    { "BFGG", "WMCS" },		// BFG        -> mage's staff
+	};
+	for (i = 0; i < num_sprites; i++)
+	    for (k = 0; k < (int)(sizeof wpn / sizeof wpn[0]); k++)
+		if (!strncmp (sprnames[i], wpn[k].doom, 4))
+		{
+		    sprnames[i] = (char*) wpn[k].hex;
+		    break;
+		}
+    }
 }
 
 int Hexen_Available (void)
