@@ -77,6 +77,7 @@ char *sprnames_builtin[NUMSPRITES] = {
     "MTUR",				// deployable sentry turret (SPR_MTUR) -- MTUR* patch lumps in run/ID0/buddydoom.wad
     "MNDR","SHT1","POW1",		// Security Drone body / laser shot / laser impact (buddydoom.wad)
     "XSSD",				// Hexen Serpent dive/submerge frames (SPR_XSSD, hexenstuff.wad)
+    "XWFA","XWFH","XWCF","XWML",	// Hexen class-weapon pickups (axe/hammer/firestorm/arc)
     "PSBG",				// Hexen poison bag / poison cloud (SPR_PSBG, hexenstuff.wad)
     "SHRM",				// Hexen poison shroom (SPR_SHRM, hexenstuff.wad)
     // (H) Map-placeable Heretic item/pickup sprites -- lock-step with spritenum_t

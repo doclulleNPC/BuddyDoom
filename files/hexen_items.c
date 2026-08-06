@@ -154,6 +154,17 @@ void Hexen_Items_Init (void)
     ST (S_ZPUZZBOOK2,     SPR_ZABK2, 0, 4, NULL, S_ZPUZZBOOK2);		// liber oscura
     ST (S_ZPUZZSKULL2,    SPR_ZASK2, 0, 4, NULL, S_ZPUZZSKULL2);		// glaive seal
     ST (S_ZPUZZFWEAPON,   SPR_ZAFWP, 0, 4, NULL, S_ZPUZZFWEAPON);	// fighter's key part
+
+    // (X) Class weapons as MAP PICKUPS.  Hexen gives each class four weapons and
+    // this engine has no player classes, so these cannot be WIELDED yet -- but they
+    // are placed all over the game (8010/123/8009/8040 appear on nearly every map)
+    // and were being dropped entirely, leaving visible holes where a weapon should
+    // sit.  Spawn them as collectible pickups on their real numbers; P_TouchHexenItem
+    // reports them and takes them, exactly like the puzzle pieces above.
+    ST (S_ZWFAXE,       SPR_XWFA, 0, 4, NULL, S_ZWFAXE);	// Timon's Axe
+    ST (S_ZWFHAMMER,    SPR_XWFH, 0, 4, NULL, S_ZWFHAMMER);	// Hammer of Retribution
+    ST (S_ZWCFLAME,     SPR_XWCF, 0, 4, NULL, S_ZWCFLAME);	// Firestorm
+    ST (S_ZWMLIGHTNING, SPR_XWML, 0, 4, NULL, S_ZWMLIGHTNING);	// Arc of Death
     ST (S_ZPUZZCWEAPON,   SPR_ZACWP, 0, 4, NULL, S_ZPUZZCWEAPON);	// cleric's key part
     ST (S_ZPUZZMWEAPON,   SPR_ZAMWP, 0, 4, NULL, S_ZPUZZMWEAPON);	// mage's key part
     ST (S_ZPUZZGEAR,      SPR_ZAGER, BRIGHT|0, 4, NULL, S_ZPUZZGEAR);	// clock gear (steel)
@@ -226,6 +237,13 @@ void Hexen_Items_Init (void)
     Item (MT_ZPUZZFWEAPON,   9015, S_ZPUZZFWEAPON,   MF_NOTDMATCH);
     Item (MT_ZPUZZCWEAPON,   9016, S_ZPUZZCWEAPON,   MF_NOTDMATCH);
     Item (MT_ZPUZZMWEAPON,   9017, S_ZPUZZMWEAPON,   MF_NOTDMATCH);
+
+    // Class weapons (crispy MT_FW_AXE=8010, MT_FW_HAMMER=123, MT_CW_FLAME=8009,
+    // MT_MW_LIGHTNING=8040).
+    Item (MT_ZWFAXE,        8010, S_ZWFAXE,       0);
+    Item (MT_ZWFHAMMER,      123, S_ZWFHAMMER,    0);
+    Item (MT_ZWCFLAME,      8009, S_ZWCFLAME,     0);
+    Item (MT_ZWMLIGHTNING,  8040, S_ZWMLIGHTNING, 0);
     Item (MT_ZPUZZGEAR,      9018, S_ZPUZZGEAR,      MF_NOTDMATCH);
     Item (MT_ZPUZZGEAR2,     9019, S_ZPUZZGEAR2,     MF_NOTDMATCH);
     Item (MT_ZPUZZGEAR3,     9020, S_ZPUZZGEAR3,     MF_NOTDMATCH);
@@ -274,6 +292,13 @@ boolean P_TouchHexenItem (player_t* player, mobj_t* special)
     switch (special->type)
     {
       // ---- mana (no Hexen mana system -> cosmetic pickup) ----
+      // Class weapons: no player classes here, so picking one up cannot arm you.
+      // Take it and say what it was rather than leaving it lying there unusable --
+      // the alternative is an item the player walks over forever.
+      case MT_ZWFAXE:       player->message = "TIMON'S AXE";           return true;
+      case MT_ZWFHAMMER:    player->message = "HAMMER OF RETRIBUTION"; return true;
+      case MT_ZWCFLAME:     player->message = "FIRESTORM";             return true;
+      case MT_ZWMLIGHTNING: player->message = "ARC OF DEATH";          return true;
       case MT_ZMANA1: player->message = "BLUE MANA";     return true;
       case MT_ZMANA2: player->message = "GREEN MANA";    return true;
       case MT_ZMANA3: player->message = "COMBINED MANA"; return true;

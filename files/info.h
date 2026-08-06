@@ -253,6 +253,11 @@ typedef enum
     SPR_SHT1,		// Security Drone laser shot (SHT1*)
     SPR_POW1,		// Security Drone laser impact (POW1*)
     SPR_XSSD,		// Hexen Serpent dive/submerge frames (XSSD*) -- from hexenstuff.wad
+    // (X) Hexen class-weapon pickups (hexenstuff.wad, renamed by extract_hexen.py)
+    SPR_XWFA,		// Timon's Axe        (Hexen WFAX)
+    SPR_XWFH,		// Hammer of Retribution (WFHM)
+    SPR_XWCF,		// Firestorm          (WCFM)
+    SPR_XWML,		// Arc of Death       (WMLG)
     SPR_PSBG,		// Hexen poison bag / poison cloud (PSBG*) -- from hexenstuff.wad (files/hexen.c)
     SPR_SHRM,		// Hexen poison shroom (SHRM*) -- destructible gas plant (files/hexen.c)
     // (H) Map-placeable Heretic item/pickup sprites (files/heretic_items.c).
@@ -1729,6 +1734,7 @@ typedef enum
     S_ZPUZZSKULL, S_ZPUZZGEMBIG, S_ZPUZZGEMRED, S_ZPUZZGEMGREEN1, S_ZPUZZGEMGREEN2,
     S_ZPUZZGEMBLUE1, S_ZPUZZGEMBLUE2, S_ZPUZZBOOK1, S_ZPUZZBOOK2, S_ZPUZZSKULL2,
     S_ZPUZZFWEAPON, S_ZPUZZCWEAPON, S_ZPUZZMWEAPON,
+    S_ZWFAXE, S_ZWFHAMMER, S_ZWCFLAME, S_ZWMLIGHTNING,	// (X) class-weapon pickups
     S_ZPUZZGEAR, S_ZPUZZGEAR2, S_ZPUZZGEAR3, S_ZPUZZGEAR4,
     S_ZFSWORD1, S_ZFSWORD2, S_ZFSWORD3,
     S_ZCHOLY1, S_ZCHOLY2, S_ZCHOLY3,
@@ -2240,6 +2246,8 @@ typedef enum {
     MT_ZPUZZGEMGREEN1, MT_ZPUZZGEMGREEN2, MT_ZPUZZGEMBLUE1, MT_ZPUZZGEMBLUE2,
     MT_ZPUZZBOOK1, MT_ZPUZZBOOK2, MT_ZPUZZSKULL2,
     MT_ZPUZZFWEAPON, MT_ZPUZZCWEAPON, MT_ZPUZZMWEAPON,
+    // (X) Hexen class weapons, as map pickups (files/hexen_items.c)
+    MT_ZWFAXE, MT_ZWFHAMMER, MT_ZWCFLAME, MT_ZWMLIGHTNING,
     MT_ZPUZZGEAR, MT_ZPUZZGEAR2, MT_ZPUZZGEAR3, MT_ZPUZZGEAR4,
     MT_ZFSWORD1, MT_ZFSWORD2, MT_ZFSWORD3,
     MT_ZCHOLY1, MT_ZCHOLY2, MT_ZCHOLY3,
