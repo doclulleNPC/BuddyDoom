@@ -505,6 +505,21 @@ void HU_Buddy_Drawer (void)
 // the SAME timer the native heretic_mode bar (st_stuff.c) uses.  Icons are the pickup
 // sprites (buddy_arti_icon[]), available from buddydoom.wad, so no Heretic HUD chrome is
 // needed and it works in plain DOOM.  heretic_mode draws its own native bar -> skipped.
+// Is this icon safe to draw at (x,y) in BASE coords?  The inventory slots show a
+// pickup SPRITE, and a sprite carries real world offsets sized for the playfield --
+// the Hexen Flechette (PSBGA0) is a full-size poison bag, and once those artifacts
+// became obtainable its offsets pushed the draw off the top of the screen and
+// V_DrawPatch wrote outside the framebuffer.  Reject anything that will not sit
+// inside 320x200 and let the caller fall back to the text tag.
+static boolean HU_IconFits (patch_t* p, int x, int y)
+{
+    int w, h;
+    if (!p) return false;
+    w = SHORT (p->width); h = SHORT (p->height);
+    if (w <= 0 || h <= 0 || w > 40 || h > 40) return false;	// slot-sized icons only
+    return x >= 0 && y >= 0 && x + w <= BASE_WIDTH && y + h <= BASE_HEIGHT;
+}
+
 void HU_Inventory_Drawer (void)
 {
     extern const char*	P_ArtifactName (artitype_t a);
@@ -548,12 +563,14 @@ void HU_Inventory_Drawer (void)
 	    int cx = x0 + i*INV_SLOT;
 	    p = ((ln = W_CheckNumForName (buddy_arti_icon[held[i]])) >= 0)
 		? (patch_t*) W_CacheLumpNum (ln, PU_CACHE) : NULL;
-	    if (p)
 	    {
-		int il = cx + (INV_SLOT - SHORT (p->width)) / 2;
-		V_DrawPatch (il + SHORT (p->leftoffset), invy + SHORT (p->topoffset), 0, p);
+		int il = p ? cx + (INV_SLOT - SHORT (p->width)) / 2 : 0;
+		int ix = p ? il + SHORT (p->leftoffset) : 0;
+		int iy = p ? invy + SHORT (p->topoffset) : 0;
+		if (HU_IconFits (p, ix, iy)) V_DrawPatch (ix, iy, 0, p);
+		else p = NULL;			// fall through to the text tag
 	    }
-	    else if (buddy_arti_tag[held[i]])
+	    if (!p && buddy_arti_tag[held[i]])
 		HU_Buddy_Text (cx + 2, invy + 6, buddy_arti_tag[held[i]]);
 	    if (cnt[i] > 1)
 	    { snprintf (num, sizeof num, "%d", cnt[i]); HU_Buddy_Text (cx + INV_SLOT - 10, invy + 15, num); }
@@ -570,10 +587,13 @@ void HU_Inventory_Drawer (void)
 	int cx = wb - INV_SLOT - 6;
 	p = ((ln = W_CheckNumForName (buddy_arti_icon[held[sel]])) >= 0)
 	    ? (patch_t*) W_CacheLumpNum (ln, PU_CACHE) : NULL;
-	if (p)
-	    V_DrawPatch (cx + (INV_SLOT - SHORT (p->width))/2 + SHORT (p->leftoffset),
-			 invy + SHORT (p->topoffset), 0, p);
-	else if (buddy_arti_tag[held[sel]])
+	{
+	    int ix = p ? cx + (INV_SLOT - SHORT (p->width))/2 + SHORT (p->leftoffset) : 0;
+	    int iy = p ? invy + SHORT (p->topoffset) : 0;
+	    if (HU_IconFits (p, ix, iy)) V_DrawPatch (ix, iy, 0, p);
+	    else p = NULL;
+	}
+	if (!p && buddy_arti_tag[held[sel]])
 	    HU_Buddy_Text (cx + 2, invy + 6, buddy_arti_tag[held[sel]]);
 	if (cnt[sel] > 1)
 	{ snprintf (num, sizeof num, "%d", cnt[sel]); HU_Buddy_Text (cx + INV_SLOT - 10, invy + 15, num); }

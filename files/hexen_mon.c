@@ -1207,6 +1207,14 @@ void Hexen_SetMapEdnums (void)
 	{ MT_XFIGHTERBOSS,  10100 },
 	{ MT_XCLERICBOSS,   10101 },
 	{ MT_XMAGEBOSS,     10102 },
+	// Artifacts.  Hexen shares three of these with Heretic and the engine already
+	// has them, with the right sprites (EGGC / SOAR / PSBG) and working pickup
+	// code -- they were simply never given their HEXEN map numbers, so a Hexen map
+	// dropped every one.  8000 alone is placed 544 times across the game, the most
+	// common missing item there was.
+	{ MT_HARTI_EGG,        30 },	// Porkalator  (Heretic Morph Ovum)
+	{ MT_HARTI_WINGS,      83 },	// Wings of Wrath
+	{ MT_HARTI_FLECHETTE,8000 },	// Flechette   (the poison bag)
 	{ 0, 0 }
     };
     int i;
