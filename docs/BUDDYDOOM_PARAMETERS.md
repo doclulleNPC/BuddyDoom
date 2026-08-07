@@ -88,6 +88,24 @@ The engine currently exposes `monster_pack` and `monster_pack_range` as persiste
 
 Always check `files/d_main.c` and the relevant subsystem before copying a flag into a launcher: old launch scripts in `tools/scripts/` are historical and may contain options no longer parsed.
 
+## Verification / debug switches
+
+These exist to make changes testable rather than to be played with.
+
+- `-shotat <tic>` — render until game tic `<tic>`, write a screenshot (`DOOMnn.pcx` in the
+  working directory) and quit. Also forces `singletics`, so one tic elapses per frame.
+  The point is determinism: grabbing the window after sleeping N seconds lands on a
+  different tic each run — monsters have moved, the palette is mid damage-flash — so two
+  runs of the same scene differ everywhere and an A/B image diff proves nothing. Keyed on
+  the tic, the same tic renders the same pixels every run (verified bit-identical), which
+  makes a diff mean something.
+- `-potest` — run the polyobject self-check at level load and report failures
+  (`files/po_man.c`). Nothing in a map drives a polyobj until the ACS specials are wired
+  up, so without this the transform code sits unexercised.
+- `-nopolydraw` — load polyobjects but do not attach them to a subsector, so they are not
+  drawn. The A/B lever for polyobject rendering: run a scene with and without it and diff
+  the two `-shotat` frames.
+
 ## Persistent configuration
 
 The game reads and writes `run/buddydoom.cfg` through `files/m_misc.c`. Relevant current keys include:

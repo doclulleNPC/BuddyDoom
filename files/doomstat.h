@@ -301,7 +301,8 @@ extern  gamestate_t     wipegamestate;
 extern  int             mouseSensitivity;
 //?
 // debug flag to cancel adaptiveness
-extern  boolean         singletics;	
+extern  boolean         singletics;
+extern  int             shotattic;   // -shotat <tic>: deterministic screenshot, then quit	
 
 extern  int             bodyqueslot;
 

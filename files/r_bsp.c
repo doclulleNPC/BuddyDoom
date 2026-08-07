@@ -39,6 +39,7 @@ rcsid[] = "$Id: r_bsp.c,v 1.4 1997/02/03 22:45:12 b1 Exp $";
 // State.
 #include "doomstat.h"
 #include "r_state.h"
+#include "po_man.h"		// (X) polyobjects drawn inside a subsector
 
 //#include "r_local.h"
 
@@ -641,6 +642,24 @@ void R_Subsector (int num)
 	ceilingplane = NULL;
 		
     R_AddSprites (realsector);	// sprites lit/placed by the real sector, not the faked copy
+
+    // (X) Hexen polyobject attached to this leaf, drawn BEFORE the leaf's own segs.
+    // A subsector is convex and the polyobj sits inside it, so the polyobj is always
+    // the nearer geometry; the solid-seg clipper needs the nearer walls first or the
+    // leaf's boundary would clip the polyobj away instead of the other way round.
+    //
+    // The polyobj's walls are one-sided, and R_AddLine/R_StoreWallRange read the
+    // GLOBAL frontsector -- already set above -- so they are drawn against the floor
+    // and ceiling of whatever sector they are currently standing in rather than the
+    // void sector they were authored in.  That is what makes a polyobj door look like
+    // part of the room it slides through.
+    if (sub->poly)
+    {
+	int	polycount = sub->poly->numsegs;
+	seg_t**	polyseg   = sub->poly->segs;
+	while (polycount--)
+	    R_AddLine (*polyseg++);
+    }
 
     while (count--)
     {

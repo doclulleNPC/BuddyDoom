@@ -5,7 +5,7 @@
 // Copyright (C) 1993-2008 Raven Software (Hexen polyobjects -- reference for this port)
 //
 // DESCRIPTION:
-//	(X) Polyobjects -- STEPS 1-2 of 5: placement, movement, blockmap linkage.
+//	(X) Polyobjects -- STEPS 1-3 of 5: placement, movement, linkage, RENDERING.
 //
 //	A Hexen polyobject is a cluster of linedefs drawn OFF to one side of the map,
 //	in void space, which the engine translates into position at level load and can
@@ -20,18 +20,19 @@
 //
 //	  1. DONE -- find each polyobj's linedefs, find its anchor and start spot,
 //	     and translate its vertices into place.  Touches nothing but p_setup.
-//	  2. DONE (this step) -- rotate/translate + the thinkers that drive them, and
-//	     blockmap link/unlink on every move.
-//	  3. r_bsp.c: per-subsector polyobj seg lists, so the moved lines DRAW
+//	  2. DONE -- rotate/translate + the thinkers that drive them, and blockmap
+//	     link/unlink on every move.
+//	  3. DONE (this step) -- per-subsector polyobj seg lists, so the lines DRAW.
 //	  4. p_maputl.c / p_sight.c: include them in blockmap iteration, so they BLOCK
 //	  5. p_acs.c: wire the Polyobj_* specials into P_ExecuteLineSpecial
 //
-//	After step 2 a polyobj can be moved and rotated, and its blockmap linkage is
-//	maintained as it goes -- but STILL nothing observable changes, because nothing
-//	reads that linkage yet (step 4) and the moved lines are not drawn yet (step 3).
-//	Blocking actors is deliberately step 4's job too, so a moving polyobj currently
-//	passes through things.  Each step stays inert until the one that consumes it
-//	lands, which is what keeps the four working games out of the blast radius.
+//	After step 3 polyobjs are VISIBLE: they render in place, and they render
+//	wherever they are moved to.  They still do not block anything (step 4) and
+//	nothing in a map has yet asked one to move (step 5), so in normal play they
+//	stand still -- but a door now appears in its doorway instead of leaving a hole,
+//	which is the first change a player can actually see.  Each step stays inert
+//	until the one that consumes it lands, which is what keeps the four working
+//	games out of the blast radius.
 //
 //	Reference: ../crispy-doom/src/hexen/po_man.c (Raven's original) and the Hexen
 //	source at github.com/OpenSourcedGames/Hexen.
@@ -48,6 +49,7 @@
 #include "m_argv.h"		// M_CheckParm, for the -potest self-check
 #include "m_bbox.h"
 #include "p_local.h"
+#include "r_main.h"		// R_PointInSubsector
 #include "r_state.h"
 #include "z_zone.h"
 #include "po_man.h"
@@ -134,19 +136,46 @@ static int PO_CollectLines (int id, line_t** out, int max)
     return n;
 }
 
+// Gather the segs belonging to this polyobj's linedefs.
+//
+// Needed because the renderer's unit of work is the seg, not the linedef, and
+// because a polyobj line may have been SPLIT by the node builder into several
+// segs -- each with its own vertices, all of which have to travel with the
+// object or it tears apart as it moves.
+static void PO_BuildSegList (polyobj_t* po)
+{
+    seg_t*	found[POLY_MAXSEGS];
+    int		n = 0, i, j;
+
+    for (i = 0; i < numsegs && n < POLY_MAXSEGS; i++)
+	for (j = 0; j < po->numlines; j++)
+	    if (segs[i].linedef == po->lines[j])
+		{ found[n++] = &segs[i]; break; }
+
+    po->numsegs = n;
+    po->segs = Z_Malloc (n * sizeof(*po->segs), PU_LEVEL, 0);
+    memcpy (po->segs, found, n * sizeof(*po->segs));
+}
+
 // Build the deduplicated vertex list.  Vertices are SHARED between a polyobj's
-// linedefs, so every transform has to visit each exactly once -- iterating lines
-// and moving v1/v2 would shift shared corners twice and shear the object apart.
+// linedefs and segs, so every transform has to visit each exactly once --
+// iterating lines and moving v1/v2 would shift shared corners twice and shear the
+// object apart.
 static void PO_BuildVertexList (polyobj_t* po)
 {
     vertex_t*	seen[POLY_MAXVERTS];
     int		n = 0, i, j, k;
 
-    for (i = 0; i < po->numlines; i++)
+    // Take vertices from the SEGS as well as the linedefs.  The linedef endpoints
+    // alone are not the whole object: a split line contributes a vertex that
+    // belongs to no linedef, and leaving it behind shears the polyobj open.
+    for (i = 0; i < po->numlines + po->numsegs; i++)
     {
 	vertex_t* v[2];
-	v[0] = po->lines[i]->v1;
-	v[1] = po->lines[i]->v2;
+	if (i < po->numlines)
+	    { v[0] = po->lines[i]->v1;              v[1] = po->lines[i]->v2; }
+	else
+	    { v[0] = po->segs[i - po->numlines]->v1; v[1] = po->segs[i - po->numlines]->v2; }
 	for (j = 0; j < 2; j++)
 	{
 	    for (k = 0; k < n; k++)
@@ -336,6 +365,14 @@ boolean PO_RotatePolyobj (int id, angle_t delta)
 				     + FixedMul (oy, finecosine[fine]);
     }
     po->angle = na;
+
+    // seg->angle is a CACHED value, computed once at load from the seg's direction,
+    // and r_segs.c derives the wall's texture mapping from it (rw_normalangle).
+    // Move a seg without turning it here and the wall renders with the texture
+    // skewed as though it were still facing its original way.
+    for (i = 0; i < po->numsegs; i++)
+	po->segs[i]->angle += delta;
+
     PO_UpdateLines (po);
     PO_LinkPolyobj (po);
     return true;
@@ -596,6 +633,7 @@ void PO_Init (const po_spot_t* spots, int nspots)
 	po->startX   = spots[i].x << FRACBITS;
 	po->startY   = spots[i].y << FRACBITS;
 
+	PO_BuildSegList (po);		// before the vertex list -- it feeds it
 	PO_BuildVertexList (po);
 	PO_Translate (po, po->startX - (anchor->x << FRACBITS),
 			  po->startY - (anchor->y << FRACBITS));
@@ -611,12 +649,44 @@ void PO_Init (const po_spot_t* spots, int nspots)
     for (i = 0; i < npo; i++)
     {
 	polyobj_t* po = &polyobjs[i];
+	fixed_t ax = 0, ay = 0;
+
 	for (j = 0; j < po->numverts; j++)
 	{
 	    po->origX[j] = po->verts[j]->x - po->startX;
 	    po->origY[j] = po->verts[j]->y - po->startY;
+	    ax += po->verts[j]->x >> FRACBITS;	// sum in map units: 128 vertices
+	    ay += po->verts[j]->y >> FRACBITS;	// * 32767 still fits an int
 	}
 	PO_LinkPolyobj (po);
+
+	// Attach to the BSP leaf containing the polyobj's CENTRE, not its start
+	// spot.  The two are usually the same, but the start spot is only a map
+	// thing the author dropped somewhere inside the object -- on a long
+	// polyobj it can sit in a different leaf than the bulk of the geometry,
+	// and then the object draws only from a spot the player may never stand.
+	if (po->numverts)
+	{
+	    subsector_t* sub = R_PointInSubsector ((ax / po->numverts) << FRACBITS,
+						   (ay / po->numverts) << FRACBITS);
+	    if (sub->poly)
+	    {
+		// Raven calls I_Error here.  A missing polyobj is a lesser evil
+		// than refusing to load the map, so warn and leave the first one
+		// attached -- the second simply will not draw.
+		printf ("PO_Init: polyobjs %d and %d share a subsector; "
+			"%d will not be drawn\n", sub->poly->id, po->id, po->id);
+	    }
+	    // -nopolydraw loads the polyobj but leaves it unattached, so it does not
+	    // draw.  Kept because it is the only way to A/B this: run the same scene
+	    // with and without it under -shotat and diff the two frames.  That is how
+	    // step 3 was verified -- the diff was the doorway, and nothing else.
+	    else if (!M_CheckParm ("-nopolydraw"))
+	    {
+		sub->poly = po;
+		po->subsector = sub;
+	    }
+	}
     }
 
     po_NumPolyobjs = npo;
@@ -684,6 +754,12 @@ void PO_Init (const po_spot_t* spots, int nspots)
     }
 
     if (npo)
-	printf ("PO_Init: %d polyobject(s) placed and blockmap-linked "
-		"(steps 1-2 of 5: they move, but do not draw or block yet)\n", npo);
+    {
+	int t, nseg = 0, ndrawn = 0;
+	for (t = 0; t < npo; t++)
+	    { nseg += polyobjs[t].numsegs; if (polyobjs[t].subsector) ndrawn++; }
+	printf ("PO_Init: %d polyobject(s), %d seg(s), %d attached to a subsector "
+		"(steps 1-3 of 5: they draw and move, but do not block yet)\n",
+		npo, nseg, ndrawn);
+    }
 }

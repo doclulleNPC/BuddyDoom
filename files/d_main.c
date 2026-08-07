@@ -149,6 +149,7 @@ boolean         fastparm;	// checkparm of -fast
 boolean         drone;
 
 boolean		singletics = false; // debug flag to cancel adaptiveness
+int		shotattic = 0;	    // -shotat <tic>: screenshot at this tic, then quit
 
 
 
@@ -524,6 +525,20 @@ void D_DoomLoop (void)
 
 	// Update display, next frame, with current state.
 	D_Display ();
+
+	// -shotat <tic>: write a screenshot at a fixed GAMETIC, then quit.
+	//
+	// For verifying anything visual.  Grabbing the window after sleeping N
+	// seconds lands on a different tic every run -- monsters have moved, the
+	// palette is mid-damage-flash -- so two runs of the same scene differ
+	// everywhere and an A/B comparison says nothing.  Keyed on the tic instead,
+	// with singletics forcing one tic per frame (see D_DoomMain), the same tic
+	// renders the same pixels every time and a diff means what it claims.
+	if (shotattic > 0 && gametic >= shotattic)
+	{
+	    M_ScreenShot ();
+	    I_Quit ();
+	}
     }
 }
 
@@ -1958,6 +1973,15 @@ printf("added\n");
 	D_DoomLoop ();  // never returns
     }
 	
+    p = M_CheckParm ("-shotat");
+    if (p && p < myargc-1)
+    {
+	shotattic = atoi (myargv[p+1]);
+	// One tic per frame: without it the tic we stop on depends on how fast the
+	// machine renders, which is the non-determinism this is here to remove.
+	singletics = true;
+    }
+
     p = M_CheckParm ("-loadgame");
     if (p && p < myargc-1)
     {

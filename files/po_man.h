@@ -15,7 +15,8 @@
 
 #define POLY_MAXOBJS	64	// polyobjects per map
 #define POLY_MAXLINES	64	// linedefs per polyobject
-#define POLY_MAXVERTS	(POLY_MAXLINES * 2)
+#define POLY_MAXSEGS	(POLY_MAXLINES * 4)	// the node builder may SPLIT a line
+#define POLY_MAXVERTS	POLY_MAXSEGS		// ...and each split adds a vertex
 
 // One polyobj map thing, as seen by the THINGS pass.  Hexen puts the polyobj id in
 // the thing's ANGLE field rather than a facing, so it is carried separately.
@@ -26,11 +27,21 @@ typedef struct
     short	x, y;		// map coords
 } po_spot_t;
 
-typedef struct
+typedef struct polyobj_s
 {
     int		id;
     int		numlines;
     line_t**	lines;
+
+    // The renderer draws SEGS, not linedefs, so the polyobj has to carry its own.
+    // Not simply one per line: the node builder is free to split a polyobj line,
+    // and each fragment is a seg of its own that must move with the object.
+    int		numsegs;
+    seg_t**	segs;
+
+    // Which BSP leaf draws this polyobj (r_bsp.c).  Polyobjs are not in the node
+    // tree -- they are hung off the subsector their centre lands in at load time.
+    subsector_t* subsector;
 
     // Deduplicated vertex list.  Vertices are SHARED between a polyobj's linedefs,
     // so every transform must visit each one exactly once -- doing it per-line

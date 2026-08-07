@@ -265,7 +265,12 @@ typedef struct subsector_s
     sector_t*	sector;
     int		numlines;	// int for extended nodes (Boom/ZDBSP)
     int		firstline;
-    
+
+    // (X) Hexen polyobject hung off this leaf, or NULL.  Polyobjs move, so they
+    // cannot be in the BSP; instead each is attached at load time to the leaf its
+    // centre falls in, and R_Subsector draws its segs when it reaches that leaf.
+    struct polyobj_s*	poly;
+
 } subsector_t;
 
 
