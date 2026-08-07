@@ -31,12 +31,18 @@
 //
 // DOOM version
 enum { VERSION_NUM =  123 };	// bumped: mobj_t grew (MBF strafecount + dropoffz)
-// NOTE: build.sh fingerprints the savegame structs and bumps this automatically,
-// but ONLY on the Linux/CMake path -- the Windows nmake build does not run it.  A
-// struct change made while building on Windows therefore has to bump this BY HAND,
-// or old saves are accepted by the version check and then memcpy'd into a struct
-// that is no longer the same size.  (That is what happened when strafecount was
-// added; this bump covers it and dropoffz together.)
+// AUTO-MANAGED.  Both build paths fingerprint the structs p_saveg.c memcpy's and
+// bump this when the fingerprint moves, so stale saves are cleanly REJECTED ("bad
+// version") instead of being read into a layout that no longer matches:
+//   Linux/macOS  build.sh
+//   Windows      tools\bump_version_win.ps1, called from build_all_win.bat
+// Each keeps its OWN fingerprint file (buddydoom_saveg.sig / _win.sig) because
+// Windows is LLP64 and Linux LP64 and the two disagree on the total by 8 bytes; a
+// shared file would make each platform read the other's value as a change and bump
+// forever.  So one struct change bumps once per platform you build on -- harmless,
+// since all this number has to be is different from what the old saves carry.
+// (Windows ran no check at all until now, which is how mobj_t.strafecount shipped
+// with the version untouched.)
 
 // Demo format version -- DECOUPLED from VERSION_NUM (which auto-bumps for savegame struct
 // changes).  The stock IWAD attract demos are version 109 (DOOM 1.9); keeping the demo

@@ -36,6 +36,13 @@ if not defined VSDIR ( echo [build] VC++ tools not found & exit /b 1 )
 echo [build] target architecture: %PLAT%
 call "%VSDIR%\VC\Auxiliary\Build\%VCVARS%" >nul || ( echo [build] %VCVARS% failed & exit /b 1 )
 
+REM --- version bookkeeping, the same two jobs build.sh does on Linux: bump the
+REM fork version, and bump VERSION_NUM when a savegame struct changes size so old
+REM saves are rejected instead of being read into a layout that no longer matches.
+REM Windows did neither until now, which is how a grown mobj_t once shipped with
+REM the savegame version untouched.  Must run AFTER vcvars (it needs cl.exe).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\bump_version_win.ps1" -Root "%ROOT%."
+
 echo [build] === BuddyDoom ===
 cd /d "%ROOT%files"
 REM ALWAYS clean-build the engine: the generated deps have NO header tracking, so
