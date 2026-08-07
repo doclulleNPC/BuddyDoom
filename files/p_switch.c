@@ -31,6 +31,7 @@ rcsid[] = "$Id: p_switch.c,v 1.3 1997/01/28 22:08:29 b1 Exp $";
 #include "w_wad.h"
 #include "doomdef.h"
 #include "p_local.h"
+#include "p_acs.h"		// (X) Hexen linedef activation
 
 #include "g_game.h"
 
@@ -387,6 +388,15 @@ P_UseSpecialLine
   line_t*	line,
   int		side )
 {
+    extern int	hexen_map_format;
+
+    // Hexen numbering -- see P_CrossSpecialLine.  A "use" is SPAC_USE; Hexen also
+    // has SPAC_PUSH for bumping into a line, and pressing use covers both here
+    // since this engine has no separate bump path.
+    if (hexen_map_format)
+	return P_ActivateLine (line, thing, side, SPAC_USE)
+	    || P_ActivateLine (line, thing, side, SPAC_PUSH);
+
     if (!side && P_DoGenLineSpecial (line, thing, 1)) return true;   // Boom generalized (switch)
 
     // Heretic S1 "Build Stairs 16" is special 107 (DOOM uses 107 differently), so the

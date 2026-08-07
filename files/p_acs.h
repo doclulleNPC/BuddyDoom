@@ -84,10 +84,29 @@ void	P_ACSInitNewGame (void);
 // The thinker.
 void	T_InterpretACS (acs_t* script);
 
+// A polyobject has stopped moving; wake any script waiting on it (PolyWait).
+void	P_PolyobjFinished (int po);
+
 // Run one Hexen line special.  This is the bridge between ACS (and Hexen linedefs)
 // and the engine's DOOM special machinery.  Returns true if the special did
 // something.  See p_acs.c for the supported set.
 boolean	P_ExecuteLineSpecial (int special, byte* args, line_t* line, int side,
 			      mobj_t* mo);
+
+// How a Hexen linedef is triggered.  Unlike DOOM, this is a property of the LINE
+// (flag bits 10-12), not of the special number, so the same special can be a walk
+// trigger on one line and a switch on another.
+#define SPAC_CROSS	0	// player walks over it
+#define SPAC_USE	1	// player presses use on it
+#define SPAC_MCROSS	2	// monster walks over it
+#define SPAC_IMPACT	3	// a projectile hits it
+#define SPAC_PUSH	4	// player/monster bumps into it
+#define SPAC_PCROSS	5	// a projectile crosses it
+
+// Trigger a Hexen-format linedef, if `activationType` is how it wants to be
+// triggered.  Returns true if the special ran.  Hexen-format maps only -- the
+// callers gate on hexen_map_format, because these flag bits mean other things in
+// DOOM/Boom.
+boolean	P_ActivateLine (line_t* line, mobj_t* mo, int side, int activationType);
 
 #endif

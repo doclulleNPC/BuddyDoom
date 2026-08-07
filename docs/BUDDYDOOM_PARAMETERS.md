@@ -105,6 +105,10 @@ These exist to make changes testable rather than to be played with.
 - `-nopolydraw` — load polyobjects but do not attach them to a subsector, so they are not
   drawn. The A/B lever for polyobject rendering: run a scene with and without it and diff
   the two `-shotat` frames.
+- `-poopen` — swing every polyobject door open at level load, through the real
+  `P_ExecuteLineSpecial` dispatcher. End-to-end check of the polyobject specials (special
+  number → `EV_*` → thinker → transform → pixels) without having to walk up to a switch
+  and press it.
 
 ## Persistent configuration
 

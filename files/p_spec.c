@@ -41,6 +41,7 @@ rcsid[] = "$Id: p_spec.c,v 1.6 1997/02/03 22:45:12 b1 Exp $";
 
 #include "r_local.h"
 #include "p_local.h"
+#include "p_acs.h"		// (X) Hexen linedef activation
 
 #include "g_game.h"
 
@@ -571,8 +572,19 @@ P_CrossSpecialLine
     line_t*	line;
     int		ok;
     extern int	heretic_mode;
+    extern int	hexen_map_format;
 
     line = &lines[linenum];
+
+    // Hexen numbers its specials completely differently, so the DOOM table below
+    // would fire something unrelated.  Hand the line to the Hexen activator and
+    // stop -- a player crossing is SPAC_CROSS, a monster SPAC_MCROSS.
+    if (hexen_map_format)
+    {
+	P_ActivateLine (line, thing, side,
+			(thing && thing->player) ? SPAC_CROSS : SPAC_MCROSS);
+	return;
+    }
 
     // Heretic reassigns a few walk-trigger line specials vs DOOM (see crispy-doom
     // heretic/p_spec.c vs doom/p_spec.c).  Handle the divergent numbers here so the
@@ -1100,6 +1112,14 @@ P_ShootSpecialLine
   line_t*	line )
 {
     int		ok;
+    extern int	hexen_map_format;
+
+    if (hexen_map_format)		// Hexen numbering -- see P_CrossSpecialLine
+    {
+	P_ActivateLine (line, thing, 0, SPAC_IMPACT);
+	return;
+    }
+
     if (P_DoGenLineSpecial (line, thing, 2)) return;   // Boom generalized (gun)
     
     //	Impacts that other things can activate.

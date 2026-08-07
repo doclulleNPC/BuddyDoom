@@ -5,7 +5,8 @@
 // Copyright (C) 1993-2008 Raven Software (Hexen polyobjects -- reference for this port)
 //
 // DESCRIPTION:
-//	(X) Polyobjects -- STEPS 1-4 of 5: placement, movement, rendering, COLLISION.
+//	(X) Polyobjects -- COMPLETE.  Placement, movement, rendering, collision, and
+//	the line specials that drive them.
 //
 //	A Hexen polyobject is a cluster of linedefs drawn OFF to one side of the map,
 //	in void space, which the engine translates into position at level load and can
@@ -13,25 +14,26 @@
 //	without them those doorways are simply holes and the door itself sits in the
 //	void where the mapper drew it.
 //
-//	This file is being built up in the order laid out at the end of the previous
-//	session, because polyobjects reach into the renderer, the blockmap and the
-//	sight code, and doing that in one go with no way to test is how you break the
-//	four games that currently work:
+//	This was built in five steps, because polyobjects reach into the renderer, the
+//	blockmap and the sight code, and doing that in one go with no way to test is
+//	how you break the four games that already work:
 //
-//	  1. DONE -- find each polyobj's linedefs, find its anchor and start spot,
-//	     and translate its vertices into place.  Touches nothing but p_setup.
-//	  2. DONE -- rotate/translate + the thinkers that drive them, and blockmap
+//	  1. find each polyobj's linedefs, its anchor and its start spot, and
+//	     translate its vertices into place.  Touches nothing but p_setup.
+//	  2. rotate/translate + the thinkers that drive them, and blockmap
 //	     link/unlink on every move.
-//	  3. DONE -- per-subsector polyobj seg lists, so the lines DRAW.
-//	  4. DONE (this step) -- blockmap and sight iteration, so they BLOCK.
-//	  5. p_acs.c: wire the Polyobj_* specials into P_ExecuteLineSpecial
+//	  3. per-subsector polyobj seg lists (r_bsp.c), so the lines DRAW.
+//	  4. blockmap and sight iteration (p_maputl.c, p_sight.c), so they BLOCK.
+//	  5. the Polyobj_* line specials (p_acs.c), so something DRIVES them.
 //
-//	After step 4 a polyobj is a real obstacle: you cannot walk or shoot through a
-//	closed door, monsters cannot see through one, and a polyobj that is moved into
-//	something solid stops rather than passing through it.  What is still missing is
-//	step 5 -- nothing in a map has yet asked one to move -- so in normal play they
-//	stand closed.  Each step stays inert until the one that consumes it lands,
-//	which is what keeps the four working games out of the blast radius.
+//	Each step stayed inert until the one that consumed it landed, which is what
+//	kept the four working games out of the blast radius: every step was verified
+//	bit-identical for DOOM/Heretic/Strife/Freedoom before the next one started.
+//
+//	Debug switches, all documented in docs/BUDDYDOOM_PARAMETERS.md:
+//	  -potest	self-check the transforms, blockmap linkage and sight blocking
+//	  -nopolydraw	load them but do not draw them (the A/B lever for step 3)
+//	  -poopen	swing every door open at level load (end-to-end check of step 5)
 //
 //	Reference: ../crispy-doom/src/hexen/po_man.c (Raven's original) and the Hexen
 //	source at github.com/OpenSourcedGames/Hexen.
@@ -51,6 +53,7 @@
 #include "r_main.h"		// R_PointInSubsector
 #include "r_state.h"
 #include "z_zone.h"
+#include "p_acs.h"		// P_PolyobjFinished (PolyWait)
 #include "po_man.h"
 
 // Hexen's polyobj map things and linedef specials.
@@ -490,7 +493,9 @@ typedef struct
 
 static void PO_Finished (polyobj_t* po)
 {
-    if (po) po->specialdata = NULL;
+    if (!po) return;
+    po->specialdata = NULL;
+    P_PolyobjFinished (po->id);		// release any script blocked on PolyWait
 }
 
 void T_RotatePoly (thinker_t* thinker)
@@ -1059,13 +1064,35 @@ void PO_Init (const po_spot_t* spots, int nspots)
 		npo, bad, blocked, sightok, sightskip);
     }
 
+    // -poopen: swing every polyobj door open at level load, through the REAL
+    // special dispatcher rather than by calling EV_OpenPolyDoor directly.  That
+    // makes it an end-to-end check of step 5 -- special number to EV_ call to
+    // thinker to transform to pixels -- on a map, without needing to walk up to a
+    // switch and press it.  Debug only.
+    if (npo && M_CheckParm ("-poopen"))
+    {
+	int t;
+	for (t = 0; t < npo; t++)
+	{
+	    byte a[5];
+	    if (polyobjs[t].id < 0 || polyobjs[t].id > 255)
+		continue;
+	    a[0] = (byte) polyobjs[t].id;
+	    a[1] = 8;			// speed
+	    a[2] = 64;			// swing 90 degrees (64 * ANG90/64)
+	    a[3] = 105;			// hold 3 seconds
+	    a[4] = 0;
+	    P_ExecuteLineSpecial (7, a, NULL, 0, NULL);	// Polyobj_DoorSwing
+	}
+	printf ("PO_Init: -poopen fired Polyobj_DoorSwing on %d polyobject(s)\n", npo);
+    }
+
     if (npo)
     {
 	int t, nseg = 0, ndrawn = 0;
 	for (t = 0; t < npo; t++)
 	    { nseg += polyobjs[t].numsegs; if (polyobjs[t].subsector) ndrawn++; }
-	printf ("PO_Init: %d polyobject(s), %d seg(s), %d attached to a subsector "
-		"(steps 1-4 of 5: they draw, move and block; nothing drives them yet)\n",
+	printf ("PO_Init: %d polyobject(s), %d seg(s), %d attached to a subsector\n",
 		npo, nseg, ndrawn);
     }
 }

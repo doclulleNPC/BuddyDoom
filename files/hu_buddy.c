@@ -328,6 +328,8 @@ static const char* const buddy_arti_tag[NUMARTIFACTS] =
 // 4th strip line: each held artifact's pickup icon + its count (text tag if no icon).
 // The buddy carries the full artifact set like any co-op player and auto-uses health
 // items (AICoop_AutoHeal); this just shows what it has.  Nothing when the pack is empty.
+static boolean HU_IconFits (patch_t* p, int x, int y);	// defined below
+
 static void HU_Buddy_DrawInventory (player_t* bot, int y)
 {
     int wb = SCREENWIDTH / hires;
@@ -350,7 +352,13 @@ static void HU_Buddy_DrawInventory (player_t* bot, int y)
 	snprintf (num, sizeof num, "%d", cnt);
 	nw = HU_Buddy_TextW (num);
 
-	if (p)
+	// Same bounds check the other two inventory draw sites use.  This one was
+	// missed when HU_IconFits was added, and it is the site that crashes: a
+	// pickup SPRITE carries world offsets sized for the playfield, so on a map
+	// where the buddy is holding one of those (Hexen MAP03) the draw landed
+	// outside the framebuffer.
+	if (p && HU_IconFits (p, x - nw - SHORT (p->width) + SHORT (p->leftoffset),
+				 y + SHORT (p->topoffset)))
 	{
 	    // count just right of the icon, then the icon (offsets compensated so its
 	    // visible top-left lands at (x, y)).
@@ -517,7 +525,14 @@ static boolean HU_IconFits (patch_t* p, int x, int y)
     if (!p) return false;
     w = SHORT (p->width); h = SHORT (p->height);
     if (w <= 0 || h <= 0 || w > 40 || h > 40) return false;	// slot-sized icons only
-    return x >= 0 && y >= 0 && x + w <= BASE_WIDTH && y + h <= BASE_HEIGHT;
+    // Bound against the DRAWABLE area, which in widescreen is wider than
+    // BASE_WIDTH -- that is the limit V_DrawPatch itself uses.  Testing against
+    // BASE_WIDTH rejected icons that fit perfectly well, and since this strip is
+    // drawn from the right edge leftward, in widescreen that was every one of them:
+    // the whole buddy inventory silently degraded to text tags.
+    return x >= 0 && y >= 0
+	&& x + w <= SCREENWIDTH / hires
+	&& y + h <= SCREENHEIGHT / hires;
 }
 
 void HU_Inventory_Drawer (void)

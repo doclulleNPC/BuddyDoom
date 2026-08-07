@@ -44,6 +44,7 @@
 #include "z_zone.h"
 #include "hu_stuff.h"
 #include "p_acs.h"
+#include "po_man.h"		// (X) polyobject specials
 
 // ACS0 container header: "ACS\0", then the offset of the info block.
 typedef struct
@@ -366,6 +367,16 @@ void P_TagFinished (int tag)
 	    ACSInfo[i].state = ASTE_RUNNING;
 }
 
+// A polyobj has come to rest -- release any script blocked on PolyWait for it.
+// Called from po_man.c when a polyobj thinker finishes.
+void P_PolyobjFinished (int po)
+{
+    int i;
+    for (i = 0; i < ACScriptCount; i++)
+	if (ACSInfo[i].state == ASTE_WAITINGFORPOLYOBJ && ACSInfo[i].waitValue == po)
+	    ACSInfo[i].state = ASTE_RUNNING;
+}
+
 // ---------------------------------------------------------------------------
 // Line specials
 //
@@ -392,6 +403,29 @@ boolean P_ExecuteLineSpecial (int special, byte* args, line_t* line, int side,
 
     switch (special)
     {
+      // ---- polyobjects (Hexen 1-8, 90-93).  See files/po_man.c.
+      // 1 and 5 are not actions at all: they are the markers PO_Init reads to
+      // find which linedefs make up a polyobj, and doing anything with them here
+      // would be wrong.  Say so explicitly rather than letting them fall through
+      // to the "not implemented" warning every time a map loads.
+      case 1:							// Polyobj_StartLine
+      case 5:							// Polyobj_ExplicitLine
+	return false;
+
+      case 2:  return EV_RotatePoly (args,  1, false);		// Polyobj_RotateLeft
+      case 3:  return EV_RotatePoly (args, -1, false);		// Polyobj_RotateRight
+      case 4:  return EV_MovePoly   (args, false, false);	// Polyobj_Move
+      case 6:  return EV_MovePoly   (args, true,  false);	// Polyobj_MoveTimes8
+      case 7:  return EV_OpenPolyDoor (args, PODOOR_SWING);	// Polyobj_DoorSwing
+      case 8:  return EV_OpenPolyDoor (args, PODOOR_SLIDE);	// Polyobj_DoorSlide
+
+      // The OR_ variants override a polyobj that is already moving instead of
+      // refusing, which is how a script retargets one mid-motion.
+      case 90: return EV_RotatePoly (args,  1, true);		// Polyobj_OR_RotateLeft
+      case 91: return EV_RotatePoly (args, -1, true);		// Polyobj_OR_RotateRight
+      case 92: return EV_MovePoly   (args, false, true);	// Polyobj_OR_Move
+      case 93: return EV_MovePoly   (args, true,  true);	// Polyobj_OR_MoveTimes8
+
       // ---- doors (Hexen 10-13).  Hexen's speed/delay args have no DOOM
       // equivalent, so the nearest stock door type is used.
       case 10: return EV_DoDoor (tl, close) != 0;		// Door_Close
@@ -450,6 +484,56 @@ boolean P_ExecuteLineSpecial (int special, byte* args, line_t* line, int side,
 	}
 	return false;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Linedef activation on a Hexen-format map
+//
+// Hexen does not encode "walk once" / "switch, repeatable" in the special NUMBER
+// the way DOOM does -- the special says only WHAT happens, and the linedef's
+// flags say WHEN.  Bits 10-12 hold one of SPAC_CROSS/USE/MCROSS/IMPACT/PUSH/
+// PCROSS, and ML_REPEAT_SPECIAL says whether it survives being triggered.
+//
+// This has to exist for polyobjects to be reachable at all -- a Polyobj_DoorSwing
+// is just a special on a linedef, and nothing would ever run it otherwise.  It
+// also fixes a real bug: P_CrossSpecialLine and friends were interpreting Hexen
+// specials with DOOM's table, so walking over a Hexen line numbered 4
+// (Polyobj_Move) fired DOOM's special 4, "W1 Door Raise".  Every Hexen line was
+// doing something arbitrary.
+// ---------------------------------------------------------------------------
+
+#define ML_SPAC_SHIFT		10
+#define ML_SPAC_MASK		0x1c00
+#define ML_REPEAT_SPECIAL	0x0200
+
+boolean P_ActivateLine (line_t* line, mobj_t* mo, int side, int activationType)
+{
+    int		lineActivation = (line->flags & ML_SPAC_MASK) >> ML_SPAC_SHIFT;
+    boolean	repeat;
+    boolean	ok;
+
+    if (!line->special)
+	return false;
+    if (lineActivation != activationType)
+	return false;
+
+    if (mo && !mo->player && !(mo->flags & MF_MISSILE))
+    {
+	// Monsters may only trip MCROSS lines, and never a secret door -- without
+	// this an ettin wandering the level would open the map's doors for you.
+	if (lineActivation != SPAC_MCROSS)
+	    return false;
+	if (line->flags & ML_SECRET)
+	    return false;
+    }
+
+    repeat = (line->flags & ML_REPEAT_SPECIAL) != 0;
+    ok = P_ExecuteLineSpecial (line->special, line->args, line, side, mo);
+
+    if (ok && !repeat)
+	line->special = 0;		// one-shot: spent
+
+    return ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -660,10 +744,16 @@ void T_InterpretACS (acs_t* script)
 	    info->waitValue = LONG(*PCodePtr++); info->state = ASTE_WAITINGFORTAG;
 	    action = SCRIPT_STOP; break;
 
-	  // No polyobjects in this engine: never block, or every Hexen script that
-	  // waits on a door-polyobj would hang forever.
-	  case PCD_POLYWAIT:       Pop ();  break;
-	  case PCD_POLYWAITDIRECT: PCodePtr++; break;
+	  // Block until the polyobj finishes moving.  This used to return straight
+	  // away because polyobjs never moved, which was right then and wrong now:
+	  // a script that opens a door and waits would run the rest of itself in the
+	  // same tic, before the door had opened at all.
+	  case PCD_POLYWAIT:
+	    info->waitValue = Pop(); info->state = ASTE_WAITINGFORPOLYOBJ;
+	    action = SCRIPT_STOP; break;
+	  case PCD_POLYWAITDIRECT:
+	    info->waitValue = LONG(*PCodePtr++); info->state = ASTE_WAITINGFORPOLYOBJ;
+	    action = SCRIPT_STOP; break;
 
 	  case PCD_CHANGEFLOOR: case PCD_CHANGECEILING:
 	    { int nameidx = Pop(), tag = Pop(); int flat, s;
