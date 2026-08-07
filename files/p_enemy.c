@@ -102,6 +102,7 @@ dirtype_t diags[] =
 extern int	monster_backing;	// defined below, next to monster_pack
 extern int	monster_dodge;
 extern int	monster_smart;
+extern int	monsters_remember;
 void		A_FaceTarget (mobj_t* actor);
 
 // Beyond this the sidestep is invisible and only delays the fight.
@@ -943,6 +944,11 @@ int	monster_dodge      = 0;
 // invisible.  Default OFF.
 int	monster_smart      = 0;
 
+// (M) MBF: a monster that loses its target goes back to the one it was fighting
+// before, instead of standing down where it stands (P_DamageMobj files it away,
+// A_Chase picks it back up).  Default OFF.
+int	monsters_remember  = 0;
+
 static mobj_t* P_PackNearestPlayer (mobj_t* actor)
 {
     int		i, best = -1;
@@ -1177,7 +1183,20 @@ void A_Chase (mobj_t*	actor)
 	// look for a new target
 	if (P_LookForPlayers(actor,true))
 	    return; 	// got a new target
-	
+
+	// (M) MBF monsters_remember: before standing down, go back to whoever it
+	// was fighting earlier.  This is what stops a monster losing interest the
+	// moment its current quarry is out of sight -- vanilla drops straight to
+	// spawnstate and effectively falls asleep on the spot.
+	if (monsters_remember
+	    && actor->lastenemy && actor->lastenemy->health > 0
+	    && !(actor->lastenemy->flags & actor->flags & MF_FRIEND))
+	{
+	    actor->target    = actor->lastenemy;
+	    actor->lastenemy = NULL;
+	    return;
+	}
+
 	P_SetMobjState (actor, actor->info->spawnstate);
 	return;
     }

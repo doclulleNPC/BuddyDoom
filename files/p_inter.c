@@ -1282,6 +1282,20 @@ P_DamageMobj
     {
 	// if not intent on another player,
 	// chase after this one
+
+	extern int monsters_remember;	// (M) MBF, p_enemy.c
+
+	// (M) MBF monsters_remember: file the CURRENT quarry away first, so that
+	// when this new attacker is dealt with (or lost) the monster goes back to
+	// hunting rather than standing down.  Not over a still-live grudge, and
+	// never a fellow friend -- a friendly that got clipped by another friendly
+	// should not remember it as an enemy to return to.
+	if (monsters_remember && target->target
+	    && (!target->lastenemy || target->lastenemy->health <= 0
+		|| (!((target->flags ^ target->lastenemy->flags) & MF_FRIEND)
+		    && target->target != source)))
+	    target->lastenemy = target->target;
+
 	target->target = source;
 	target->threshold = BASETHRESHOLD;
 	if (target->state == &states[target->info->spawnstate]

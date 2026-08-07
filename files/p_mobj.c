@@ -620,12 +620,29 @@ void P_RemoveMobj (mobj_t* mobj)
 	    iquetail = (iquetail+1)&(ITEMQUESIZE-1);
     }
 	
+    // (M) MBF monsters_remember: mobj->lastenemy is held across time on purpose --
+    // it is the enemy a monster means to go back to.  That makes it the one actor
+    // reference that can outlive what it points at, so clear it everywhere before
+    // this one goes away.  MBF solves the same problem with reference-counted
+    // P_SetTarget; a scan is simpler and costs nothing in practice because it only
+    // runs for things that can BE a target.  (Monsters normally leave a corpse
+    // rather than being removed at all, so this fires on telefrags, crush-gibs,
+    // the Lost Soul cap and level teardown -- not on every puff and blood spot.)
+    if (mobj->flags & (MF_SHOOTABLE|MF_COUNTKILL) || mobj->player)
+    {
+	thinker_t* th;
+	for (th = thinkercap.next; th != &thinkercap; th = th->next)
+	    if (th->function.acp1 == (actionf_p1)P_MobjThinker
+		&& ((mobj_t*)th)->lastenemy == mobj)
+		((mobj_t*)th)->lastenemy = NULL;
+    }
+
     // unlink from sector and block lists
     P_UnsetThingPosition (mobj);
-    
+
     // stop any playing sound
     S_StopSound (mobj);
-    
+
     // free block
     P_RemoveThinker ((thinker_t*)mobj);
 }

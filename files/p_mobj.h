@@ -299,6 +299,13 @@ typedef struct mobj_s
     // also the originator for missiles.
     struct mobj_s*	target;
 
+    // (M) MBF monsters_remember: who it was fighting BEFORE the current target.
+    // Lets a monster that loses sight of you go back to hunting instead of
+    // forgetting and standing down.  Unlike `target` this is deliberately a STALE
+    // pointer, so P_RemoveMobj clears it everywhere when a possible target dies --
+    // see the note there.
+    struct mobj_s*	lastenemy;
+
     // Reaction time: if non 0, don't attack yet.
     // Used by player to freeze a bit after teleporting.
     int			reactiontime;   
