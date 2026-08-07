@@ -103,6 +103,8 @@ extern int	monster_backing;	// defined below, next to monster_pack
 extern int	monster_dodge;
 extern int	monster_smart;
 extern int	monsters_remember;
+extern int	help_friends;
+extern int	distfriend;
 void		A_FaceTarget (mobj_t* actor);
 
 // Beyond this the sidestep is invisible and only delays the fight.
@@ -297,7 +299,13 @@ boolean P_CheckMissileRange (mobj_t* actor)
 		
     if (P_Random () < dist)
 	return false;
-		
+
+    // (M) MBF: a friend checks the line of fire first, so a squad does not spend
+    // the fight shooting each other in the back.  Enemies deliberately do NOT --
+    // clipping a neighbour is how infighting starts, and that is a feature.
+    if (P_HitFriend (actor))
+	return false;
+
     return true;
 }
 
@@ -518,6 +526,74 @@ static int P_IsUnderDamage (mobj_t* actor)
     }
 }
 
+// Is the actor riding, or standing in, something that works as a lift?
+//
+// (M) MBF.  Used to make two exceptions: a friend crowded onto a lift should not
+// shuffle off it to keep its distance, and a monster should not treat the lift it
+// is riding as a hazard to leave.
+static boolean P_IsOnLift (const mobj_t* actor)
+{
+    const sector_t*	sec = actor->subsector->sector;
+    int			l;
+
+    // Riding one that is moving right now.
+    if (sec->floordata
+	&& ((thinker_t*)sec->floordata)->function.acp1 == (actionf_p1)T_PlatRaise)
+	return true;
+
+    // Or standing in a sector that some line can raise as a lift.
+    if (sec->tag)
+	for (l = 0; l < numlines; l++)
+	{
+	    if (lines[l].tag != sec->tag)
+		continue;
+	    switch (lines[l].special)
+	    {
+	      case  10: case  14: case  15: case  20: case  21: case  22:
+	      case  47: case  53: case  62: case  66: case  67: case  68:
+	      case  87: case  88: case  95: case 120: case 121: case 122:
+	      case 123: case 143: case 144: case 148: case 149: case 162:
+	      case 163: case 181: case 182: case 211: case 227: case 228:
+	      case 231: case 232: case 235: case 236:
+		return true;
+	    }
+	}
+    return false;
+}
+
+// Would firing right now hit one of our own?
+//
+// (M) MBF: friendly actors check the line of fire before shooting, so a squad
+// does not spend the fight killing itself.  Only friends bother -- an enemy that
+// clips its neighbour is how infighting starts, and that is a feature.
+static boolean P_HitFriend (mobj_t* actor)
+{
+    if (!help_friends || !(actor->flags & MF_FRIEND) || !actor->target)
+	return false;
+
+    P_AimLineAttack (actor,
+		     R_PointToAngle2 (actor->x, actor->y,
+				      actor->target->x, actor->target->y),
+		     P_AproxDistance (actor->x - actor->target->x,
+				      actor->y - actor->target->y));
+    return linetarget
+	&& linetarget != actor->target
+	&& !((linetarget->flags ^ actor->flags) & MF_FRIEND);
+}
+
+// (M) MBF: can the actor see mo?  `allaround` false means "in front of me only".
+static boolean P_IsVisible (mobj_t* actor, mobj_t* mo, boolean allaround)
+{
+    if (!allaround)
+    {
+	angle_t an = R_PointToAngle2 (actor->x, actor->y, mo->x, mo->y) - actor->angle;
+	if (an > ANG90 && an < ANG270
+	    && P_AproxDistance (mo->x - actor->x, mo->y - actor->y) > MELEERANGE)
+	    return false;
+    }
+    return P_CheckSight (actor, mo);
+}
+
 // Pick a movedir that makes progress along (deltax, deltay), then walk it.
 //
 // (M) killough 9/8/98 split this out of P_NewChaseDir so the CALLER decides which
@@ -697,6 +773,22 @@ void P_NewChaseDir (mobj_t*	actor)
 	return;
     }
 
+    // (M) MBF, killough 8/8/98: friends keep out of each other's way.  Without it
+    // an escort bunches up on you and on itself, and the ones at the back spend the
+    // fight shoving rather than shooting.  Two exceptions, both from MBF: not on a
+    // lift (backing off a moving platform strands them) and not while standing in
+    // damage (getting out of the fire matters more than spacing).
+    if (distfriend > 0			// 0 = spacing off (MBF's value is 128)
+	&& actor->target->health > 0
+	&& (actor->flags & actor->target->flags & MF_FRIEND)
+	&& distfriend << FRACBITS > P_AproxDistance (deltax, deltay)
+	&& !P_IsOnLift (actor->target)
+	&& !P_IsUnderDamage (actor))
+    {
+	deltax = -deltax;
+	deltay = -deltay;
+    }
+    else
     // (M) MBF, killough 8/8/98: back away from a melee threat instead of standing
     // in it.  A monster with a MISSILE attack has no business walking into arm's
     // reach, so when something that can only hurt it up close gets that close --
@@ -798,6 +890,52 @@ mobj_t* P_FriendNearestEnemy (mobj_t* actor)
 	if (d < bestd) { bestd = d; best = mo; }
     }
     return best;
+}
+
+// (M) MBF help_friends: come to the aid of someone on your own side who is hurt
+// and under attack -- adopt their attacker as your target.
+//
+// MBF walks a per-side threaded thinker list (thinkerclasscap); this engine has no
+// such list, so it scans the thinkers the way P_FriendNearestEnemy above already
+// does.  Same result, and one scan only happens when a friend is actually idle.
+static boolean P_HelpFriend (mobj_t* actor)
+{
+    thinker_t*	th;
+
+    // Below a third health, look after yourself.
+    if (actor->health * 3 < actor->info->spawnhealth)
+	return false;
+
+    for (th = thinkercap.next; th != &thinkercap; th = th->next)
+    {
+	mobj_t*	m;
+
+	if (th->function.acp1 != (actionf_p1)P_MobjThinker) continue;
+	m = (mobj_t*)th;
+	if (m == actor || m->health <= 0)			continue;
+	if ((m->flags ^ actor->flags) & MF_FRIEND)		continue;   // our side only
+
+	// Healthy friends can look after themselves -- mostly.
+	if (m->health * 2 >= m->info->spawnhealth)
+	{
+	    if (P_Random() < 180)
+		break;
+	    continue;
+	}
+
+	if (!(m->flags & MF_JUSTHIT))				continue;   // not under fire
+	if (!m->target || m->target == actor->target)		continue;
+	if (m->target->health <= 0 || !(m->target->flags & MF_SHOOTABLE)) continue;
+	if ((m->target->flags ^ actor->flags) & MF_FRIEND) {}	// hostile to us: good
+	else							continue;
+	if (!P_IsVisible (actor, m->target, true))		continue;
+
+	actor->lastenemy = actor->target;
+	actor->target    = m->target;
+	actor->threshold = BASETHRESHOLD;	// ignore other attackers while helping
+	return true;
+    }
+    return false;
 }
 
 boolean
@@ -948,6 +1086,12 @@ int	monster_smart      = 0;
 // before, instead of standing down where it stands (P_DamageMobj files it away,
 // A_Chase picks it back up).  Default OFF.
 int	monsters_remember  = 0;
+
+// (M) MBF friend spacing / mutual aid.  These only ever affect MF_FRIEND actors
+// (DEHACKED-authored escorts, summons, revived marines) -- the co-op BUDDY is
+// player 2 and runs its own bot in p_ai_coop.c, which none of this touches.
+int	help_friends       = 0;	// aid a wounded friend + do not shoot through one
+int	distfriend         = 0;	// spacing in map units; 0 = off (MBF uses 128)
 
 static mobj_t* P_PackNearestPlayer (mobj_t* actor)
 {
@@ -1241,11 +1385,15 @@ void A_Chase (mobj_t*	actor)
     // ?
   nomissile:
     // possibly choose another target
-    if (netgame
-	&& !actor->threshold
-	&& !P_CheckSight (actor, actor->target) )
+    if (!actor->threshold)
     {
-	if (P_LookForPlayers(actor,true))
+	// (M) MBF help_friends: an actor not already committed to a fight goes to
+	// help a wounded friend instead of continuing its own errand.
+	if (help_friends && (actor->flags & MF_FRIEND) && P_HelpFriend (actor))
+	    return;
+
+	if (netgame && !P_CheckSight (actor, actor->target)
+	    && P_LookForPlayers (actor, true))
 	    return;	// got a new target
     }
     

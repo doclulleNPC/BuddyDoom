@@ -218,6 +218,8 @@ extern int	monster_backing;	// MBF: ranged monsters back off from melee
 extern int	monster_dodge;		// sidestep/circle at fighting range
 extern int	monster_smart;		// ledge / hazard avoidance
 extern int	monsters_remember;	// keep hunting after losing sight
+extern int	help_friends;		// friends aid a wounded friend
+extern int	distfriend;		// friend spacing, map units
 
 extern int	mousebfire;
 extern int	mousebstrafe;
@@ -332,6 +334,8 @@ default_t	defaults[] =
     {"monster_dodge",&monster_dodge, 0},	// circle/jink at fighting range
     {"monster_smart",&monster_smart, 0},	// avoid ledges and damaging floors
     {"monsters_remember",&monsters_remember, 0},	// resume hunting a lost target
+    {"help_friends",&help_friends, 0},		// friends aid each other + hold fire
+    {"distfriend",&distfriend, 0},		// friend spacing (map units)
 
     {"use_mouse",&usemouse, 1},
     {"mouseb_fire",&mousebfire,0},

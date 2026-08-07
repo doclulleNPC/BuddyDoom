@@ -151,6 +151,15 @@ The current defaults are arrow keys, not the historical bracket/Enter/`d` table:
 - `monster_dodge` — monsters circle at fighting range rather than walking straight in,
   and jink when hit. Default `0`. Toggle in **Options → Features → Monster Dodging**.
   This one is ours, not MBF's — nothing in the DOOM lineage moves monsters sideways.
+- `monsters_remember` — a monster that loses its target resumes hunting whoever it was
+  fighting before, instead of dropping to spawnstate where it stands. Default `0`.
+- `help_friends` — friendly actors cooperate: they go to the aid of a wounded friend
+  that is under fire, and they check the line of fire before shooting so a squad
+  doesn't kill itself. Default `0`. Affects **`MF_FRIEND` actors only** (summons, revived
+  marines, DEHACKED-authored escorts) — the AI co-op buddy is player 2 and runs its own
+  bot in `p_ai_coop.c`, which none of this touches.
+- `distfriend` — how close (map units) two friends may get before one gives way.
+  Default `0` = spacing off; MBF's value is `128`. Same `MF_FRIEND`-only scope as above.
 - `monster_smart` — MBF terrain sense, as one switch: don't shuffle off ledges
   (`P_AvoidDropoff`), walk back out of damaging floors instead of standing in them
   (`P_IsUnderDamage`), and use MBF's *relative* step rule ("monkeys") so a monster can
