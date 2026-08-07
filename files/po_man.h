@@ -56,6 +56,7 @@ typedef struct polyobj_s
     fixed_t	startX, startY;	// current centre
     angle_t	angle;		// accumulated rotation
     boolean	crush;
+    int		validcount;	// blockmap iteration: a polyobj spans many cells
     int		bbox[4];	// blockmap CELL range currently linked into
     boolean	linked;
     void*	specialdata;	// the thinker driving it, if any
@@ -71,6 +72,10 @@ typedef struct polyblock_s
 extern polyobj_t*	polyobjs;
 extern int		po_NumPolyobjs;
 extern polyblock_t**	PolyBlockMap;
+
+// Forget the previous level's polyobjects.  Call from P_SetupLevel right after
+// Z_FreeTags(PU_LEVEL) -- everything below is PU_LEVEL and has just been freed.
+void PO_ClearLevel (void);
 
 // Place every polyobj: match each start spot to its anchor and translate the
 // tagged linedefs into position.  Call from P_SetupLevel after THINGS.

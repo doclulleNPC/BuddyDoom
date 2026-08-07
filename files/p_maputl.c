@@ -35,6 +35,7 @@ rcsid[] = "$Id: p_maputl.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 
 #include "doomdef.h"
 #include "p_local.h"
+#include "po_man.h"		// (X) polyobjects
 
 
 // State.
@@ -548,7 +549,37 @@ P_BlockLinesIterator
     }
     
     offset = y*bmapwidth+x;
-	
+
+    // (X) Hexen polyobjects first.  They move, so they are not in the WAD blockmap;
+    // PolyBlockMap is the parallel per-cell list po_man.c rebuilds on every move.
+    // Everything that collides with a wall -- movement, shots, sight along a
+    // traverse -- comes through here, so this one hook is what makes a polyobj
+    // solid.  NULL on every non-Hexen map (P_SetupLevel clears it), so the cost
+    // elsewhere is one test per cell.
+    if (PolyBlockMap)
+    {
+	polyblock_t*	pb;
+	for (pb = PolyBlockMap[offset] ; pb ; pb = pb->next)
+	{
+	    polyobj_t*	po = pb->polyobj;
+	    int		i;
+
+	    if (!po || po->validcount == validcount)
+		continue;		// a polyobj spans many cells; check it once
+	    po->validcount = validcount;
+
+	    for (i = 0 ; i < po->numlines ; i++)
+	    {
+		line_t* pl = po->lines[i];
+		if (pl->validcount == validcount)
+		    continue;
+		pl->validcount = validcount;
+		if ( !func(pl) )
+		    return false;
+	    }
+	}
+    }
+
     offset = *(blockmap+offset);
 
     for ( list = blockmaplump+offset ; *list != -1 ; list++)

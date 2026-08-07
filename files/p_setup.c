@@ -1235,6 +1235,12 @@ P_SetupLevel
 #endif
 	Z_FreeTags (PU_LEVEL, PU_PURGELEVEL-1);
 
+    // (X) Polyobjects are PU_LEVEL, so the free above just invalidated them.  Drop
+    // the pointers NOW rather than in PO_Init: PO_Init only runs on Hexen-format
+    // maps, so on any other map -- or on the next map after a Hexen one -- the
+    // globals would still hold freed addresses, and the blockmap iterator reads
+    // PolyBlockMap on every line check in every game.
+    PO_ClearLevel ();
 
     // UNUSED W_Profile ();
     P_InitThinkers ();

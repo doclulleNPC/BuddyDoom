@@ -29,6 +29,7 @@ rcsid[] = "$Id: p_sight.c,v 1.3 1997/01/28 22:08:28 b1 Exp $";
 
 #include "i_system.h"
 #include "p_local.h"
+#include "po_man.h"		// (X) polyobjects
 
 // State.
 #include "r_state.h"
@@ -128,6 +129,111 @@ P_InterceptVector2
 }
 
 //
+// One seg of a subsector, tested against the sight line.  Returns false when the
+// seg blocks sight (the caller stops), true to carry on to the next seg.
+//
+// Split out of P_CrossSubsector so that Hexen polyobject segs can be run through
+// exactly the same test.  Polyobjects are not in the BSP -- they move -- so the
+// traversal below would never see them otherwise, and a closed polyobj door would
+// be something monsters could see and shoot straight through.
+static boolean P_SightCheckSeg (seg_t* seg)
+{
+    line_t*	line;
+    int		s1;
+    int		s2;
+    sector_t*	front;
+    sector_t*	back;
+    fixed_t	opentop;
+    fixed_t	openbottom;
+    divline_t	divl;
+    vertex_t*	v1;
+    vertex_t*	v2;
+    fixed_t	frac;
+    fixed_t	slope;
+
+    line = seg->linedef;
+
+    // allready checked other side?
+    if (line->validcount == validcount)
+	return true;
+
+    line->validcount = validcount;
+
+    v1 = line->v1;
+    v2 = line->v2;
+    s1 = P_DivlineSide (v1->x,v1->y, &strace);
+    s2 = P_DivlineSide (v2->x, v2->y, &strace);
+
+    // line isn't crossed?
+    if (s1 == s2)
+	return true;
+
+    divl.x = v1->x;
+    divl.y = v1->y;
+    divl.dx = v2->x - v1->x;
+    divl.dy = v2->y - v1->y;
+    s1 = P_DivlineSide (strace.x, strace.y, &divl);
+    s2 = P_DivlineSide (t2x, t2y, &divl);
+
+    // line isn't crossed?
+    if (s1 == s2)
+	return true;
+
+    // stop because it is not two sided anyway
+    // might do this after updating validcount?
+    if ( !(line->flags & ML_TWOSIDED) )
+	return false;
+
+    // crosses a two sided line
+    front = seg->frontsector;
+    back = seg->backsector;
+
+    // no wall to block sight with?
+    if (front->floorheight == back->floorheight
+	&& front->ceilingheight == back->ceilingheight)
+	return true;
+
+    // possible occluder
+    // because of ceiling height differences
+    if (front->ceilingheight < back->ceilingheight)
+	opentop = front->ceilingheight;
+    else
+	opentop = back->ceilingheight;
+
+    // because of ceiling height differences
+    if (front->floorheight > back->floorheight)
+	openbottom = front->floorheight;
+    else
+	openbottom = back->floorheight;
+
+    // quick test for totally closed doors
+    if (openbottom >= opentop)
+	return false;		// stop
+
+    frac = P_InterceptVector2 (&strace, &divl);
+
+    if (front->floorheight != back->floorheight)
+    {
+	slope = FixedDiv (openbottom - sightzstart , frac);
+	if (slope > bottomslope)
+	    bottomslope = slope;
+    }
+
+    if (front->ceilingheight != back->ceilingheight)
+    {
+	slope = FixedDiv (opentop - sightzstart , frac);
+	if (slope < topslope)
+	    topslope = slope;
+    }
+
+    if (topslope <= bottomslope)
+	return false;		// stop
+
+    return true;
+}
+
+
+//
 // P_CrossSubsector
 // Returns true
 //  if strace crosses the given subsector successfully.
@@ -135,21 +241,9 @@ P_InterceptVector2
 boolean P_CrossSubsector (int num)
 {
     seg_t*		seg;
-    line_t*		line;
-    int			s1;
-    int			s2;
     int			count;
     subsector_t*	sub;
-    sector_t*		front;
-    sector_t*		back;
-    fixed_t		opentop;
-    fixed_t		openbottom;
-    divline_t		divl;
-    vertex_t*		v1;
-    vertex_t*		v2;
-    fixed_t		frac;
-    fixed_t		slope;
-	
+
 #ifdef RANGECHECK
     if (num>=numsubsectors)
 	I_Error ("P_CrossSubsector: ss %i with numss = %i",
@@ -158,93 +252,27 @@ boolean P_CrossSubsector (int num)
 #endif
 
     sub = &subsectors[num];
-    
+
+    // (X) A polyobject standing in this leaf blocks sight through it.  Its walls
+    // are one-sided, so P_SightCheckSeg stops on the ML_TWOSIDED test.
+    if (sub->poly)
+    {
+	int i;
+	for (i = 0 ; i < sub->poly->numsegs ; i++)
+	    if (!P_SightCheckSeg (sub->poly->segs[i]))
+		return false;
+    }
+
     // check lines
     count = sub->numlines;
     seg = &segs[sub->firstline];
 
     for ( ; count ; seg++, count--)
-    {
-	line = seg->linedef;
-
-	// allready checked other side?
-	if (line->validcount == validcount)
-	    continue;
-	
-	line->validcount = validcount;
-		
-	v1 = line->v1;
-	v2 = line->v2;
-	s1 = P_DivlineSide (v1->x,v1->y, &strace);
-	s2 = P_DivlineSide (v2->x, v2->y, &strace);
-
-	// line isn't crossed?
-	if (s1 == s2)
-	    continue;
-	
-	divl.x = v1->x;
-	divl.y = v1->y;
-	divl.dx = v2->x - v1->x;
-	divl.dy = v2->y - v1->y;
-	s1 = P_DivlineSide (strace.x, strace.y, &divl);
-	s2 = P_DivlineSide (t2x, t2y, &divl);
-
-	// line isn't crossed?
-	if (s1 == s2)
-	    continue;	
-
-	// stop because it is not two sided anyway
-	// might do this after updating validcount?
-	if ( !(line->flags & ML_TWOSIDED) )
+	if (!P_SightCheckSeg (seg))
 	    return false;
-	
-	// crosses a two sided line
-	front = seg->frontsector;
-	back = seg->backsector;
 
-	// no wall to block sight with?
-	if (front->floorheight == back->floorheight
-	    && front->ceilingheight == back->ceilingheight)
-	    continue;	
-
-	// possible occluder
-	// because of ceiling height differences
-	if (front->ceilingheight < back->ceilingheight)
-	    opentop = front->ceilingheight;
-	else
-	    opentop = back->ceilingheight;
-
-	// because of ceiling height differences
-	if (front->floorheight > back->floorheight)
-	    openbottom = front->floorheight;
-	else
-	    openbottom = back->floorheight;
-		
-	// quick test for totally closed doors
-	if (openbottom >= opentop)	
-	    return false;		// stop
-	
-	frac = P_InterceptVector2 (&strace, &divl);
-		
-	if (front->floorheight != back->floorheight)
-	{
-	    slope = FixedDiv (openbottom - sightzstart , frac);
-	    if (slope > bottomslope)
-		bottomslope = slope;
-	}
-		
-	if (front->ceilingheight != back->ceilingheight)
-	{
-	    slope = FixedDiv (opentop - sightzstart , frac);
-	    if (slope < topslope)
-		topslope = slope;
-	}
-		
-	if (topslope <= bottomslope)
-	    return false;		// stop				
-    }
     // passed the subsector ok
-    return true;		
+    return true;
 }
 
 

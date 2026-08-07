@@ -5,7 +5,7 @@
 // Copyright (C) 1993-2008 Raven Software (Hexen polyobjects -- reference for this port)
 //
 // DESCRIPTION:
-//	(X) Polyobjects -- STEPS 1-3 of 5: placement, movement, linkage, RENDERING.
+//	(X) Polyobjects -- STEPS 1-4 of 5: placement, movement, rendering, COLLISION.
 //
 //	A Hexen polyobject is a cluster of linedefs drawn OFF to one side of the map,
 //	in void space, which the engine translates into position at level load and can
@@ -22,17 +22,16 @@
 //	     and translate its vertices into place.  Touches nothing but p_setup.
 //	  2. DONE -- rotate/translate + the thinkers that drive them, and blockmap
 //	     link/unlink on every move.
-//	  3. DONE (this step) -- per-subsector polyobj seg lists, so the lines DRAW.
-//	  4. p_maputl.c / p_sight.c: include them in blockmap iteration, so they BLOCK
+//	  3. DONE -- per-subsector polyobj seg lists, so the lines DRAW.
+//	  4. DONE (this step) -- blockmap and sight iteration, so they BLOCK.
 //	  5. p_acs.c: wire the Polyobj_* specials into P_ExecuteLineSpecial
 //
-//	After step 3 polyobjs are VISIBLE: they render in place, and they render
-//	wherever they are moved to.  They still do not block anything (step 4) and
-//	nothing in a map has yet asked one to move (step 5), so in normal play they
-//	stand still -- but a door now appears in its doorway instead of leaving a hole,
-//	which is the first change a player can actually see.  Each step stays inert
-//	until the one that consumes it lands, which is what keeps the four working
-//	games out of the blast radius.
+//	After step 4 a polyobj is a real obstacle: you cannot walk or shoot through a
+//	closed door, monsters cannot see through one, and a polyobj that is moved into
+//	something solid stops rather than passing through it.  What is still missing is
+//	step 5 -- nothing in a map has yet asked one to move -- so in normal play they
+//	stand closed.  Each step stays inert until the one that consumes it lands,
+//	which is what keeps the four working games out of the blast radius.
 //
 //	Reference: ../crispy-doom/src/hexen/po_man.c (Raven's original) and the Hexen
 //	source at github.com/OpenSourcedGames/Hexen.
@@ -295,6 +294,89 @@ static void PO_LinkPolyobj (polyobj_t* po)
 // Movement
 // ---------------------------------------------------------------------------
 
+void PO_ClearLevel (void)
+{
+    polyobjs = NULL;
+    po_NumPolyobjs = 0;
+    PolyBlockMap = NULL;
+}
+
+// Is anything solid standing where the polyobj has just been put?
+//
+// Called AFTER the move, on the new geometry: the cheap test is to ask whether a
+// mobj's bounding box now straddles one of the polyobj's lines.  A polyobj that is
+// merely passing a thing does not count -- only one that would end up overlapping
+// it -- which is why this runs on the result rather than sweeping the path.
+static boolean PO_CheckMobjBlocking (line_t* ld, polyobj_t* po)
+{
+    int		left, right, top, bottom, i, j;
+    boolean	blocked = false;
+
+    // Widen by MAXRADIUS: blocklinks holds a thing in the cell of its CENTRE, so a
+    // thing whose centre is a cell away can still overlap this line.
+    left   = (ld->bbox[BOXLEFT]   - bmaporgx - MAXRADIUS) >> MAPBLOCKSHIFT;
+    right  = (ld->bbox[BOXRIGHT]  - bmaporgx + MAXRADIUS) >> MAPBLOCKSHIFT;
+    bottom = (ld->bbox[BOXBOTTOM] - bmaporgy - MAXRADIUS) >> MAPBLOCKSHIFT;
+    top    = (ld->bbox[BOXTOP]    - bmaporgy + MAXRADIUS) >> MAPBLOCKSHIFT;
+
+    if (left   < 0) left   = 0;
+    if (bottom < 0) bottom = 0;
+    if (right  >= bmapwidth)  right = bmapwidth  - 1;
+    if (top    >= bmapheight) top   = bmapheight - 1;
+
+    for (j = bottom; j <= top; j++)
+	for (i = left; i <= right; i++)
+	{
+	    mobj_t* mo;
+	    for (mo = blocklinks[j*bmapwidth + i]; mo; mo = mo->bnext)
+	    {
+		fixed_t box[4];
+		if (!(mo->flags & MF_SOLID) && !mo->player)
+		    continue;
+		box[BOXTOP]    = mo->y + mo->radius;
+		box[BOXBOTTOM] = mo->y - mo->radius;
+		box[BOXLEFT]   = mo->x - mo->radius;
+		box[BOXRIGHT]  = mo->x + mo->radius;
+
+		if (box[BOXRIGHT]  <= ld->bbox[BOXLEFT]
+		 || box[BOXLEFT]   >= ld->bbox[BOXRIGHT]
+		 || box[BOXTOP]    <= ld->bbox[BOXBOTTOM]
+		 || box[BOXBOTTOM] >= ld->bbox[BOXTOP])
+		    continue;
+		if (P_BoxOnLineSide (box, ld) != -1)
+		    continue;		// wholly on one side: not straddling the line
+
+		if (po->crush)
+		    P_DamageMobj (mo, NULL, NULL, 3);
+		blocked = true;
+	    }
+	}
+    return blocked;
+}
+
+// Put every vertex back where PO_SavePrev recorded it.
+static void PO_Restore (polyobj_t* po)
+{
+    int i;
+    for (i = 0; i < po->numverts; i++)
+    {
+	po->verts[i]->x = po->prevX[i];
+	po->verts[i]->y = po->prevY[i];
+    }
+    PO_UpdateLines (po);
+}
+
+// Did that move squash anything?  If so undo it and say so, so the thinker can
+// reverse a door instead of grinding through the player.
+static boolean PO_Blocked (polyobj_t* po)
+{
+    int i;
+    for (i = 0; i < po->numlines; i++)
+	if (PO_CheckMobjBlocking (po->lines[i], po))
+	    return true;
+    return false;
+}
+
 polyobj_t* PO_GetPolyobj (int id)
 {
     int i;
@@ -322,12 +404,17 @@ boolean PO_MovePolyobj (int id, fixed_t dx, fixed_t dy)
     PO_UnLinkPolyobj (po);
     PO_SavePrev (po);
     PO_Translate (po, dx, dy);
+
+    if (PO_Blocked (po))
+    {
+	PO_Restore (po);
+	PO_LinkPolyobj (po);
+	return false;		// caller decides: reverse, wait, or give up
+    }
+
     po->startX += dx;
     po->startY += dy;
     PO_LinkPolyobj (po);
-    // Blocking actors is step 4's job -- it needs blockmap iteration over the
-    // polyobj's lines, which nothing does yet.  Until then a polyobj slides
-    // through anything standing in it.
     return true;
 }
 
@@ -364,6 +451,14 @@ boolean PO_RotatePolyobj (int id, angle_t delta)
 	po->verts[i]->y = po->startY + FixedMul (ox, finesine[fine])
 				     + FixedMul (oy, finecosine[fine]);
     }
+    PO_UpdateLines (po);
+    if (PO_Blocked (po))
+    {
+	PO_Restore (po);
+	PO_LinkPolyobj (po);
+	return false;		// angle and seg angles left untouched
+    }
+
     po->angle = na;
 
     // seg->angle is a CACHED value, computed once at load from the seg's direction,
@@ -404,8 +499,15 @@ void T_RotatePoly (thinker_t* thinker)
     polyobj_t*		po = PO_GetPolyobj (pe->polyobj);
     unsigned		absSpeed;
 
-    if (!PO_RotatePolyobj (pe->polyobj, pe->speed))
+    if (!po)				// nothing left to drive
 	{ P_RemoveThinker (&pe->thinker); return; }
+
+    // Blocked by something solid.  Do NOT charge the tic against the remaining
+    // distance and do NOT give up -- just retry next tic, so the object carries on
+    // by itself once whatever is in the way moves.  Dropping the thinker here would
+    // leave the object frozen part-way for the rest of the level.
+    if (!PO_RotatePolyobj (pe->polyobj, pe->speed))
+	return;
 
     if (pe->dist == (unsigned)-1)	// perpetual
 	return;
@@ -426,8 +528,11 @@ void T_MovePoly (thinker_t* thinker)
     polyobj_t*		po = PO_GetPolyobj (pe->polyobj);
     unsigned		absSpeed;
 
-    if (!PO_MovePolyobj (pe->polyobj, pe->xSpeed, pe->ySpeed))
+    if (!po)
 	{ P_RemoveThinker (&pe->thinker); return; }
+
+    if (!PO_MovePolyobj (pe->polyobj, pe->xSpeed, pe->ySpeed))
+	return;				// blocked -- retry next tic, see T_RotatePoly
 
     absSpeed = (unsigned) abs (pe->speed);
     if (pe->dist <= absSpeed)
@@ -461,23 +566,34 @@ void T_PolyDoor (thinker_t* thinker)
     polydoor_t*	pd = (polydoor_t*) thinker;
     polyobj_t*	po = PO_GetPolyobj (pd->polyobj);
 
-    if (pd->tics)
+    boolean	moved;
+
+    if (!po)
+	{ P_RemoveThinker (&pd->thinker); return; }
+
+    if (pd->tics)			// holding open
+	{ --pd->tics; return; }
+
+    moved = (pd->type == PODOOR_SLIDE)
+	  ? PO_MovePolyobj (pd->polyobj, pd->xSpeed, pd->ySpeed)
+	  : PO_RotatePolyobj (pd->polyobj, pd->speed);
+
+    if (!moved)
     {
-	if (!--pd->tics)		// waited long enough -- head back
-	{
-	    pd->close = true;
-	    pd->dist = pd->totalDist;
-	    pd->xSpeed = -pd->xSpeed;
-	    pd->ySpeed = -pd->ySpeed;
-	    pd->speed  = -pd->speed;
-	}
+	// Something solid is in the way.  A crusher keeps pushing, and a door that
+	// is still OPENING simply waits for the obstruction to clear.  A door caught
+	// CLOSING on someone opens back up -- the same courtesy an ordinary DOOM door
+	// extends, and without it a polyobj door would pin the player against its
+	// frame with nothing to do about it.
+	if (po->crush || !pd->close)
+	    return;
+	pd->dist   = pd->totalDist - pd->dist;	// however far it had already closed
+	pd->xSpeed = -pd->xSpeed;
+	pd->ySpeed = -pd->ySpeed;
+	pd->speed  = -pd->speed;
+	pd->close  = false;
 	return;
     }
-
-    if (pd->type == PODOOR_SLIDE)
-	PO_MovePolyobj (pd->polyobj, pd->xSpeed, pd->ySpeed);
-    else
-	PO_RotatePolyobj (pd->polyobj, pd->speed);
 
     pd->dist -= abs (pd->speed ? pd->speed : 1);
     if (pd->dist > 0)
@@ -489,7 +605,14 @@ void T_PolyDoor (thinker_t* thinker)
 	P_RemoveThinker (&pd->thinker);
 	return;
     }
-    pd->tics = pd->waitTics;		// fully open: hold
+
+    // Fully open: reverse now, then hold for waitTics before actually moving.
+    pd->close  = true;
+    pd->dist   = pd->totalDist;
+    pd->xSpeed = -pd->xSpeed;
+    pd->ySpeed = -pd->ySpeed;
+    pd->speed  = -pd->speed;
+    pd->tics   = pd->waitTics;
 }
 
 // ---------------------------------------------------------------------------
@@ -579,6 +702,37 @@ boolean EV_OpenPolyDoor (byte* args, podoortype_t type)
 // `spots` is every polyobj map thing the THINGS pass saw, in map order; a thing's
 // ANGLE field carries the polyobj id, not a facing.
 // ---------------------------------------------------------------------------
+// -potest: p_sight.c's working state, so the self-test can cast a sight line by
+// hand the way P_CheckSight does, without needing two mobjs to sight between.
+extern divline_t	strace;
+extern fixed_t		t2x, t2y, sightzstart, topslope, bottomslope;
+extern boolean		P_CrossBSPNode (int bspnum);
+
+// Is the straight line (x1,y1)->(x2,y2) unobstructed?
+static boolean PO_TestSight (fixed_t x1, fixed_t y1, fixed_t x2, fixed_t y2)
+{
+    validcount++;
+    sightzstart = 0;
+    topslope    =  FRACUNIT;		// a wide vertical window, so only the
+    bottomslope = -FRACUNIT;		// geometry decides, not the heights
+    strace.x  = x1;  strace.y  = y1;
+    strace.dx = x2 - x1;
+    strace.dy = y2 - y1;
+    t2x = x2;  t2y = y2;
+    return P_CrossBSPNode (numnodes - 1);
+}
+
+// -potest scratch: collects the lines P_BlockLinesIterator hands back.
+static line_t*	potest_lines[POLY_MAXLINES * 4];
+static int	potest_found;
+
+static boolean PO_CountTestLine (line_t* ld)
+{
+    if (potest_found < (int)(sizeof(potest_lines)/sizeof(potest_lines[0])))
+	potest_lines[potest_found++] = ld;
+    return true;			// keep going, we want them all
+}
+
 void PO_Init (const po_spot_t* spots, int nspots)
 {
     int	i, j;
@@ -691,6 +845,38 @@ void PO_Init (const po_spot_t* spots, int nspots)
 
     po_NumPolyobjs = npo;
 
+    // Integrity: no linedef may belong to two polyobjs.  They would then drag each
+    // other's geometry about -- each transform moving vertices the other also owns
+    // -- and neither would end up where either thinks it is.  The start-line form
+    // is walked by following v2 to the next line that begins there, so two objects
+    // meeting at a shared vertex (the leaves of a double door) can send that walk
+    // into the neighbour's geometry.
+    {
+	int a, b, i, j;
+	for (a = 0; a < npo; a++)
+	    for (b = a + 1; b < npo; b++)
+	{
+	    for (i = 0; i < polyobjs[a].numlines; i++)
+		for (j = 0; j < polyobjs[b].numlines; j++)
+		    if (polyobjs[a].lines[i] == polyobjs[b].lines[j])
+			printf ("PO_Init: polyobjs %d and %d both claim linedef %d\n",
+				polyobjs[a].id, polyobjs[b].id,
+				(int)(polyobjs[a].lines[i] - lines));
+	    // Sharing a VERTEX is just as bad and much easier to do by accident:
+	    // WAD vertices are a shared pool, so two objects whose corners land on
+	    // the same coordinate get the same vertex_t, and then moving one drags
+	    // a corner of the other with it.
+	    for (i = 0; i < polyobjs[a].numverts; i++)
+		for (j = 0; j < polyobjs[b].numverts; j++)
+		    if (polyobjs[a].verts[i] == polyobjs[b].verts[j])
+			printf ("PO_Init: polyobjs %d and %d share vertex %d (%d,%d)\n",
+				polyobjs[a].id, polyobjs[b].id,
+				(int)(polyobjs[a].verts[i] - vertexes),
+				polyobjs[a].verts[i]->x >> FRACBITS,
+				polyobjs[a].verts[i]->y >> FRACBITS);
+	}
+    }
+
     // Self-test, opt-in with -potest.  Nothing calls the transforms until step 5,
     // so without this there is no way to know they are right before steps 3 and 4
     // start depending on them -- and it has already earned its keep twice: it caught
@@ -711,12 +897,14 @@ void PO_Init (const po_spot_t* spots, int nspots)
     // below a pixel -- with a floor for small objects.
     if (npo && M_CheckParm ("-potest"))
     {
-	int t, v, bad = 0;
+	int t, v, bad = 0, blocked = 0, sightok = 0, sightskip = 0;
 	for (t = 0; t < npo; t++)
 	{
 	    polyobj_t* po = &polyobjs[t];
 	    fixed_t sx[POLY_MAXVERTS], sy[POLY_MAXVERTS];
+	    angle_t sang[POLY_MAXSEGS], spoang = po->angle;
 	    fixed_t radius = 0, TOL;
+	    boolean stopped = false;
 	    for (v = 0; v < po->numverts; v++)
 	    {
 		if (abs (po->origX[v]) > radius) radius = abs (po->origX[v]);
@@ -727,30 +915,148 @@ void PO_Init (const po_spot_t* spots, int nspots)
 
 	    for (v = 0; v < po->numverts; v++)
 		{ sx[v] = po->verts[v]->x; sy[v] = po->verts[v]->y; }
+	    for (v = 0; v < po->numsegs; v++)
+		sang[v] = po->segs[v]->angle;
 
-	    for (v = 0; v < 8; v++) PO_RotatePolyobj (po->id, ANG45);
-	    for (v = 0; v < po->numverts; v++)
-		if (abs (po->verts[v]->x - sx[v]) > TOL
-		 || abs (po->verts[v]->y - sy[v]) > TOL)
-		    { printf ("  PO_SELFTEST: po%d vertex %d drifted %d,%d after a full "
-			      "rotation\n", po->id, v,
-			      (int)(po->verts[v]->x - sx[v]),
-			      (int)(po->verts[v]->y - sy[v]));
-		      bad++; break; }
+	    // A transform can now legitimately FAIL: since step 4 a polyobj refuses to
+	    // move into something solid, and by the time PO_Init runs the map's things
+	    // are already spawned -- several of Hexen's doors have an ettin standing in
+	    // the arc they would sweep.  A blocked object is left where it was, so the
+	    // round-trip identity below does not hold and asserting it would report a
+	    // working feature as a fault.  Count those separately: they are evidence the
+	    // blocking path RUNS, not evidence of a bug.
+	    for (v = 0; v < 8; v++)
+		if (!PO_RotatePolyobj (po->id, ANG45)) { stopped = true; break; }
+
+	    if (!stopped)
+		for (v = 0; v < po->numverts; v++)
+		    if (abs (po->verts[v]->x - sx[v]) > TOL
+		     || abs (po->verts[v]->y - sy[v]) > TOL)
+			{ printf ("  PO_SELFTEST: po%d vertex %d drifted %d,%d after a full "
+				  "rotation\n", po->id, v,
+				  (int)(po->verts[v]->x - sx[v]),
+				  (int)(po->verts[v]->y - sy[v]));
+			  bad++; break; }
 
 	    // Translation must be EXACT -- it is plain addition, no trig involved.
-	    PO_MovePolyobj (po->id,  64*FRACUNIT, -32*FRACUNIT);
-	    PO_MovePolyobj (po->id, -64*FRACUNIT,  32*FRACUNIT);
+	    if (!stopped)
+	    {
+		if (!PO_MovePolyobj (po->id,  64*FRACUNIT, -32*FRACUNIT)
+		 || !PO_MovePolyobj (po->id, -64*FRACUNIT,  32*FRACUNIT))
+		    stopped = true;
+		else
+		    for (v = 0; v < po->numverts; v++)
+			if (abs (po->verts[v]->x - sx[v]) > TOL
+			 || abs (po->verts[v]->y - sy[v]) > TOL)
+			    { printf ("  PO_SELFTEST: po%d vertex %d drifted after a "
+				      "there-and-back move\n", po->id, v); bad++; break; }
+	    }
+
+	    if (stopped)
+		blocked++;
+
+	    // Put it back exactly as it was found.  A transform that is blocked
+	    // part-way leaves the object part-turned -- 135 degrees round, say --
+	    // and everything after this would then be judging a position the map
+	    // never puts it in.  It also means -potest no longer perturbs the level
+	    // it is inspecting, so a screenshot from the same run is still the real
+	    // level.  (This is why two polyobjs looked like they did not block
+	    // sight: they did, just not from where the test had left them.)
+	    PO_UnLinkPolyobj (po);
 	    for (v = 0; v < po->numverts; v++)
-		if (abs (po->verts[v]->x - sx[v]) > TOL
-		 || abs (po->verts[v]->y - sy[v]) > TOL)
-		    { printf ("  PO_SELFTEST: po%d vertex %d drifted after a there-and-back "
-			      "move\n", po->id, v); bad++; break; }
+		{ po->verts[v]->x = sx[v]; po->verts[v]->y = sy[v]; }
+	    for (v = 0; v < po->numsegs; v++)
+		po->segs[v]->angle = sang[v];
+	    po->angle = spoang;
+	    PO_UpdateLines (po);
+	    PO_LinkPolyobj (po);
 
 	    if (!po->linked)
 		{ printf ("  PO_SELFTEST: po%d lost its blockmap linkage\n", po->id); bad++; }
+
+	    // Every one of the polyobj's lines must come back out of
+	    // P_BlockLinesIterator, or it is not solid: that iterator is what
+	    // movement, shooting and traversal all collide against.  Checking the
+	    // linkage alone is not enough -- the list can be correct while the
+	    // iterator that reads it is not.
+	    {
+		int cx, cy, seen = 0;
+		potest_found = 0;
+		validcount++;
+		for (cy = po->bbox[BOXBOTTOM]; cy <= po->bbox[BOXTOP]; cy++)
+		    for (cx = po->bbox[BOXLEFT]; cx <= po->bbox[BOXRIGHT]; cx++)
+			P_BlockLinesIterator (cx, cy, PO_CountTestLine);
+		for (v = 0; v < po->numlines; v++)
+		{
+		    int f;
+		    for (f = 0; f < potest_found; f++)
+			if (potest_lines[f] == po->lines[v]) { seen++; break; }
+		}
+		if (seen != po->numlines)
+		{
+		    printf ("  PO_SELFTEST: po%d -- the blockmap iterator returned "
+			    "%d of its %d line(s); it is not solid\n",
+			    po->id, seen, po->numlines);
+		    bad++;
+		}
+	    }
+
+	    // Sight: a monster must not be able to see through a closed polyobj door.
+	    // Cast a ray from the polyobj's centre outward through one of its own
+	    // walls -- and cast the SAME ray with the polyobj detached, so the result
+	    // is unambiguous.  Blocked either way just means some other wall is in the
+	    // line: that tells us nothing, so it is counted as inconclusive rather
+	    // than passed.
+	    if (po->subsector && po->numlines && po->numverts)
+	    {
+		fixed_t	cx = 0, cy = 0;
+		int	verdict = 0;		// -1 fail, +1 pass, 0 no verdict
+
+		// From the CENTROID, not startX/startY.  The start spot is the hinge
+		// a swinging door turns about, which sits on the object's EDGE -- a
+		// ray from there runs along the door rather than through it, and
+		// reports "does not block sight" for a door that plainly does.
+		for (v = 0; v < po->numverts; v++)
+		    { cx += po->verts[v]->x >> FRACBITS; cy += po->verts[v]->y >> FRACBITS; }
+		cx = (cx / po->numverts) << FRACBITS;
+		cy = (cy / po->numverts) << FRACBITS;
+
+		// Try each wall in turn.  A door's narrow ends face its jamb, so a ray
+		// out through one of those is blocked with or without the polyobj and
+		// settles nothing; its broad faces look into open rooms.  Which line is
+		// which varies, so just take the first that gives a usable answer.
+		for (v = 0; v < po->numlines && !verdict; v++)
+		{
+		    line_t*	ln = po->lines[v];
+		    fixed_t	mx = ln->v1->x + ((ln->v2->x - ln->v1->x) >> 1);
+		    fixed_t	my = ln->v1->y + ((ln->v2->y - ln->v1->y) >> 1);
+		    fixed_t	ex = mx + (mx - cx);	// out past the wall
+		    fixed_t	ey = my + (my - cy);
+		    polyobj_t*	saved;
+
+		    if (mx == cx && my == cy)
+			continue;
+
+		    saved = po->subsector->poly;
+		    po->subsector->poly = NULL;
+		    if (!PO_TestSight (cx, cy, ex, ey))
+			{ po->subsector->poly = saved; continue; }	// no verdict
+		    po->subsector->poly = saved;
+
+		    verdict = PO_TestSight (cx, cy, ex, ey) ? -1 : 1;
+		}
+
+		if (verdict > 0)
+		    sightok++;
+		else if (verdict < 0)
+		    { printf ("  PO_SELFTEST: po%d does not block sight\n", po->id); bad++; }
+		else
+		    sightskip++;
+	    }
 	}
-	printf ("PO_SELFTEST: %d polyobj(s), %d failure(s)\n", npo, bad);
+	printf ("PO_SELFTEST: %d polyobj(s), %d failure(s); %d blocked by something "
+		"solid standing in them; sight blocked by %d, inconclusive for %d\n",
+		npo, bad, blocked, sightok, sightskip);
     }
 
     if (npo)
@@ -759,7 +1065,7 @@ void PO_Init (const po_spot_t* spots, int nspots)
 	for (t = 0; t < npo; t++)
 	    { nseg += polyobjs[t].numsegs; if (polyobjs[t].subsector) ndrawn++; }
 	printf ("PO_Init: %d polyobject(s), %d seg(s), %d attached to a subsector "
-		"(steps 1-3 of 5: they draw and move, but do not block yet)\n",
+		"(steps 1-4 of 5: they draw, move and block; nothing drives them yet)\n",
 		npo, nseg, ndrawn);
     }
 }
