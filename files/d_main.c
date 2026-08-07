@@ -507,8 +507,21 @@ void D_DoomLoop (void)
 	if (singletics)
 	{
 	    I_StartTic ();
-	    D_ProcessEvents ();
-	    G_BuildTiccmd (&netcmds[consoleplayer][maketic%BACKUPTICS]);
+	    if (shotattic > 0)
+	    {
+		// -shotat is meant to be reproducible, and singletics builds a ticcmd
+		// from LIVE input every frame -- so a stray focus change or a flick of
+		// the mouse over the window turns the player and the "identical" frame
+		// is not identical.  That is not hypothetical: it made 1 run in 4 differ
+		// from the other 3 and briefly looked like a rendering regression.
+		// Ignore input entirely for the duration of a capture.
+		memset (&netcmds[consoleplayer][maketic%BACKUPTICS], 0, sizeof(ticcmd_t));
+	    }
+	    else
+	    {
+		D_ProcessEvents ();
+		G_BuildTiccmd (&netcmds[consoleplayer][maketic%BACKUPTICS]);
+	    }
 	    if (advancedemo)
 		D_DoAdvanceDemo ();
 	    M_Ticker ();

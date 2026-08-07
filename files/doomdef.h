@@ -30,7 +30,13 @@
 // Global parameters/defines.
 //
 // DOOM version
-enum { VERSION_NUM =  122 };	// bumped: player_t grew (Strife inventory artefacts)
+enum { VERSION_NUM =  123 };	// bumped: mobj_t grew (MBF strafecount + dropoffz)
+// NOTE: build.sh fingerprints the savegame structs and bumps this automatically,
+// but ONLY on the Linux/CMake path -- the Windows nmake build does not run it.  A
+// struct change made while building on Windows therefore has to bump this BY HAND,
+// or old saves are accepted by the version check and then memcpy'd into a struct
+// that is no longer the same size.  (That is what happened when strafecount was
+// added; this bump covers it and dropoffz together.)
 
 // Demo format version -- DECOUPLED from VERSION_NUM (which auto-bumps for savegame struct
 // changes).  The stock IWAD attract demos are version 109 (DOOM 1.9); keeping the demo

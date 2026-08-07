@@ -41,6 +41,7 @@ rcsid[] = "$Id: p_enemy.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 
 // State.
 #include "doomstat.h"
+#include "m_bbox.h"	// BOX* (MBF ledge avoidance)
 #include "d_items.h"	// weaponinfo[] / WPF_FLEEMELEE (MBF monster_backing)
 #include "r_state.h"
 
@@ -100,6 +101,7 @@ dirtype_t diags[] =
 // (M) MBF movement options and helpers, used above where they are defined.
 extern int	monster_backing;	// defined below, next to monster_pack
 extern int	monster_dodge;
+extern int	monster_smart;
 void		A_FaceTarget (mobj_t* actor);
 
 // Beyond this the sidestep is invisible and only delays the fight.
@@ -387,9 +389,32 @@ boolean P_Move (mobj_t*	actor)
 // If a door is in the way,
 // an OpenDoor call is made to start it opening.
 //
-boolean P_TryWalk (mobj_t* actor)
-{	
+// (M) MBF P_SmartMove, trimmed: move, then notice if the move put us somewhere
+// that hurts.  Setting movedir to DI_NODIR makes the next A_Chase re-pick a
+// direction, which is how the monster walks back out of the damage instead of
+// standing in it because the player happens to be on the far side.
+static boolean P_SmartMove (mobj_t* actor)
+{
+    int	under_damage = monster_smart ? P_IsUnderDamage (actor) : 0;
+
     if (!P_Move (actor))
+	return false;
+
+    if (monster_smart && !under_damage)
+    {
+	under_damage = P_IsUnderDamage (actor);
+	// -1 is "this really hurts": leave every time.  Otherwise usually, but not
+	// always -- a monster that ALWAYS refuses a damaging floor can be walled
+	// off by a thin strip of slime, which is its own kind of stupid.
+	if (under_damage && (under_damage < 0 || P_Random() < 200))
+	    actor->movedir = DI_NODIR;
+    }
+    return true;
+}
+
+boolean P_TryWalk (mobj_t* actor)
+{
+    if (!P_SmartMove (actor))
     {
 	return false;
     }
@@ -400,6 +425,97 @@ boolean P_TryWalk (mobj_t* actor)
 
 
 
+
+// ---------------------------------------------------------------------------
+// (M) MBF terrain smarts (config monster_smart, Options -> Features).
+//
+// Vanilla monsters have no idea what they are standing on.  They will happily
+// shuffle along the lip of a chasm and stand in a damaging floor while burning,
+// because P_NewChaseDir only ever asks "which way is the player".  These give it
+// two more things to notice.
+// ---------------------------------------------------------------------------
+
+extern fixed_t	tmbbox[4];		// p_map.c -- set up by the caller below
+
+static fixed_t	dropoff_deltax, dropoff_deltay, dropoff_floorz;
+
+// Sum an "away from the ledge" push for every dropoff line the actor overlaps.
+// Multiple lines accumulate, so a monster hanging over a corner is pushed out of
+// the corner rather than along one edge of it.
+static boolean PIT_AvoidDropoff (line_t* line)
+{
+    if (line->backsector				// one-sided lines are walls
+	&& tmbbox[BOXRIGHT]  > line->bbox[BOXLEFT]
+	&& tmbbox[BOXLEFT]   < line->bbox[BOXRIGHT]
+	&& tmbbox[BOXTOP]    > line->bbox[BOXBOTTOM]
+	&& tmbbox[BOXBOTTOM] < line->bbox[BOXTOP]
+	&& P_BoxOnLineSide (tmbbox, line) == -1)
+    {
+	fixed_t	front = line->frontsector->floorheight;
+	fixed_t	back  = line->backsector->floorheight;
+	angle_t	angle;
+
+	// The actor must be standing on one of the two floors, and the other must
+	// be a long way down.
+	if (back == dropoff_floorz && front < dropoff_floorz - 24*FRACUNIT)
+	    angle = R_PointToAngle2 (0, 0, line->dx, line->dy);		// front is the drop
+	else if (front == dropoff_floorz && back < dropoff_floorz - 24*FRACUNIT)
+	    angle = R_PointToAngle2 (line->dx, line->dy, 0, 0);		// back is the drop
+	else
+	    return true;
+
+	dropoff_deltax -= finesine  [angle >> ANGLETOFINESHIFT] * 32;
+	dropoff_deltay += finecosine[angle >> ANGLETOFINESHIFT] * 32;
+    }
+    return true;
+}
+
+// Non-zero if the actor is over a ledge and a direction away from it was found.
+static fixed_t P_AvoidDropoff (mobj_t* actor)
+{
+    int	xl, xh, yl, yh, bx, by;
+
+    tmbbox[BOXTOP]    = actor->y + actor->radius;
+    tmbbox[BOXBOTTOM] = actor->y - actor->radius;
+    tmbbox[BOXRIGHT]  = actor->x + actor->radius;
+    tmbbox[BOXLEFT]   = actor->x - actor->radius;
+
+    yh = (tmbbox[BOXTOP]    - bmaporgy) >> MAPBLOCKSHIFT;
+    yl = (tmbbox[BOXBOTTOM] - bmaporgy) >> MAPBLOCKSHIFT;
+    xh = (tmbbox[BOXRIGHT]  - bmaporgx) >> MAPBLOCKSHIFT;
+    xl = (tmbbox[BOXLEFT]   - bmaporgx) >> MAPBLOCKSHIFT;
+
+    dropoff_floorz = actor->z;			// the floor it is standing on
+    dropoff_deltax = dropoff_deltay = 0;
+
+    validcount++;
+    for (bx = xl; bx <= xh; bx++)
+	for (by = yl; by <= yh; by++)
+	    P_BlockLinesIterator (bx, by, PIT_AvoidDropoff);
+
+    return dropoff_deltax | dropoff_deltay;
+}
+
+// Is the actor standing in something that hurts?  Returns -1 when it is bad
+// enough to leave regardless of the dice roll.
+static int P_IsUnderDamage (mobj_t* actor)
+{
+    const sector_t* sec = actor->subsector->sector;
+
+    if (!sec->special)
+	return 0;
+    switch (sec->special)
+    {
+      case 4:		// 20% damage + light flicker
+      case 7:		// 5% damage
+      case 5:		// 10% damage
+      case 16:		// 20% damage
+      case 11:		// 20% damage, end level at 0%
+	return (sec->special == 4 || sec->special == 16 || sec->special == 11) ? -1 : 1;
+      default:
+	return 0;
+    }
+}
 
 // Pick a movedir that makes progress along (deltax, deltay), then walk it.
 //
@@ -564,6 +680,21 @@ void P_NewChaseDir (mobj_t*	actor)
     deltay = actor->target->y - actor->y;
 
     actor->strafecount = 0;
+
+    // (M) MBF: get off the ledge first.  Everything else -- chasing, backing off,
+    // circling -- is worth less than not falling into the pit, so this is checked
+    // before any of it, and movecount is set to 1 so the monster re-evaluates next
+    // tic instead of committing to a long walk away from the fight.
+    if (monster_smart
+	&& actor->floorz - actor->dropoffz > 24*FRACUNIT
+	&& actor->z <= actor->floorz
+	&& !(actor->flags & (MF_DROPOFF|MF_FLOAT))
+	&& P_AvoidDropoff (actor))
+    {
+	P_DoNewChaseDir (actor, dropoff_deltax, dropoff_deltay);
+	actor->movecount = 1;
+	return;
+    }
 
     // (M) MBF, killough 8/8/98: back away from a melee threat instead of standing
     // in it.  A monster with a MISSILE attack has no business walking into arm's
@@ -805,6 +936,12 @@ int	monster_backing    = 0;
 // straight at you, and jinks when hit.  Ours, not MBF's -- see P_NewChaseDir.
 // Both are toggled in Options -> Features.
 int	monster_dodge      = 0;
+
+// (M) MBF terrain smarts, as one switch: avoid ledges, leave damaging floors, and
+// use the relative step rule so a monster can follow you down (and up) tall
+// stairs.  Grouped behind one option because individually each is nearly
+// invisible.  Default OFF.
+int	monster_smart      = 0;
 
 static mobj_t* P_PackNearestPlayer (mobj_t* actor)
 {
@@ -1102,7 +1239,7 @@ void A_Chase (mobj_t*	actor)
 	P_PackChase (actor);		// group up + path to the player
     }
     else if (--actor->movecount<0
-	|| !P_Move (actor))
+	|| !P_SmartMove (actor))
     {
 	P_NewChaseDir (actor);
     }

@@ -216,6 +216,7 @@ extern int	monster_pack;
 extern int	monster_pack_range;
 extern int	monster_backing;	// MBF: ranged monsters back off from melee
 extern int	monster_dodge;		// sidestep/circle at fighting range
+extern int	monster_smart;		// ledge / hazard avoidance
 
 extern int	mousebfire;
 extern int	mousebstrafe;
@@ -328,6 +329,7 @@ default_t	defaults[] =
     {"monster_pack_range",&monster_pack_range, 2048},
     {"monster_backing",&monster_backing, 0},	// MBF: back off from melee, facing you
     {"monster_dodge",&monster_dodge, 0},	// circle/jink at fighting range
+    {"monster_smart",&monster_smart, 0},	// avoid ledges and damaging floors
 
     {"use_mouse",&usemouse, 1},
     {"mouseb_fire",&mousebfire,0},

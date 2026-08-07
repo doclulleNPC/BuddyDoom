@@ -231,6 +231,7 @@ P_TeleportMove
     P_UnsetThingPosition (thing);
 
     thing->floorz = tmfloorz;
+    thing->dropoffz = tmdropoffz;	// (M) MBF ledge avoidance
     thing->ceilingz = tmceilingz;	
     thing->x = x;
     thing->y = y;
@@ -679,9 +680,23 @@ P_TryMove
 	     && tmfloorz - thing->z > 24*FRACUNIT )
 	    return false;	// too big a step up
 
-	if ( !(thing->flags&(MF_DROPOFF|MF_FLOAT))
-	     && tmfloorz - tmdropoffz > 24*FRACUNIT )
-	    return false;	// don't stand over a dropoff
+	// Don't stand over a dropoff.
+	//
+	// (M) MBF "monkeys": vanilla asks whether the NEW spot overhangs a 24-unit
+	// drop, in absolute terms, which stops a monster following you down a tall
+	// staircase even though it could obviously walk it.  The relative rule asks
+	// instead whether this step would drop the monster more than 24 below where
+	// it already is, or make the overhang more than 24 worse -- so it can follow
+	// you down (and back up) the stairs, but still will not walk off a cliff.
+	if ( !(thing->flags&(MF_DROPOFF|MF_FLOAT)) )
+	{
+	    extern int monster_smart;
+	    if (!monster_smart
+		? tmfloorz - tmdropoffz > 24*FRACUNIT
+		: thing->floorz  - tmfloorz  > 24*FRACUNIT ||
+		  thing->dropoffz - tmdropoffz > 24*FRACUNIT)
+		return false;
+	}
     }
 
     // The Hexen Stalker/Serpent lurks in the toxic pools ONLY (nukage/slime) -- it may
@@ -698,6 +713,7 @@ P_TryMove
     oldx = thing->x;
     oldy = thing->y;
     thing->floorz = tmfloorz;
+    thing->dropoffz = tmdropoffz;	// (M) MBF ledge avoidance
     thing->ceilingz = tmceilingz;	
     thing->x = x;
     thing->y = y;
@@ -745,6 +761,7 @@ boolean P_ThingHeightClip (mobj_t* thing)
     // what about stranding a monster partially off an edge?
 	
     thing->floorz = tmfloorz;
+    thing->dropoffz = tmdropoffz;	// (M) MBF ledge avoidance
     thing->ceilingz = tmceilingz;
 	
     if (onfloor)

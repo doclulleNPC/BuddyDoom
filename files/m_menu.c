@@ -388,6 +388,7 @@ void M_HitIndicator(int choice);	// toggle the directional damage ring
 void M_ColoredNumbers(int choice);	// toggle coloured status-bar numbers
 void M_MonsterBacking(int choice);	// (M) MBF: monsters back off from melee
 void M_MonsterDodge(int choice);	// (X) monsters circle/jink at range
+void M_MonsterSmart(int choice);	// (M) MBF: ledge / hazard avoidance
 void M_DrawCrosshair(void);
 
 menuitem_t OptionsMenu[]=
@@ -500,6 +501,7 @@ enum
     feat_colnum,	// coloured status-bar numbers (health/armor/ammo)
     feat_backing,	// (M) MBF: ranged monsters back off from a melee threat
     feat_dodge,		// (X) monsters circle/jink at fighting range
+    feat_smart,		// (M) MBF: don't walk off ledges / stand in damaging floors
     feat_runspeed,	// player run-speed percentage
     feat_weaponpower,	// player weapon-damage percentage
     feat_end
@@ -514,6 +516,7 @@ menuitem_t FeaturesMenu[]=
     {1,"",	M_ColoredNumbers,'c'},		// select toggles coloured HUD numbers
     {1,"",	M_MonsterBacking,'b'},		// select toggles MBF back-off
     {1,"",	M_MonsterDodge,'d'},		// select toggles circle/jink
+    {1,"",	M_MonsterSmart,'s'},		// select toggles terrain smarts
     {2,"",	M_RunSpeed,'r'},		// left/right cycles 100..300%
     {2,"",	M_WeaponPower,'p'}		// left/right cycles 50..500%
 };
@@ -524,7 +527,9 @@ menu_t  FeaturesDef =
     &OptionsDef,
     FeaturesMenu,
     M_DrawFeatures,
-    60,37,
+    // Starts higher up than the other submenus: at LINEHEIGHT 16 this list is long
+    // enough that the bottom row would otherwise land inside the status bar.
+    60,26,
     0
 };
 
@@ -1723,6 +1728,19 @@ void M_MonsterDodge(int choice)
     M_SaveDefaults ();
 }
 
+// (M) MBF terrain smarts, as one switch: don't walk off ledges, get out of
+// damaging floors, stay on a lift the target is riding, and use the relative
+// step rule so a monster can follow you up and down tall stairs.  Grouped
+// because on their own each is a nearly invisible tweak, and the Features menu
+// has no room for four more rows (p_enemy.c / p_map.c).
+void M_MonsterSmart(int choice)
+{
+    extern int monster_smart;
+    choice = 0;
+    monster_smart = !monster_smart;
+    M_SaveDefaults ();
+}
+
 void M_RunSpeed(int choice)		// 100 .. 300 in 50% steps
 {
     extern int run_speed;
@@ -1751,34 +1769,43 @@ void M_DrawFeatures(void)
 {
     extern int footclip, weapon_autoswitch, run_speed, weapon_power;
     int  x = FeaturesDef.x, y = FeaturesDef.y;
+    // Value column.  The labels here are longer than the ones in the other text
+    // menus -- "Weapon Autoswitch" reaches past the x+130 the rest of them use and
+    // ran straight into its own value, so the row read "WEAPON AUTOSWITCHOFF".
+    // Widened for this menu only; the labels still leave room for a 4-char value
+    // ("100%") well inside the 320-unit base width.
+    int  vx = x + 152;
     char buf[16];
 
-    M_DrawMenuGraphic (108,15,"M_OPTTTL");
+    M_DrawMenuGraphic (108,6,"M_OPTTTL");	// raised with the list, see FeaturesDef
 
-    M_WriteText (x,     y+LINEHEIGHT*feat_messages,   "Messages");
-    M_WriteText (x+130, y+LINEHEIGHT*feat_messages,   showMessages ? "On" : "Off");
-    M_WriteText (x,     y+LINEHEIGHT*feat_footclip,   "Liquid Footclip");
-    M_WriteText (x+130, y+LINEHEIGHT*feat_footclip,   footclip ? "On" : "Off");
-    M_WriteText (x,     y+LINEHEIGHT*feat_autoswitch, "Weapon Autoswitch");
-    M_WriteText (x+130, y+LINEHEIGHT*feat_autoswitch, weapon_autoswitch ? "On" : "Off");
+    M_WriteText (x,  y+LINEHEIGHT*feat_messages,   "Messages");
+    M_WriteText (vx, y+LINEHEIGHT*feat_messages,   showMessages ? "On" : "Off");
+    M_WriteText (x,  y+LINEHEIGHT*feat_footclip,   "Liquid Footclip");
+    M_WriteText (vx, y+LINEHEIGHT*feat_footclip,   footclip ? "On" : "Off");
+    M_WriteText (x,  y+LINEHEIGHT*feat_autoswitch, "Weapon Autoswitch");
+    M_WriteText (vx, y+LINEHEIGHT*feat_autoswitch, weapon_autoswitch ? "On" : "Off");
     { extern int damage_indicator;
-      M_WriteText (x,     y+LINEHEIGHT*feat_hitind,   "Hit Indicator");
-      M_WriteText (x+130, y+LINEHEIGHT*feat_hitind,   damage_indicator ? "On" : "Off"); }
+      M_WriteText (x,  y+LINEHEIGHT*feat_hitind,   "Hit Indicator");
+      M_WriteText (vx, y+LINEHEIGHT*feat_hitind,   damage_indicator ? "On" : "Off"); }
     { extern int colored_numbers;
-      M_WriteText (x,     y+LINEHEIGHT*feat_colnum,   "Colored Numbers");
-      M_WriteText (x+130, y+LINEHEIGHT*feat_colnum,   colored_numbers ? "On" : "Off"); }
+      M_WriteText (x,  y+LINEHEIGHT*feat_colnum,   "Colored Numbers");
+      M_WriteText (vx, y+LINEHEIGHT*feat_colnum,   colored_numbers ? "On" : "Off"); }
     { extern int monster_backing;
-      M_WriteText (x,     y+LINEHEIGHT*feat_backing,  "Monster Backing");
-      M_WriteText (x+130, y+LINEHEIGHT*feat_backing,  monster_backing ? "On" : "Off"); }
+      M_WriteText (x,  y+LINEHEIGHT*feat_backing,  "Monster Backing");
+      M_WriteText (vx, y+LINEHEIGHT*feat_backing,  monster_backing ? "On" : "Off"); }
     { extern int monster_dodge;
-      M_WriteText (x,     y+LINEHEIGHT*feat_dodge,    "Monster Dodging");
-      M_WriteText (x+130, y+LINEHEIGHT*feat_dodge,    monster_dodge ? "On" : "Off"); }
-    M_WriteText (x,     y+LINEHEIGHT*feat_runspeed,   "Run Speed");
+      M_WriteText (x,  y+LINEHEIGHT*feat_dodge,    "Monster Dodging");
+      M_WriteText (vx, y+LINEHEIGHT*feat_dodge,    monster_dodge ? "On" : "Off"); }
+    { extern int monster_smart;
+      M_WriteText (x,  y+LINEHEIGHT*feat_smart,    "Monster Smarts");
+      M_WriteText (vx, y+LINEHEIGHT*feat_smart,    monster_smart ? "On" : "Off"); }
+    M_WriteText (x,  y+LINEHEIGHT*feat_runspeed,   "Run Speed");
     snprintf (buf, sizeof buf, "%d%%", run_speed);
-    M_WriteText (x+130, y+LINEHEIGHT*feat_runspeed,   buf);
-    M_WriteText (x,     y+LINEHEIGHT*feat_weaponpower,"Weapon Power");
+    M_WriteText (vx, y+LINEHEIGHT*feat_runspeed,   buf);
+    M_WriteText (x,  y+LINEHEIGHT*feat_weaponpower,"Weapon Power");
     snprintf (buf, sizeof buf, "%d%%", weapon_power);
-    M_WriteText (x+130, y+LINEHEIGHT*feat_weaponpower,buf);
+    M_WriteText (vx, y+LINEHEIGHT*feat_weaponpower,buf);
 }
 
 //

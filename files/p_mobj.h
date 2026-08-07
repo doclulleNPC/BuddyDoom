@@ -235,6 +235,12 @@ typedef struct mobj_s
     struct subsector_s*	subsector;
 
     // The closest interval over all contacted Sectors.
+    // (M) MBF: the lowest floor the actor is currently standing OVER, as opposed to
+    // the one it is standing ON.  P_TryMove computes it anyway (tmdropoffz); keeping
+    // it lets P_NewChaseDir tell "there is a ledge under my feet" from "there is a
+    // ledge somewhere near", which is what ledge avoidance needs.
+    fixed_t		dropoffz;
+
     fixed_t		floorz;
     fixed_t		ceilingz;
 

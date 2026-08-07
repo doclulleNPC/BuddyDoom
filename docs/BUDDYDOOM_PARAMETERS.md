@@ -93,7 +93,11 @@ Always check `files/d_main.c` and the relevant subsystem before copying a flag i
 These exist to make changes testable rather than to be played with.
 
 - `-shotat <tic>` — render until game tic `<tic>`, write a screenshot (`DOOMnn.pcx` in the
-  working directory) and quit. Also forces `singletics`, so one tic elapses per frame.
+  working directory) and quit. Also forces `singletics`, so one tic elapses per frame, and
+  **ignores all input** for the duration — `singletics` otherwise builds a ticcmd from live
+  input every frame, so a stray focus change or a flick of the mouse over the window turns
+  the player and the "identical" frame is not identical (this really happened: 1 run in 4
+  differed from the other 3 and briefly looked like a rendering regression).
   The point is determinism: grabbing the window after sleeping N seconds lands on a
   different tic each run — monsters have moved, the palette is mid damage-flash — so two
   runs of the same scene differ everywhere and an A/B image diff proves nothing. Keyed on
@@ -147,6 +151,12 @@ The current defaults are arrow keys, not the historical bracket/Enter/`d` table:
 - `monster_dodge` — monsters circle at fighting range rather than walking straight in,
   and jink when hit. Default `0`. Toggle in **Options → Features → Monster Dodging**.
   This one is ours, not MBF's — nothing in the DOOM lineage moves monsters sideways.
+- `monster_smart` — MBF terrain sense, as one switch: don't shuffle off ledges
+  (`P_AvoidDropoff`), walk back out of damaging floors instead of standing in them
+  (`P_IsUnderDamage`), and use MBF's *relative* step rule ("monkeys") so a monster can
+  follow you down and back up tall staircases without being able to walk off a cliff.
+  Default `0`. Toggle in **Options → Features → Monster Smarts**. Grouped behind one
+  option because individually each is a nearly invisible tweak.
 
 Neither has a command-line switch, deliberately: both are written back to the config on
 exit, so a parm would silently persist the setting and one test run would leave it on for
