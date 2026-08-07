@@ -298,11 +298,50 @@ void R_InitSpriteDefs (char** namelist)
 		      break;
 
 	      case 1:
-		      // must have all 8 frames
-		      for (rotation=0 ; rotation<8 ; rotation++) 
-		        if (sprtemp[frame].lump[rotation] == -1)
-			         fprintf (stderr, "R_InitSprites: Sprite %s frame %c is "
-                        "missing rotations\n", namelist[i], frame+'A');
+		      // Rotated frame: vanilla demands all 8 and errors out otherwise.
+		      // This fork only warned -- which left lump[] holding -1 for the
+		      // gaps, and drawing a -1 lump is garbage or a crash.  Fill each
+		      // gap from the nearest rotation that IS present (searching
+		      // outward, so a half-drawn frame reads as the closest view rather
+		      // than as nothing), and say once per frame which ones were filled.
+		      //
+		      // Art that only supplies the cardinal views is a normal thing to
+		      // want -- the turret's new muzzle-flash frames ship 1/3/5/7 only.
+		      {
+			int missing = 0;
+			for (rotation=0 ; rotation<8 ; rotation++)
+			  if (sprtemp[frame].lump[rotation] == -1)
+			    missing++;
+
+			if (missing && missing < 8)
+			{
+			  for (rotation=0 ; rotation<8 ; rotation++)
+			  {
+			    int d;
+			    if (sprtemp[frame].lump[rotation] != -1)
+			      continue;
+			    for (d = 1 ; d <= 4 ; d++)
+			    {
+			      int a = (rotation + d) & 7;
+			      int b = (rotation - d) & 7;
+			      int src = (sprtemp[frame].lump[a] != -1) ? a
+				      : (sprtemp[frame].lump[b] != -1) ? b : -1;
+			      if (src >= 0)
+			      {
+				sprtemp[frame].lump[rotation] = sprtemp[frame].lump[src];
+				sprtemp[frame].flip[rotation] = sprtemp[frame].flip[src];
+				break;
+			      }
+			    }
+			  }
+			  fprintf (stderr, "R_InitSprites: Sprite %s frame %c had %d of 8 "
+				   "rotations missing -- filled from the nearest present one\n",
+				   namelist[i], frame+'A', missing);
+			}
+			else if (missing)
+			  fprintf (stderr, "R_InitSprites: Sprite %s frame %c is "
+				   "missing rotations\n", namelist[i], frame+'A');
+		      }
       		break;
 	    }
 	  }

@@ -1200,12 +1200,16 @@ state_t	states_builtin[NUMSTATES] = {
     // itself so the point-source thing persists for the whole level (found via P_GetPushThing).
     [S_TNT1] = {SPR_TNT1,0,-1,{NULL},S_TNT1,0,0},
 
-    // Deployable sentry turret (files/p_turret.c).  One art frame (MTUR 'A', 8 rotations);
-    // the fire frames are drawn fullbright (|32768) for a muzzle-flash feel.  Death reuses
-    // the barrel explosion (SPR_BEXP) -- boom + scream, no splash so it can't grief the player.
+    // Deployable sentry turret (files/p_turret.c).  Three art frames in
+    // run/ID0/buddydoom.wad: MTURA is the idle barrel (all 8 rotations), MTURB and
+    // MTURC are the muzzle flash, alternated while firing so the turret visibly
+    // works rather than sitting on one static frame.  The fire frames are drawn
+    // fullbright (|32768).  B and C ship only the 1/3/5/7 views; R_InitSpriteDefs
+    // fills the in-between rotations from the nearest one it has.
+    // Death: a generic blast (SPR_MISL) -- no splash, so it can't grief the player.
     [S_TURRET_STND]  = {SPR_MTUR,0,     10,{A_TurretLook},S_TURRET_STND, 0,0},
-    [S_TURRET_FIRE1] = {SPR_MTUR,32768,  4,{A_TurretFire},S_TURRET_FIRE2,0,0},
-    [S_TURRET_FIRE2] = {SPR_MTUR,32768,  4,{A_TurretFire},S_TURRET_FIRE1,0,0},
+    [S_TURRET_FIRE1] = {SPR_MTUR,32769,  4,{A_TurretFire},S_TURRET_FIRE2,0,0},
+    [S_TURRET_FIRE2] = {SPR_MTUR,32770,  4,{A_TurretFire},S_TURRET_FIRE1,0,0},
     // Death: a generic blast (rocket-explosion frames SPR_MISL B/C/D), NOT the barrel boom.
     [S_TURRET_DIE1]  = {SPR_MISL,32769,  8,{A_Scream},    S_TURRET_DIE2, 0,0},
     [S_TURRET_DIE2]  = {SPR_MISL,32770,  6,{NULL},        S_TURRET_DIE3, 0,0},
