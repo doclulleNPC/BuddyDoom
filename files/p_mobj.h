@@ -283,6 +283,12 @@ typedef struct mobj_s
     int			movedir;	// 0-7
     int			movecount;	// when 0, select a new dir
 
+    // (M) MBF: tics left of a "keep facing the target while moving elsewhere"
+    // manoeuvre -- backing away, or sidestepping.  While non-zero A_Chase faces
+    // the target instead of turning to follow movedir, which is what makes a
+    // monster walk backwards or crab sideways rather than turning its back.
+    int			strafecount;
+
     // Thing being chased/attacked (or NULL),
     // also the originator for missiles.
     struct mobj_s*	target;

@@ -214,6 +214,8 @@ extern int	aspect;		// doomdef.c -- 0=4:3, 1=16:9, 2=16:10
 // Monster pack-hunt AI (p_enemy.c)
 extern int	monster_pack;
 extern int	monster_pack_range;
+extern int	monster_backing;	// MBF: ranged monsters back off from melee
+extern int	monster_dodge;		// sidestep/circle at fighting range
 
 extern int	mousebfire;
 extern int	mousebstrafe;
@@ -324,6 +326,8 @@ default_t	defaults[] =
 
     {"monster_pack",&monster_pack, 0},		// default OFF -> vanilla 1993 monster AI
     {"monster_pack_range",&monster_pack_range, 2048},
+    {"monster_backing",&monster_backing, 0},	// MBF: back off from melee, facing you
+    {"monster_dodge",&monster_dodge, 0},	// circle/jink at fighting range
 
     {"use_mouse",&usemouse, 1},
     {"mouseb_fire",&mousebfire,0},

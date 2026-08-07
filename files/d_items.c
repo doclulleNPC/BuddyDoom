@@ -53,8 +53,14 @@ weaponinfo_t	weaponinfo[NUMWEAPONS] =
 	S_PUNCHDOWN,
 	S_PUNCH,
 	S_PUNCH1,
-	S_NULL
-    },	
+	S_NULL,
+	// (M) WPF_FLEEMELEE is what tells the AI this is a melee weapon, so a ranged
+	// monster backs off rather than letting you get inside its guard
+	// (monster_backing, p_enemy.c).  MBF/Woof set it on the fist and chainsaw by
+	// default; here it was declared in d_items.h but never actually set on any
+	// weapon, which would have left monster_backing unable to fire at all.
+	WPF_FLEEMELEE
+    },
     {
 	// pistol
 	am_clip,
@@ -116,7 +122,8 @@ weaponinfo_t	weaponinfo[NUMWEAPONS] =
 	S_SAWDOWN,
 	S_SAW,
 	S_SAW1,
-	S_NULL
+	S_NULL,
+	WPF_FLEEMELEE			// see the fist, above
     },
     {
 	// super shotgun

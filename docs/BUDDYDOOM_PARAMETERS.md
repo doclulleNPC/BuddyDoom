@@ -138,6 +138,19 @@ The current defaults are arrow keys, not the historical bracket/Enter/`d` table:
 
 - `monster_pack` — pack-hunt toggle; default `0`.
 - `monster_pack_range` — pack range; default `2048`.
+- `monster_backing` — MBF's "back off from melee": a monster with a ranged attack gives
+  ground when a melee threat closes in, keeping the target in front of it instead of
+  turning its back. Default `0`. Toggle in **Options → Features → Monster Backing**.
+  Note it only triggers against a *melee* threat — a target with no ranged attack, or a
+  player holding a weapon flagged `WPF_FLEEMELEE` (fist, chainsaw). Approach it with the
+  pistol and nothing happens; that is MBF's rule, not a bug.
+- `monster_dodge` — monsters circle at fighting range rather than walking straight in,
+  and jink when hit. Default `0`. Toggle in **Options → Features → Monster Dodging**.
+  This one is ours, not MBF's — nothing in the DOOM lineage moves monsters sideways.
+
+Neither has a command-line switch, deliberately: both are written back to the config on
+exit, so a parm would silently persist the setting and one test run would leave it on for
+good.
 - `buddydoom_wad` — voice/asset WAD path; the legacy `buddy_wad` key is accepted for compatibility. Default is `buddydoom.wad`, resolved through `I_Voice_ResolveWad` and the ID0 lookup.
 
 ### Tool-side Ollama/GPU settings

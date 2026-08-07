@@ -386,6 +386,8 @@ void M_CrosshairColor(int choice);	// cycle Green / White / Red / Yellow / Blue
 void M_CrosshairHealth(int choice);	// toggle health-coloured crosshair
 void M_HitIndicator(int choice);	// toggle the directional damage ring
 void M_ColoredNumbers(int choice);	// toggle coloured status-bar numbers
+void M_MonsterBacking(int choice);	// (M) MBF: monsters back off from melee
+void M_MonsterDodge(int choice);	// (X) monsters circle/jink at range
 void M_DrawCrosshair(void);
 
 menuitem_t OptionsMenu[]=
@@ -496,6 +498,8 @@ enum
     feat_autoswitch,	// auto-raise a newly picked-up weapon
     feat_hitind,	// directional damage indicator (red hit ring)
     feat_colnum,	// coloured status-bar numbers (health/armor/ammo)
+    feat_backing,	// (M) MBF: ranged monsters back off from a melee threat
+    feat_dodge,		// (X) monsters circle/jink at fighting range
     feat_runspeed,	// player run-speed percentage
     feat_weaponpower,	// player weapon-damage percentage
     feat_end
@@ -508,6 +512,8 @@ menuitem_t FeaturesMenu[]=
     {1,"",	M_ToggleAutoswitch,'w'},
     {1,"",	M_HitIndicator,'h'},		// select toggles the directional damage ring
     {1,"",	M_ColoredNumbers,'c'},		// select toggles coloured HUD numbers
+    {1,"",	M_MonsterBacking,'b'},		// select toggles MBF back-off
+    {1,"",	M_MonsterDodge,'d'},		// select toggles circle/jink
     {2,"",	M_RunSpeed,'r'},		// left/right cycles 100..300%
     {2,"",	M_WeaponPower,'p'}		// left/right cycles 50..500%
 };
@@ -1697,6 +1703,26 @@ void M_ToggleAutoswitch(int choice)
     M_SaveDefaults ();
 }
 
+// (M) MBF: a monster with a ranged attack gives ground when a melee threat closes
+// in, keeping you in front of it (p_enemy.c, P_NewChaseDir).
+void M_MonsterBacking(int choice)
+{
+    extern int monster_backing;
+    choice = 0;
+    monster_backing = !monster_backing;
+    M_SaveDefaults ();
+}
+
+// (X) Monsters circle you at fighting range instead of walking straight in, and
+// jink when hit.  Ours, not MBF's -- nothing in the DOOM lineage sidesteps.
+void M_MonsterDodge(int choice)
+{
+    extern int monster_dodge;
+    choice = 0;
+    monster_dodge = !monster_dodge;
+    M_SaveDefaults ();
+}
+
 void M_RunSpeed(int choice)		// 100 .. 300 in 50% steps
 {
     extern int run_speed;
@@ -1741,6 +1767,12 @@ void M_DrawFeatures(void)
     { extern int colored_numbers;
       M_WriteText (x,     y+LINEHEIGHT*feat_colnum,   "Colored Numbers");
       M_WriteText (x+130, y+LINEHEIGHT*feat_colnum,   colored_numbers ? "On" : "Off"); }
+    { extern int monster_backing;
+      M_WriteText (x,     y+LINEHEIGHT*feat_backing,  "Monster Backing");
+      M_WriteText (x+130, y+LINEHEIGHT*feat_backing,  monster_backing ? "On" : "Off"); }
+    { extern int monster_dodge;
+      M_WriteText (x,     y+LINEHEIGHT*feat_dodge,    "Monster Dodging");
+      M_WriteText (x+130, y+LINEHEIGHT*feat_dodge,    monster_dodge ? "On" : "Off"); }
     M_WriteText (x,     y+LINEHEIGHT*feat_runspeed,   "Run Speed");
     snprintf (buf, sizeof buf, "%d%%", run_speed);
     M_WriteText (x+130, y+LINEHEIGHT*feat_runspeed,   buf);

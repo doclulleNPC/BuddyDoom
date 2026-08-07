@@ -41,6 +41,7 @@ rcsid[] = "$Id: p_enemy.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 
 // State.
 #include "doomstat.h"
+#include "d_items.h"	// weaponinfo[] / WPF_FLEEMELEE (MBF monster_backing)
 #include "r_state.h"
 
 #include "p_ai_llm.h"
@@ -95,6 +96,26 @@ dirtype_t diags[] =
 {
     DI_NORTHWEST, DI_NORTHEAST, DI_SOUTHWEST, DI_SOUTHEAST
 };
+
+// (M) MBF movement options and helpers, used above where they are defined.
+extern int	monster_backing;	// defined below, next to monster_pack
+extern int	monster_dodge;
+void		A_FaceTarget (mobj_t* actor);
+
+// Beyond this the sidestep is invisible and only delays the fight.
+#define MONSTER_DODGE_RANGE	(896*FRACUNIT)
+
+// How far this thing can reach in melee.
+//
+// mobjinfo_t.meleerange is an MBF21 field where 0 means "the default", and only a
+// DEHACKED patch ever sets it -- so for every stock actor it is 0.  Reading it raw
+// (as MBF's own monster_backing code does, because there meleerange is always
+// populated) makes every "is the target within melee reach" test compare against
+// zero and never fire.  Resolve it the same way P_CheckMeleeRange does.
+static fixed_t P_MeleeRangeOf (mobj_t* mo)
+{
+    return mo->info->meleerange ? mo->info->meleerange : MELEERANGE;
+}
 
 
 
@@ -380,43 +401,24 @@ boolean P_TryWalk (mobj_t* actor)
 
 
 
-void P_NewChaseDir (mobj_t*	actor)
+// Pick a movedir that makes progress along (deltax, deltay), then walk it.
+//
+// (M) killough 9/8/98 split this out of P_NewChaseDir so the CALLER decides which
+// way the monster wants to go.  Vanilla always passed "towards the target"; with
+// the split, "away from the target" costs nothing extra and is what backing off
+// and sidestepping are built from.  The direction search below is unchanged
+// vanilla -- only its input moved.
+static void P_DoNewChaseDir (mobj_t* actor, fixed_t deltax, fixed_t deltay)
 {
-    fixed_t	deltax;
-    fixed_t	deltay;
-    
     dirtype_t	d[3];
-    
+
     int		tdir;
     dirtype_t	olddir;
-    
-    dirtype_t	turnaround;
 
-    if (!actor->target)
-    {
-	// Vanilla fatally I_Error'd here.  This fork drives A_Chase through several extra
-	// AI hooks (LLM director, pack-hunt, the co-op buddy, the security drone, revived
-	// marines) and one of them can momentarily reach the chase machinery with no target
-	// -- crashing the whole game over that is far worse than the monster just wandering
-	// for a tic (the next A_Chase re-acquires a target or idles at spawnstate).  Re-roll
-	// the walk direction ourselves and carry on; warn ONCE so it stays diagnosable.
-	static boolean warned;
-	if (!warned)
-	{
-	    fprintf (stderr, "P_NewChaseDir: called with no target (mobj type %d) -- "
-			     "wandering instead of crashing (warned once)\n", actor->type);
-	    warned = true;
-	}
-	actor->movedir   = P_Random () % 8;
-	actor->movecount = 15;
-	return;
-    }
+    dirtype_t	turnaround;
 
     olddir = actor->movedir;
     turnaround=opposite[olddir];
-
-    deltax = actor->target->x - actor->x;
-    deltay = actor->target->y - actor->y;
 
     if (deltax>10*FRACUNIT)
 	d[1]= DI_EAST;
@@ -523,6 +525,117 @@ void P_NewChaseDir (mobj_t*	actor)
     }
 
     actor->movedir = DI_NODIR;	// can not move
+}
+
+
+//
+// P_NewChaseDir
+//
+// Decide WHICH WAY the monster wants to go, then hand it to P_DoNewChaseDir.
+// Vanilla only ever wanted "towards the target".
+//
+void P_NewChaseDir (mobj_t*	actor)
+{
+    fixed_t	deltax;
+    fixed_t	deltay;
+
+    if (!actor->target)
+    {
+	// Vanilla fatally I_Error'd here.  This fork drives A_Chase through several extra
+	// AI hooks (LLM director, pack-hunt, the co-op buddy, the security drone, revived
+	// marines) and one of them can momentarily reach the chase machinery with no target
+	// -- crashing the whole game over that is far worse than the monster just wandering
+	// for a tic (the next A_Chase re-acquires a target or idles at spawnstate).  Re-roll
+	// the walk direction ourselves and carry on; warn ONCE so it stays diagnosable.
+	static boolean warned;
+	if (!warned)
+	{
+	    fprintf (stderr, "P_NewChaseDir: called with no target (mobj type %d) -- "
+			     "wandering instead of crashing (warned once)\n", actor->type);
+	    warned = true;
+	}
+	actor->movedir   = P_Random () % 8;
+	actor->movecount = 15;
+	actor->strafecount = 0;
+	return;
+    }
+
+    deltax = actor->target->x - actor->x;
+    deltay = actor->target->y - actor->y;
+
+    actor->strafecount = 0;
+
+    // (M) MBF, killough 8/8/98: back away from a melee threat instead of standing
+    // in it.  A monster with a MISSILE attack has no business walking into arm's
+    // reach, so when something that can only hurt it up close gets that close --
+    // or the player closes in holding a weapon monsters treat as melee -- it gives
+    // ground while keeping the target in front of it.
+    //
+    // strafecount is what makes it read as backing off rather than fleeing: A_Chase
+    // keeps the actor facing the target for that many tics, so it retreats looking
+    // at you instead of turning its back and running.
+    //
+    // Lost souls are excluded because they ARE the charge -- a backing-off Lost
+    // Soul would never connect.
+    if (monster_backing
+	&& actor->info->missilestate
+	&& actor->type != MT_SKULL
+	&& actor->target->health > 0
+	&& !(actor->flags & actor->target->flags & MF_FRIEND))
+    {
+	fixed_t dist = P_AproxDistance (deltax, deltay);
+	mobj_t* targ = actor->target;
+
+	fixed_t mrange = P_MeleeRangeOf (targ);
+
+	if ((!targ->info->missilestate && dist < mrange*2)
+	 || (targ->player && dist < mrange*3
+	     && (weaponinfo[targ->player->readyweapon].flags & WPF_FLEEMELEE)))
+	{
+	    actor->strafecount = P_Random() & 15;
+	    deltax = -deltax;
+	    deltay = -deltay;
+	}
+    }
+
+    // (X) Dodging -- our own extension, not MBF.  MBF only ever reverses the
+    // approach vector; nothing in the DOOM lineage ever moves a monster SIDEWAYS.
+    //
+    // At fighting range a monster with a ranged attack has no reason to walk a
+    // straight line into your crosshair.  Rotate the approach vector 90 degrees so
+    // it circles instead, and set strafecount so A_Chase keeps it facing you --
+    // without that it would simply turn and stroll off sideways, which looks like
+    // it lost interest rather than like it is working an angle.
+    //
+    // Only at range: point blank it should close and bite, and far away the
+    // sidestep is invisible and just delays the fight.  A monster that was just
+    // hit jinks much more readily -- that is the "dodge" as opposed to the circle.
+    else if (monster_dodge
+	     && actor->info->missilestate
+	     && actor->type != MT_SKULL
+	     && actor->target->health > 0
+	     && !(actor->flags & actor->target->flags & MF_FRIEND))
+    {
+	fixed_t dist   = P_AproxDistance (deltax, deltay);
+	fixed_t mrange = P_MeleeRangeOf (actor->target);
+
+	if (dist > mrange*3 && dist < MONSTER_DODGE_RANGE
+	    && P_Random() < ((actor->flags & MF_JUSTHIT) ? 180 : 70))
+	{
+	    fixed_t t = deltax;
+	    if (P_Random() & 1)
+		{ deltax = -deltay; deltay =  t; }	// circle one way...
+	    else
+		{ deltax =  deltay; deltay = -t; }	// ...or the other
+	    actor->strafecount = 4 + (P_Random() & 7);
+	}
+    }
+
+    P_DoNewChaseDir (actor, deltax, deltay);
+
+    // Keep the old zig-zag timing, but let the manoeuvre run its full length.
+    if (actor->strafecount)
+	actor->movecount = actor->strafecount;
 }
 
 
@@ -682,6 +795,16 @@ void A_KeenDie (mobj_t* mo)
 //
 int	monster_pack       = 0;		// 1 = pack hunt on; default OFF = vanilla 1993 AI
 int	monster_pack_range = 2048;	// search / cohesion radius (map units)
+
+// (M) MBF: a ranged monster gives ground when a melee threat closes in, keeping
+// the target in front of it (P_NewChaseDir).  Default OFF -- it changes how every
+// fight in the game plays, so it stays opt-in like monster_pack.
+int	monster_backing    = 0;
+
+// (X) Dodging: at fighting range a ranged monster circles instead of walking
+// straight at you, and jinks when hit.  Ours, not MBF's -- see P_NewChaseDir.
+// Both are toggled in Options -> Features.
+int	monster_dodge      = 0;
 
 static mobj_t* P_PackNearestPlayer (mobj_t* actor)
 {
@@ -893,11 +1016,18 @@ void A_Chase (mobj_t*	actor)
     }
 
     // turn towards movement direction if not there yet
-    if (actor->movedir < 8)
+    //
+    // (M) MBF, killough 9/7/98: ...unless a manoeuvre is running, in which case
+    // keep facing the TARGET.  This one line is the whole difference between a
+    // monster that turns its back and walks away and one that gives ground with
+    // its eyes on you -- movement direction and facing stop being the same thing.
+    if (actor->strafecount && actor->target)
+	A_FaceTarget (actor);
+    else if (actor->movedir < 8)
     {
 	actor->angle &= (7<<29);
 	delta = actor->angle - (actor->movedir << 29);
-	
+
 	if (delta > 0)
 	    actor->angle -= ANG90/2;
 	else if (delta < 0)
@@ -963,6 +1093,9 @@ void A_Chase (mobj_t*	actor)
 	    return;	// got a new target
     }
     
+    if (actor->strafecount)
+	actor->strafecount--;
+
     // chase towards player
     if (monster_pack)
     {

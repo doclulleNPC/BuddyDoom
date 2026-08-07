@@ -1699,6 +1699,12 @@ void D_DoomMain (void)
     printf ("M_LoadDefaults: Load system defaults.\n");
     M_LoadDefaults ();              // load before initing other systems
 
+    // NOTE: monster_backing / monster_dodge are deliberately NOT command-line
+    // switches.  They are config-backed, and the config is written out on exit --
+    // so a parm that set one would silently persist it, and a single test run with
+    // the flag would leave the option on forever.  Toggle them in
+    // Options -> Features, or set monster_backing / monster_dodge in the config.
+
     printf ("Z_Init: Init zone memory allocation daemon. \n");
     Z_Init ();
 
