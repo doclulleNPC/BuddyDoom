@@ -143,6 +143,9 @@ run/buddydoom.cfg.mini
 run/e1-arenas.dbs
 run/launcher.ini
 run/smk.txt
+# Buddy pathfinding dumps -- appended by the `navdbg` console command and by the
+# void rescue (p_ai_coop.c).  A per-session diagnostic log, not repo content.
+run/navdbg.txt
 
 # Doom Builder / map editor artifacts (settings, autosaves, backups)
 *.dbs
