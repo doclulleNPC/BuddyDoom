@@ -19,6 +19,7 @@
 //-----------------------------------------------------------------------------
 
 #include <stdio.h>
+#include <stdarg.h>		// NavPrint -- console + run/navdbg.txt in one call
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -42,6 +43,7 @@
 #include "m_fixed.h"
 
 #include "p_ai_coop.h"
+#include "c_console.h"		// C_Printf -- the "navdbg" pathfinding dump
 #include "p_buddydef.h"		// buddystats_t / P_Buddy_GetStats -- apply the selected buddy's body
 #include "sounds.h"		// sfx_bd_* -- buddy see/pain/death/active slots
 #include "s_sound.h"		// S_StartSound for the buddy's own voice
@@ -84,6 +86,26 @@ static mobj_t*	react_last;		// the target the reaction timer is counting for
 static fixed_t	crumbx[CRUMB_MAX], crumby[CRUMB_MAX];
 static int	crumb_n;		// crumbs held (crumb[0]=oldest .. crumb[n-1]=newest≈player)
 static int	trail_active;		// currently following the breadcrumb trail
+// Chain links between consecutive crumbs -- see AICoop_CrumbRelink (below the
+// pathfinder, where the walkability probe it uses lives).  Runtime-only: not saved,
+// rebuilt from the trail on first use after a load.
+static byte	crumb_link[CRUMB_MAX];	// link[i]: crumb i -> crumb i+1 is walkable
+static int	crumb_link_tic = -1;	// gametic of the last rebuild (-1 = never)
+
+// "Am I getting anywhere?" watchdog state.  File scope so a new level / a load can
+// reset it -- a stale best_pld from the previous map reads as "no progress" forever.
+static int	prog_tic;		// gametic of the last 1 Hz check
+static fixed_t	best_pld = 0x7fffffff;	// closest we have ever gotten to the human
+static int	noprog;			// consecutive 1 Hz checks with no new best
+static int	buddy_dbg = -1;		// BUDDYDBG env var, resolved once (-1 = not yet)
+
+// Where the buddy has been for the last ~2 s, one entry per tic (ring).  Dumped by
+// AICoop_VoidLog: the END position only tells you where a geometry leak comes out --
+// the tic it crossed from a real BSP leaf into solid space tells you where the leak is.
+#define VTRACE_MAX	70
+static fixed_t	vtrace_x[VTRACE_MAX], vtrace_y[VTRACE_MAX], vtrace_z[VTRACE_MAX];
+static int	vtrace_head;		// next slot to write
+static int	vtrace_n;		// entries written since level start (caps at VTRACE_MAX)
 
 static void AICoop_CrumbAdd (fixed_t x, fixed_t y)
 {
@@ -227,6 +249,9 @@ void P_AICoop_ResetSlot (void)
     playerstarts[coop_slot].options = 0;
 
     crumb_n = 0; trail_active = 0;	// drop the previous map's breadcrumb trail
+    crumb_link_tic = -1;		// ...and its link table (rebuilt on first use)
+    best_pld = 0x7fffffff; noprog = 0;	// ...and the progress watchdog's running minimum
+    vtrace_head = 0; vtrace_n = 0;	// ...and the position trace ring
     summon = 0; summon_stay = 0;	// drop any come/leash order from the previous map
 }
 
@@ -263,6 +288,8 @@ void P_AICoop_UnArchiveTrail (void)
     }
     crumb_n = n;
     trail_active = 0;			// let the watchdog re-engage if the buddy lags
+    crumb_link_tic = -1;		// links aren't saved -- rebuild from the loaded trail
+    best_pld = 0x7fffffff; noprog = 0;	// don't judge progress against the pre-save distance
 }
 
 static boolean P_AICoop_VerifySpawn_warned = false;	// one-shot per process
@@ -832,15 +859,32 @@ static boolean AICoop_DamagingFloor (fixed_t x, fixed_t y)
 // rises more than a 24-unit step.  Rejects items behind a wall or up a ledge so
 // the bot doesn't run face-first into geometry trying to fetch them.
 //
-boolean AICoop_CanReach (mobj_t* self, fixed_t tx, fixed_t ty, boolean avoiddmg)
+// Why a reach probe failed -- see AICoop_ReachWhy[] (diagnostics only; `navdbg`).
+enum { REACH_OK = 0, REACH_FAR, REACH_WALL, REACH_FIT, REACH_HEAD,
+       REACH_STEPUP, REACH_DROP, REACH_LEDGE, REACH_HAZARD };
+
+static const char* AICoop_ReachWhy[] = {
+    "ok", "too far", "wall/thing", "doesn't fit", "no head room",
+    "step up >24", "drop >24", "off a ledge", "damaging floor"
+};
+
+// The full probe: same as AICoop_CanReach but also reports WHY it failed and the
+// sample point it failed at (NULL out-params to ignore).
+static boolean AICoop_ReachProbe (mobj_t* self, fixed_t tx, fixed_t ty, boolean avoiddmg,
+				  int* why, fixed_t* fx, fixed_t* fy)
 {
     extern int	pf_ignore_actors;
     fixed_t	dx = tx - self->x;
     fixed_t	dy = ty - self->y;
     fixed_t	dist = P_AproxDistance (dx, dy);
-    fixed_t	fz = self->z;			// start at the buddy's feet
+    fixed_t	fz = self->z;			// walking surface, from the buddy's feet
+    fixed_t	dz = self->dropoffz;		// lowest floor its box currently overhangs
     int		steps, i;
     boolean	res = true;
+
+    if (why) *why = REACH_OK;
+    if (fx)  *fx  = tx;
+    if (fy)  *fy  = ty;
 
     if (dist < 16*FRACUNIT)
 	return true;				// practically there
@@ -850,7 +894,10 @@ boolean AICoop_CanReach (mobj_t* self, fixed_t tx, fixed_t ty, boolean avoiddmg)
     // wedged against it).
     steps = dist / (16*FRACUNIT);
     if (steps > 96)
+    {
+	if (why) *why = REACH_FAR;
 	return false;				// too far -- don't bother (bounds cost)
+    }
 
     pf_ignore_actors = 1;
 
@@ -859,21 +906,51 @@ boolean AICoop_CanReach (mobj_t* self, fixed_t tx, fixed_t ty, boolean avoiddmg)
 	fixed_t	frac = (i << 16) / steps;	// i/steps as 16.16
 	fixed_t	px   = self->x + FixedMul (dx, frac);
 	fixed_t	py   = self->y + FixedMul (dy, frac);
+	int	w    = REACH_OK;
 
 	// Replicate P_TryMove's feasibility so "reachable" means the buddy can
 	// actually WALK there (point-sampling P_CheckPosition alone said yes to spots
 	// behind a step/ledge the move physics reject, so the buddy wedged there).
-	if (!P_CheckPosition (self, px, py))		{ res = false; break; }	// wall/obstacle
-	if (tmceilingz - tmfloorz < self->height)	{ res = false; break; }	// doesn't fit
-	if (tmceilingz - fz < self->height)		{ res = false; break; }	// no head room
-	if (tmfloorz - fz > 24*FRACUNIT)		{ res = false; break; }	// step up too high
-	if (tmfloorz - tmdropoffz > 24*FRACUNIT)	{ res = false; break; }	// over a drop-off
-	if (avoiddmg && AICoop_DamagingFloor (px, py))	{ res = false; break; }	// nukage/lava
+	if (!P_CheckPosition (self, px, py))			w = REACH_WALL;
+	else if (tmceilingz - tmfloorz < self->height)		w = REACH_FIT;
+	else if (tmceilingz - fz < self->height)		w = REACH_HEAD;
+	else if (tmfloorz - fz > 24*FRACUNIT)			w = REACH_STEPUP;
+	// Drop-off, MBF "monkeys" form (both clauses, exactly as p_map.c applies them
+	// to smart monsters).  The ABSOLUTE rule vanilla uses -- tmfloorz-tmdropoffz>24
+	// -- rejects every sample whose 32x32 box merely straddles a step edge or the
+	// open side of a staircase, which made whole stairways read as "unreachable":
+	// the buddy refused to climb them, detoured, or wedged at the bottom.  (It does
+	// not even apply to the buddy: it is a PLAYER mobj, and MT_PLAYER has MF_DROPOFF,
+	// so P_TryMove never runs that test on it.)  The relative pair keeps stairs
+	// walkable while still refusing a cliff:
+	//   1. the walking surface must not fall more than 24 below where we came from
+	//   2. the overhang must not get more than 24 WORSE than it already is.
+	// (2) matters because tmfloorz is the HIGHEST floor in the box: right at a cliff
+	// lip the box still covers the high floor, so (1) alone sees nothing until the
+	// box has cleared the edge entirely -- long enough for the buddy to run off it.
+	else if (fz - tmfloorz > 24*FRACUNIT)			w = REACH_DROP;
+	else if (dz - tmdropoffz > 24*FRACUNIT)			w = REACH_LEDGE;
+	else if (avoiddmg && AICoop_DamagingFloor (px, py))	w = REACH_HAZARD;
+
+	if (w != REACH_OK)
+	{
+	    res = false;
+	    if (why) *why = w;
+	    if (fx)  *fx  = px;
+	    if (fy)  *fy  = py;
+	    break;
+	}
 	fz = tmfloorz;
+	dz = tmdropoffz;
     }
 
     pf_ignore_actors = 0;
     return res;
+}
+
+boolean AICoop_CanReach (mobj_t* self, fixed_t tx, fixed_t ty, boolean avoiddmg)
+{
+    return AICoop_ReachProbe (self, tx, ty, avoiddmg, NULL, NULL, NULL);
 }
 
 
@@ -1624,15 +1701,25 @@ static void PF_Build (mobj_t* ref)
 		fixed_t	tx = k ? gx : gx+step;
 		fixed_t	ty = k ? gy+step : gy;
 		int	b = nb[k], w;
+		fixed_t	bf;
+		boolean	ab, ba;
 		if (b == a) continue;
 		if (PF_LockedLineCrossed (gx, gy, tx, ty)) continue;
-		if (!PF_LineWalkable (gx, gy, tx, ty, ref, af)) continue;
+		// Trace EACH direction separately.  PF_LineWalkable only limits the step
+		// UP, so a trace DOWN a 64-unit ledge succeeds while the climb back is
+		// impossible -- deriving both edges from the single a->b trace put every
+		// ledge into the graph as a two-way link.  The buddy then routed "up" a
+		// drop it can never climb, walked to the foot of it and wedged there.
+		bf = subsectors[b].sector->floorheight;
+		ab = PF_LineWalkable (gx, gy, tx, ty, ref, af);
+		ba = PF_LineWalkable (tx, ty, gx, gy, ref, bf);
+		if (!ab && !ba) continue;
 		w = (int)(P_AproxDistance (pf_cx[a]-pf_cx[b], pf_cy[a]-pf_cy[b]) >> FRACBITS);
 		if (w < 1) w = 1;
 		// Portal = a grid point INSIDE the destination sub-sector (the walkable
 		// sample we just trace-verified), so steering at it crosses the boundary.
-		PF_AddEdge (a, b, w + (AICoop_DamagingFloor (pf_cx[b], pf_cy[b]) ? PF_HAZARD_PEN : 0), tx, ty);
-		PF_AddEdge (b, a, w + (AICoop_DamagingFloor (pf_cx[a], pf_cy[a]) ? PF_HAZARD_PEN : 0), gx, gy);
+		if (ab) PF_AddEdge (a, b, w + (AICoop_DamagingFloor (pf_cx[b], pf_cy[b]) ? PF_HAZARD_PEN : 0), tx, ty);
+		if (ba) PF_AddEdge (b, a, w + (AICoop_DamagingFloor (pf_cx[a], pf_cy[a]) ? PF_HAZARD_PEN : 0), gx, gy);
 	    }
 	}
     }
@@ -1669,8 +1756,17 @@ static int PF_EdgeWeight (seg_t* sg, int u, int v)
 
 	if (color && !PF_HasKey (color)) return -1;		// locked door we don't have the key for is blocked!
 
-	sector_t*	fs = sg->frontsector;
-	sector_t*	bs = sg->backsector;
+	// Heights come from the two SUB-SECTORS this edge actually links (u -> v), NOT
+	// from sg->frontsector/backsector.  The seg's front/back describe the linedef's
+	// sides, which need not line up with the u->v direction we are costing (GL segs
+	// especially: a line is split into several segs and `v` is picked by a 4-unit
+	// probe off the midpoint).  When the sign came out inverted, a 64-unit ledge was
+	// costed as a step DOWN and entered the graph as a climbable edge -- the buddy
+	// routed up a wall it can never step, walked to the foot of it and stood there
+	// instead of taking the stairs around.  u/v sectors are direction-correct by
+	// construction.
+	sector_t*	fs = subsectors[u].sector;
+	sector_t*	bs = subsectors[v].sector;
 	fixed_t		opening, step;
 
 	if (ld->flags & ML_BLOCKING) return -1;		// impassable rail
@@ -1744,7 +1840,14 @@ static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx,
     start = PF_SS (mo->x, mo->y);
     goal  = PF_SS (dx, dy);
     if (start == goal) { *wx = dx; *wy = dy; return true; }
-    if (!PF_AStar (goal, start))
+    // Search FROM the buddy TO the target.  This used to run PF_AStar(goal, start) --
+    // rooted at the target -- and then walk pf_prev from `start`.  That relaxes every
+    // edge in the goal->start direction, so the route handed back to the buddy used
+    // each edge BACKWARDS.  While the graph was near-symmetric it hardly showed; now
+    // that ledges are correctly one-way (a drop you can fall down but not climb), it
+    // systematically routed the buddy UP drops: it walked to the foot of a 64-unit
+    // ledge below the player and stood there instead of going round via the stairs.
+    if (!PF_AStar (start, goal))
     {
 	// No route -- the graph is built once at level start, so a door/lift/secret
 	// wall that has since OPENED isn't in it yet (it had no passable edge when
@@ -1753,20 +1856,22 @@ static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx,
 	if (gametic - pf_lastbuild > 50)
 	{
 	    PF_Build (mo); pf_lastbuild = gametic;
-	    if (!PF_AStar (goal, start)) return false;
+	    if (!PF_AStar (start, goal)) return false;
 	}
 	else
 	    return false;
     }
 
-    // reconstruct start -> ... -> goal (pf_path[0] is adjacent to start, pf_path[len-1] is goal)
-    len = 0; c = start;
-    while (c != -1 && c != goal && len < PF_PATHMAX) { pf_path[len++] = c; c = pf_prev[c]; }
+    // Reconstruct by following pf_prev back from the goal: pf_path[0] is the goal and
+    // pf_path[len-1] is the first hop out of `start`, so the route is walked in
+    // DESCENDING index order.
+    len = 0; c = goal;
+    while (c != -1 && c != start && len < PF_PATHMAX) { pf_path[len++] = c; c = pf_prev[c]; }
     if (len == 0) { *wx = dx; *wy = dy; return true; }
 
-    // Collect PORTAL points along the route (start -> n1 -> ... -> goal).
+    // Collect PORTAL points along the route, in travel order (start -> ... -> goal).
     np = 0; prev = start;
-    for (i = 0; i < len; i++)			// path order: start -> goal
+    for (i = len - 1; i >= 0; i--)
     {
 	fixed_t qx, qy;
 	if (PF_Portal (prev, pf_path[i], &qx, &qy)) { portx[np] = qx; porty[np] = qy; np++; }
@@ -1828,6 +1933,45 @@ boolean P_AICoop_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx, 
     return PF_NextWaypoint (mo, dx, dy, wx, wy);
 }
 
+
+// --- Breadcrumb chain ------------------------------------------------------
+// The crumbs are the human's actual route, so consecutive crumbs LOOK like a ready-
+// made path -- but only where the human walked.  Where they jumped a ledge, dropped
+// off one, or took a teleporter, the buddy cannot repeat the hop, and a trail picked
+// over by straight-line distance happily selects a crumb on the far side of exactly
+// that gap.  So link the trail first: one short feet-trace per consecutive pair (the
+// same probe the nav graph uses), marking each link walkable or not.  Cheap -- crumbs
+// are 48 units apart, so a link is a 2-sample trace, and the whole table is rebuilt
+// at most ~3x/s.  (crumb_link[]/crumb_link_tic are declared up with the trail.)
+static void AICoop_CrumbRelink (mobj_t* ref)
+{
+    extern int	pf_ignore_actors;
+    int		i;
+
+    if (crumb_link_tic >= 0 && gametic - crumb_link_tic < 10) return;
+    crumb_link_tic = gametic;
+
+    pf_ignore_actors = 1;			// a monster standing on the trail doesn't break it
+    for (i = 0; i + 1 < crumb_n; i++)
+    {
+	fixed_t	fz = R_PointInSubsector (crumbx[i], crumby[i])->sector->floorheight;
+	crumb_link[i] = PF_LineWalkable (crumbx[i], crumby[i],
+					 crumbx[i+1], crumby[i+1], ref, fz) ? 1 : 0;
+    }
+    pf_ignore_actors = 0;
+}
+
+// Oldest crumb still joined to the NEWEST one (~the human) by an unbroken run of
+// walkable links.  Crumbs older than this are behind a gap the buddy can't repeat,
+// so they can never lead it to the human on foot -- following them is what put it
+// under the ledge the human jumped instead of on the stairs around.
+static int AICoop_CrumbChainStart (void)
+{
+    int	i = crumb_n - 1;
+    while (i > 0 && crumb_link[i-1]) i--;
+    return i < 0 ? 0 : i;
+}
+
 // Topological route for the LLM director: fill (xs,ys) with up to `maxpts` reachable
 // waypoints along the buddy->player path (the portal route, downsampled), so the
 // director has real spatial context + valid coordinates it can steer the buddy to
@@ -1869,6 +2013,283 @@ int P_AICoop_NavRoute (fixed_t* xs, fixed_t* ys, int maxpts)
     if (np && np < maxpts && (xs[np-1] != px[n-1] || ys[np-1] != py[n-1]))
 	{ xs[np] = px[n-1]; ys[np] = py[n-1]; np++; }	// always keep the last (nearest player)
     return np;
+}
+
+
+// "navdbg" console command: why the buddy is (or isn't) getting to you right now.
+// Dumps the two halves of the nav stack separately, because they fail differently:
+//   ROUTE  -- the sub-sector graph (PF_*): does a path to you exist at all, and what
+//             is the next portal waypoint.
+//   STEER  -- the straight-line walk probe (AICoop_ReachProbe): what stops the buddy
+//             walking at that waypoint / at you, and the 8 compass headings it would
+//             trial-walk instead.  A stairway that reads "drop >24" on every heading
+//             is the classic "won't climb, wanders off, wedges at the bottom" case.
+//
+// Every line goes to the console AND is APPENDED to run/navdbg.txt (cwd is run/, same
+// as buddydoom.cfg), so a stuck-buddy report can be read back outside the game instead
+// of transcribed off the screen.  Appending keeps a history: dump at several spots
+// while the buddy is wedged and compare.
+
+// Relative, like basedefault ("buddydoom.cfg") -- the game's cwd is run/.
+#define NAVDBG_FILE	"navdbg.txt"
+
+static FILE*	navdbg_f;		// open only for the duration of one dump
+
+static void NavPrint (const char* fmt, ...)
+{
+    char	buf[256];
+    va_list	ap;
+
+    va_start (ap, fmt);
+    vsnprintf (buf, sizeof(buf), fmt, ap);
+    va_end (ap);
+
+    C_Printf ("%s", buf);
+    if (navdbg_f) { fputs (buf, navdbg_f); fputc ('\n', navdbg_f); }
+}
+
+static const char* AICoop_VoidReason (mobj_t* mo);	// defined below
+
+static void AICoop_NavDump (void)
+{
+    static const char*	dirname[8] = { "E ", "NE", "N ", "NW", "W ", "SW", "S ", "SE" };
+    mobj_t*	mo = AICoop_Mo ();
+    mobj_t*	pl;
+    fixed_t	wx, wy, fx, fy;
+    int		why, d, ss, gs;
+    boolean	ok;
+
+    if (!mo) { NavPrint ("[nav] no companion (launch with -coop / -aicoop)"); return; }
+    pl = AICoop_NearestHuman (mo->x, mo->y);
+    if (!pl) { NavPrint ("[nav] no human to follow"); return; }
+
+    if (pf_level != gameepisode*100 + gamemap || !pf_cx)
+	{ PF_Build (mo); pf_level = gameepisode*100 + gamemap; pf_lastbuild = gametic; }
+
+    ss = PF_SS (mo->x, mo->y);
+    gs = PF_SS (pl->x, pl->y);
+    {
+	const char*	vr = AICoop_VoidReason (mo);
+	sector_t*	sec = mo->subsector->sector;
+	NavPrint ("[nav] spot: %s   sector f=%d c=%d", vr ? vr : "valid",
+		  sec->floorheight>>FRACBITS, sec->ceilingheight>>FRACBITS);
+    }
+    NavPrint ("[nav] buddy (%d,%d) z=%d floor=%d drop=%d ss=%d edges=%d",
+	      mo->x>>FRACBITS, mo->y>>FRACBITS, mo->z>>FRACBITS,
+	      mo->floorz>>FRACBITS, mo->dropoffz>>FRACBITS,
+	      ss, (ss >= 0 && ss < pf_n) ? pf_nadj[ss] : -1);
+    NavPrint ("[nav] you   (%d,%d) floor=%d ss=%d edges=%d  dist=%d",
+	      pl->x>>FRACBITS, pl->y>>FRACBITS, pl->floorz>>FRACBITS,
+	      gs, (gs >= 0 && gs < pf_n) ? pf_nadj[gs] : -1,
+	      (int)(P_AproxDistance (pl->x-mo->x, pl->y-mo->y) >> FRACBITS));
+
+    // Graph edges leaving the buddy's sub-sector.  A neighbour whose floor is >24
+    // ABOVE ours must never be here: that edge is a ledge the buddy cannot climb,
+    // and routing over it is what parks it under a wall instead of sending it round
+    // via the stairs.
+    if (ss >= 0 && ss < pf_n)
+    {
+	int	k;
+	fixed_t	myf = subsectors[ss].sector->floorheight;
+	for (k = 0; k < pf_nadj[ss]; k++)
+	{
+	    int	v  = pf_adj[ss*PF_MAXADJ + k];
+	    int	df = (int)((subsectors[v].sector->floorheight - myf) >> FRACBITS);
+	    NavPrint ("[nav]   edge -> ss%d floor%+d w=%d portal(%d,%d)%s",
+		      v, df, pf_adjw[ss*PF_MAXADJ + k],
+		      pf_adjpx[ss*PF_MAXADJ + k]>>FRACBITS,
+		      pf_adjpy[ss*PF_MAXADJ + k]>>FRACBITS,
+		      df > 24 ? "   <-- UNCLIMBABLE" : "");
+	}
+    }
+
+    // Breadcrumb chain: which stretch of the human's trail the buddy can actually walk.
+    if (crumb_n > 0)
+    {
+	int	chain0, k, broken = 0;
+	crumb_link_tic = -1;			// force a fresh probe for the dump
+	AICoop_CrumbRelink (mo);
+	chain0 = AICoop_CrumbChainStart ();
+	for (k = 0; k + 1 < crumb_n; k++) if (!crumb_link[k]) broken++;
+	NavPrint ("[nav] trail on=%d crumbs=%d broken links=%d  connected run=[%d..%d] joins at (%d,%d)",
+		  trail_active, crumb_n, broken, chain0, crumb_n-1,
+		  crumbx[chain0]>>FRACBITS, crumby[chain0]>>FRACBITS);
+    }
+    else
+	NavPrint ("[nav] trail on=%d crumbs=0", trail_active);
+
+    // ROUTE
+    if (PF_NextWaypoint (mo, pl->x, pl->y, &wx, &wy))
+    {
+	ok = AICoop_ReachProbe (mo, wx, wy, true, &why, &fx, &fy);
+	NavPrint ("[nav] ROUTE ok -> waypoint (%d,%d) d=%d  steer=%s%s",
+		  wx>>FRACBITS, wy>>FRACBITS,
+		  (int)(P_AproxDistance (wx-mo->x, wy-mo->y) >> FRACBITS),
+		  ok ? "reachable" : "BLOCKED: ", ok ? "" : AICoop_ReachWhy[why]);
+	if (!ok)
+	    NavPrint ("[nav]   blocked at (%d,%d)", fx>>FRACBITS, fy>>FRACBITS);
+    }
+    else
+	NavPrint ("[nav] ROUTE FAILED -- no graph path to you (%d sub-sectors)", pf_n);
+
+    // STEER: direct line to the human, then every compass heading.
+    ok = AICoop_ReachProbe (mo, pl->x, pl->y, false, &why, &fx, &fy);
+    NavPrint ("[nav] direct line to you: %s%s  (at %d,%d)",
+	      ok ? "clear" : "blocked: ", ok ? "" : AICoop_ReachWhy[why],
+	      fx>>FRACBITS, fy>>FRACBITS);
+
+    for (d = 0; d < 8; d += 2)
+    {
+	char	line[128];
+	int	k, n = 0;
+	line[0] = 0;
+	for (k = d; k < d+2; k++)
+	{
+	    angle_t	a    = ((angle_t)k * ANG45) >> ANGLETOFINESHIFT;
+	    fixed_t	step = mo->radius + 24*FRACUNIT;
+	    ok = AICoop_ReachProbe (mo, mo->x + FixedMul (step, finecosine[a]),
+				        mo->y + FixedMul (step, finesine[a]), true,
+				    &why, &fx, &fy);
+	    n += snprintf (line + n, sizeof(line) - n, "  %s=%s",
+			   dirname[k], ok ? "walk" : AICoop_ReachWhy[why]);
+	}
+	NavPrint ("[nav]%s", line);
+    }
+}
+
+// Open run/navdbg.txt (append), dump, close -- so the file is complete and readable
+// the moment the command returns, even if the game later crashes or is killed.
+void P_AICoop_NavDebug (void)
+{
+    navdbg_f = fopen (NAVDBG_FILE, "a");
+    if (navdbg_f)
+	fprintf (navdbg_f, "\n=== navdbg  map %d.%d  tic %d  leveltime %d ===\n",
+		 gameepisode, gamemap, gametic, leveltime);
+    else
+	C_Printf ("[nav] (could not open %s -- console only)", NAVDBG_FILE);
+
+    AICoop_NavDump ();
+
+    if (navdbg_f)
+    {
+	fclose (navdbg_f);
+	navdbg_f = NULL;
+	C_Printf ("[nav] appended to %s", NAVDBG_FILE);
+    }
+}
+
+
+// --- Void detection --------------------------------------------------------
+// Why the buddy's current spot is one it can never walk out of, or NULL if it's fine.
+//
+// This used to be AICoop_OnGrid alone -- but that only asks whether (x,y) lies inside
+// the BLOCKMAP rectangle, and the blockmap spans the whole map's bounding box.  So it
+// catches exactly one case (knocked clean off the edge of the world) and misses every
+// void POCKET *inside* that box: a solid filler sector, the space behind a
+// self-referencing line, a shut door, a hole the buddy dropped through.  Those are the
+// ones you actually see -- the buddy just running along and then gone -- and the
+// rescue never fired for any of them.
+// A sub-sector is CONVEX and its segs are wound so the interior lies on the front
+// side of every one of them.  A point behind any seg is therefore not in that cell at
+// all -- it is in the solid space between rooms, which the BSP still has to hand back
+// *some* leaf for.  That is the void you actually see: R_PointInSubsector returns a
+// perfectly ordinary sub-sector, so its sector's floor and ceiling look normal and
+// every "shape" test below passes while the buddy stands inside a wall.
+//
+// cross < 0 == in front (interior); the tolerance (one seg length ~ 1 unit of
+// penetration) keeps a buddy centred exactly on a two-sided boundary from counting.
+static boolean AICoop_PointOutside (fixed_t x, fixed_t y)
+{
+    subsector_t*	ss = R_PointInSubsector (x, y);
+    int			i;
+
+    if (!ss || ss->numlines <= 0) return false;
+    for (i = 0; i < ss->numlines; i++)
+    {
+	seg_t*	sg = &segs[ss->firstline + i];
+	int	dx = (sg->v2->x - sg->v1->x) >> FRACBITS;
+	int	dy = (sg->v2->y - sg->v1->y) >> FRACBITS;
+	int	px = (x - sg->v1->x) >> FRACBITS;
+	int	py = (y - sg->v1->y) >> FRACBITS;
+	int64_t	cross = (int64_t)dx * py - (int64_t)dy * px;
+	int	len   = abs (dx) + abs (dy);
+
+	if (cross > (int64_t)len) return true;
+    }
+    return false;
+}
+
+static boolean AICoop_OutsideSubsector (mobj_t* mo)
+{
+    return AICoop_PointOutside (mo->x, mo->y);
+}
+
+static const char* AICoop_VoidReason (mobj_t* mo)
+{
+    sector_t*	sec;
+
+    if (!AICoop_OnGrid (mo->x, mo->y))
+	return "off the blockmap";
+    sec = mo->subsector->sector;
+    if (sec->ceilingheight - sec->floorheight < mo->height)
+	return "sector has no head room (solid/void filler)";
+    if (mo->z < mo->floorz - 8*FRACUNIT)
+	return "below its own floor";
+    if (mo->z > mo->ceilingz)
+	return "above the ceiling";
+    if (AICoop_OutsideSubsector (mo))
+	return "inside the geometry (outside its own BSP leaf)";
+    return NULL;
+}
+
+// Log a rescue to run/navdbg.txt, so a void event that happened while nobody was
+// looking still leaves the coordinates behind.
+static void AICoop_VoidLog (mobj_t* mo, const char* why)
+{
+    FILE*	f = fopen (NAVDBG_FILE, "a");
+    sector_t*	sec = mo->subsector->sector;
+    int		i, n, first_bad = -1;
+
+    if (!f) return;
+    fprintf (f, "\n=== void rescue  map %d.%d  tic %d  leveltime %d ===\n"
+		"[void] %s\n"
+		"[void] at (%d,%d) z=%d floor=%d ceil=%d  sector f=%d c=%d  ongrid=%d\n"
+		"[void] recalled to home (%d,%d)\n",
+	     gameepisode, gamemap, gametic, leveltime,
+	     why ? why : "?",
+	     mo->x>>FRACBITS, mo->y>>FRACBITS, mo->z>>FRACBITS,
+	     mo->floorz>>FRACBITS, mo->ceilingz>>FRACBITS,
+	     sec->floorheight>>FRACBITS, sec->ceilingheight>>FRACBITS,
+	     AICoop_OnGrid (mo->x, mo->y) ? 1 : 0,
+	     coop_home_x>>FRACBITS, coop_home_y>>FRACBITS);
+
+    // The 2 s of movement leading in.  Knowing WHERE it ended up only says where the
+    // leak comes out; the tic it crossed from a real leaf into solid space says where
+    // the leak IS.  Print the transition with a few tics either side.
+    n = vtrace_n < VTRACE_MAX ? vtrace_n : VTRACE_MAX;
+    for (i = 0; i < n; i++)
+    {
+	int	k = (vtrace_head - n + i + VTRACE_MAX*2) % VTRACE_MAX;
+	if (AICoop_PointOutside (vtrace_x[k], vtrace_y[k])) { first_bad = i; break; }
+    }
+    if (first_bad < 0)
+	fprintf (f, "[void] trace: never inside a real leaf in the last %d tics\n", n);
+    else
+    {
+	int lo = first_bad - 6, hi = first_bad + 3;
+	if (lo < 0) lo = 0;
+	if (hi > n-1) hi = n-1;
+	fprintf (f, "[void] trace around the crossing ('*' = in solid space):\n");
+	for (i = lo; i <= hi; i++)
+	{
+	    int	k = (vtrace_head - n + i + VTRACE_MAX*2) % VTRACE_MAX;
+	    int	bad = AICoop_PointOutside (vtrace_x[k], vtrace_y[k]);
+	    fprintf (f, "[void]  t%+4d %c (%d,%d) z=%d\n", i - n,
+		     bad ? '*' : ' ',
+		     vtrace_x[k]>>FRACBITS, vtrace_y[k]>>FRACBITS, vtrace_z[k]>>FRACBITS);
+	}
+    }
+    fclose (f);
 }
 
 
@@ -2277,21 +2698,39 @@ void P_AICoop_BuildCmd (void)
     mo = bot->mo;
     memset (cmd, 0, sizeof(*cmd));
 
-    // Void rescue: a big knockback (e.g. a Cyberdemon rocket) can punch the live buddy
-    // past a boundary wall to OUTSIDE the blockmap grid, where P_CheckPosition walks no
-    // cells -> collision is off and it floats in the void with no way back on its own.
-    // AICoop_OnGrid is a handful of integer ops (no blockmap/line walk -- see line 281),
-    // so it's practically free; throttle to every 5 tics anyway.  Only recall if HOME is
-    // itself on-grid, else re-teleporting to a bad spawn would just loop.  (Mirrors the
+    // Position trace (ring, ~2 s) -- recorded before anything can move or recall it.
+    vtrace_x[vtrace_head] = mo->x;
+    vtrace_y[vtrace_head] = mo->y;
+    vtrace_z[vtrace_head] = mo->z;
+    vtrace_head = (vtrace_head + 1) % VTRACE_MAX;
+    if (vtrace_n < VTRACE_MAX) vtrace_n++;
+
+    // Void rescue.  Checked every 5 tics; AICoop_VoidReason is a handful of integer ops
+    // (no blockmap/line walk), so it's practically free.  Only recall if HOME is itself
+    // a good spot, else re-teleporting to a bad spawn would just loop.  (Mirrors the
     // damaging-floor rescue below.)
-    if ((gametic % 5) == 0 && coop_home_set
-	&& !AICoop_OnGrid (mo->x, mo->y) && AICoop_OnGrid (coop_home_x, coop_home_y))
     {
-	P_TeleportMove (mo, coop_home_x, coop_home_y);
-	mo->angle = coop_home_angle;
-	mo->momx = mo->momy = mo->momz = 0;
-	players[consoleplayer].message = "[Buddy] Recovered from the void.";
-	return;					// re-evaluate cleanly next tic (cmd stays zeroed)
+	static int		voidtics;	// consecutive 5-tic checks in a bad spot
+	static const char*	voidwhy;
+
+	if ((gametic % 5) == 0)
+	{
+	    const char* vr = AICoop_VoidReason (mo);
+	    if (vr) { voidwhy = vr; voidtics++; }
+	    else    { voidwhy = NULL; voidtics = 0; }
+	}
+	// ~1 s of being continuously nowhere valid.  The delay filters the transients --
+	// a door closing over its head, a lift it is riding -- which are not the void.
+	if (voidtics >= 7 && coop_home_set && AICoop_OnGrid (coop_home_x, coop_home_y))
+	{
+	    AICoop_VoidLog (mo, voidwhy);
+	    P_TeleportMove (mo, coop_home_x, coop_home_y);
+	    mo->angle = coop_home_angle;
+	    mo->momx = mo->momy = mo->momz = 0;
+	    voidtics = 0; voidwhy = NULL;
+	    players[consoleplayer].message = "[Buddy] Recovered from the void.";
+	    return;				// re-evaluate cleanly next tic (cmd stays zeroed)
+	}
     }
 
     // When surrounded by many enemies, the buddy deploys a friendly Security Drone
@@ -2327,30 +2766,61 @@ void P_AICoop_BuildCmd (void)
     // Breadcrumb trail upkeep + long-horizon "stuck reaching the player" watchdog.
     if (pl)
     {
-	static int     prog_tic;
-	static fixed_t best_pld = 0x7fffffff;	// closest we've gotten to the player
-	static int     noprog;
-	fixed_t        pld = P_AproxDistance (mo->x - pl->x, mo->y - pl->y);
+	fixed_t	pld = P_AproxDistance (mo->x - pl->x, mo->y - pl->y);
 
 	AICoop_CrumbAdd (pl->x, pl->y);
 
-	if (getenv("BUDDYDBG") && gametic - prog_tic >= 35)	// re-check ~1x/s (opt-in: BUDDYDBG=1)
+	// The whole watchdog used to sit inside `if (getenv("BUDDYDBG") && ...)`, so
+	// with the debug env var unset -- i.e. always -- noprog never counted and
+	// trail_active was never raised.  The breadcrumb fallback and every recovery
+	// hanging off it were dead code in normal play.  The debug PRINT is opt-in;
+	// the watchdog is not.
+	if (gametic - prog_tic >= 35)			// re-check ~1x/s
 	{
 	    prog_tic = gametic;
-	    printf("Buddy Debug: pos=[%d,%d] pld=%d state=%d trail=%d stuck=%d\n",
-		   mo->x>>FRACBITS, mo->y>>FRACBITS, pld>>FRACBITS, coop_state, trail_active, stuck);
-	    fflush(stdout);
+	    if (buddy_dbg < 0) buddy_dbg = getenv ("BUDDYDBG") ? 1 : 0;
+	    if (buddy_dbg)
+	    {
+		printf("Buddy Debug: pos=[%d,%d] pld=%d state=%d trail=%d stuck=%d\n",
+		       mo->x>>FRACBITS, mo->y>>FRACBITS, pld>>FRACBITS, coop_state, trail_active, stuck);
+		fflush(stdout);
+	    }
 	    // Progress = reaching a NEW minimum distance.  Tracking the best (not the
 	    // last) defeats jitter: oscillating in place bounces pld ~+/-100u, which the
 	    // old "closer than last second" test mistook for progress, so the watchdog
 	    // never tripped and the trail/fallback never kicked in.
 	    if (pld < best_pld - 32*FRACUNIT) { best_pld = pld; noprog = 0; }
 	    else                                noprog++;
-	    if (pld <= COOP_NEAR) { best_pld = pld; noprog = 0; trail_active = 0; }
+	    // "Arrived" needs a WALKABLE line to the human, not just a short one.  Straight
+	    // -line distance alone called it arrived while it stood on the far side of a
+	    // wall 168 units away -- which reset noprog every second, so the trail never
+	    // engaged and no rescue could ever trip either.
+	    if (pld <= COOP_NEAR && AICoop_CanReach (mo, pl->x, pl->y, false))
+		{ best_pld = pld; noprog = 0; trail_active = 0; }
 	    else if (noprog >= 3)  trail_active = 1;		// ~3 s no closer -> trail/fallback
 	    else if (noprog == 0)  trail_active = 0;		// gaining -> normal nav
+
+	    // Last-resort rescue, by BEHAVIOUR rather than by shape.  AICoop_VoidReason
+	    // only recognises the voids we thought to describe; this catches everything
+	    // else -- a void pocket that looks like an ordinary sector, wedged geometry,
+	    // a sealed room -- by noticing that ~12 s of trying has produced no new best
+	    // distance to the human.  Gated to following/coming so a long firefight (or a
+	    // "wait" order) is never mistaken for being stuck.
+	    if (noprog >= 12 && !user_hold && coop_home_set
+		&& (coop_state == 0 || coop_state == 4)
+		&& AICoop_OnGrid (coop_home_x, coop_home_y))
+	    {
+		AICoop_VoidLog (mo, "no progress toward the human for 12 s");
+		P_TeleportMove (mo, coop_home_x, coop_home_y);
+		mo->angle = coop_home_angle;
+		mo->momx = mo->momy = mo->momz = 0;
+		best_pld = 0x7fffffff; noprog = 0; trail_active = 0;
+		players[consoleplayer].message = "[Buddy] Recovered from the void.";
+	    }
 	}
-	else if (pld <= COOP_NEAR) trail_active = 0;		// reached the player
+	else if (pld <= COOP_NEAR && trail_active
+		 && AICoop_CanReach (mo, pl->x, pl->y, false))
+	    trail_active = 0;					// reached the player for real
 	if (pld < best_pld) best_pld = pld;			// keep the running minimum fresh
     }
     else
@@ -2618,33 +3088,39 @@ void P_AICoop_BuildCmd (void)
 	{ triedmove = 0; return; }		// nothing to do -> stand still
 
     // Breadcrumb override: when stuck reaching the player, replay the human's trail.
-    // Steer STRAIGHT at the NEWEST crumb we can directly reach (closest to the player
-    // on the human's actual path) -- not via the pathfinder, so we never detour the
-    // wrong way around a wall, and each step is a verified-walkable hop toward them.
+    // The crumbs are LINKED into a chain first (AICoop_CrumbRelink): only the run of
+    // crumbs joined to the human by links the buddy can actually walk is usable -- the
+    // rest sit on the far side of a jump/fall/teleport it cannot repeat.
     int chase_player = 0;
     if (trail_active && pl && (coop_state == 0 || coop_state == 4))
     {
-	int i, used = 0;
-	for (i = crumb_n-1; i >= 0; i--)
+	int i, used = 0, chain0;
+
+	AICoop_CrumbRelink (mo);
+	chain0 = AICoop_CrumbChainStart ();
+
+	// (a) Already on/near the trail: steer STRAIGHT at the NEWEST crumb of the
+	// connected run we can walk to -- not via the pathfinder, so we never detour
+	// the wrong way around a wall, and every crumb past it chains to the human.
+	for (i = crumb_n-1; i >= chain0; i--)
 	    if (AICoop_CanReach (mo, crumbx[i], crumby[i], false))
 	    {
 		tx = crumbx[i]; ty = crumby[i];
 		navigate = 0; movethresh = 24*FRACUNIT;	// steer straight, no PF detour
 		used = 1; break;
 	    }
-	// No reachable crumb (e.g. loaded a save where the human never laid a trail,
-	// or a closed door cut the trail off): chase the human DIRECTLY -- keep
-	// navigate on but aim its door-aware corner-rounding (FindDoorAhead + ChaseDir)
-	// at the human instead of the oscillating BSP waypoint, so it rounds corners and
-	// Uses shut doors on the way instead of grinding one wall.
-	// No crumb is DIRECTLY reachable (the buddy is a corner off the trail).  Head for
-	// the NEAREST crumb -- still a verified-walkable spot on the human's real path and
-	// far closer than the human -- with the door-aware corner-rounding, so it walks
-	// ONTO the trail, then the direct-reach replay above takes over.
+	// (b) Not on the trail yet.  Join it at the CLOSEST crumb of the connected run
+	// and ROUTE there with the BSP pathfinder.  This used to pick the nearest crumb
+	// of the WHOLE trail and walk straight at it, but the nearest crumb is regularly
+	// unreachable -- behind a wall, or on top of the ledge the human jumped up -- so
+	// the buddy ground against the geometry underneath it instead of walking around.
+	// Restricting to the connected run keeps the join point on a stretch that really
+	// leads to the human, and navigate=1 with chase_player=0 makes it walk the graph
+	// route (the stairs) rather than beeline at the obstacle.
 	if (!used && crumb_n > 0)
 	{
-	    int i, best = -1; fixed_t bestd = 0x7fffffff;
-	    for (i = crumb_n-1; i >= 0; i--)
+	    int best = -1; fixed_t bestd = 0x7fffffff;
+	    for (i = crumb_n-1; i >= chain0; i--)
 	    {
 		fixed_t d = P_AproxDistance (crumbx[i] - mo->x, crumby[i] - mo->y);
 		if (d < bestd) { bestd = d; best = i; }
@@ -2652,7 +3128,7 @@ void P_AICoop_BuildCmd (void)
 	    if (best >= 0)
 	    {
 		tx = crumbx[best]; ty = crumby[best];
-		navigate = 1; chase_player = 1; movethresh = 24*FRACUNIT;
+		navigate = 1; movethresh = 24*FRACUNIT;
 		used = 1;
 	    }
 	}

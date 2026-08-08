@@ -64,6 +64,7 @@ const char*	P_AICoop_God (void);		// "buddygod" -- toggle buddy god mode
 const char*	P_AICoop_Heal (void);		// "buddyheal" -- patch buddy to 100 HP (revives if downed)
 const char*	P_AICoop_GiveAll (void);	// "buddyarm" -- buddy all weapons + ammo + armor
 const char*	P_AICoop_Home (void);		// "buddyhome" -- teleport buddy to its map spawn point
+void		P_AICoop_NavDebug (void);	// "navdbg" -- dump why the buddy can/can't route to you
 
 // ---------------------------------------------------------------------------
 //  AI (LLM) director layer for the buddy (-aicoop).  The director sets a
