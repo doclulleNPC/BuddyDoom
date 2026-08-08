@@ -86,6 +86,11 @@ static mobj_t*	react_last;		// the target the reaction timer is counting for
 static fixed_t	crumbx[CRUMB_MAX], crumby[CRUMB_MAX];
 static int	crumb_n;		// crumbs held (crumb[0]=oldest .. crumb[n-1]=newest≈player)
 static int	trail_active;		// currently following the breadcrumb trail
+// Drop the nav graph and the cached path corridor (defined with the pathfinder).
+// The graph bakes in sub-sector indices and door state, so a level load / savegame
+// load must not keep reusing it.
+static void PF_NavReset (void);
+
 // Chain links between consecutive crumbs -- see AICoop_CrumbRelink (below the
 // pathfinder, where the walkability probe it uses lives).  Runtime-only: not saved,
 // rebuilt from the trail on first use after a load.
@@ -252,6 +257,7 @@ void P_AICoop_ResetSlot (void)
     crumb_link_tic = -1;		// ...and its link table (rebuilt on first use)
     best_pld = 0x7fffffff; noprog = 0;	// ...and the progress watchdog's running minimum
     vtrace_head = 0; vtrace_n = 0;	// ...and the position trace ring
+    PF_NavReset ();			// ...and the nav graph + cached corridor
     summon = 0; summon_stay = 0;	// drop any come/leash order from the previous map
 }
 
@@ -290,6 +296,7 @@ void P_AICoop_UnArchiveTrail (void)
     trail_active = 0;			// let the watchdog re-engage if the buddy lags
     crumb_link_tic = -1;		// links aren't saved -- rebuild from the loaded trail
     best_pld = 0x7fffffff; noprog = 0;	// don't judge progress against the pre-save distance
+    PF_NavReset ();			// P_SetupLevel reloaded subsectors/segs under the graph
 }
 
 static boolean P_AICoop_VerifySpawn_warned = false;	// one-shot per process
@@ -1315,6 +1322,9 @@ const char* P_AICoop_Home (void)
 #define PF_MAXADJ	32		// max graph edges per sub-sector
 #define PF_DANGER_W	8		// Safe mode: cost added per danger-point on entering a node
 #define PF_DANGER_MAX	2000		// clamp per-sub-sector danger so one hot spot can't dominate
+#define PF_JUMP_PEN	150		// extra cost to route over a jump link (prefer walking)
+#define PF_JUMP_MAX	(48*FRACUNIT)	// tallest step the buddy can clear with BT_JUMP
+#define PF_EDGE_JUMP	1		// pf_adjf: crossing this edge needs a jump
 
 static int	pf_level = -1;		// episode*100+map the graph was built for
 static int	pf_lastbuild;		// gametic of the last graph (re)build
@@ -1326,11 +1336,16 @@ static int*	pf_adj;			// flat [pf_n*PF_MAXADJ] neighbour sub-sectors
 static int*	pf_adjw;		// flat [pf_n*PF_MAXADJ] edge weights
 static fixed_t*	pf_adjpx;		// flat [pf_n*PF_MAXADJ] PORTAL x: a walkable point
 static fixed_t*	pf_adjpy;		//   just inside neighbour v on the u|v boundary
-static int*	pf_dist;		// Dijkstra cost-so-far
-static int*	pf_prev;		// Dijkstra predecessor
-static byte*	pf_done;		// Dijkstra closed flag
+static byte*	pf_adjf;		// flat [pf_n*PF_MAXADJ] edge flags (PF_EDGE_*)
+static int*	pf_dist;		// A* cost-so-far (g)
+static int*	pf_prev;		// A* predecessor
+static byte*	pf_done;		// A* closed flag
+static int*	pf_heap;		// binary min-heap of open nodes (by f)
+static int*	pf_hpos;		// node -> its index in pf_heap, -1 = not open
+static int	pf_heapn;		// heap size
 static int*	pf_danger;		// per-sub-sector "recently took damage here" heatmap
 static int	pf_safemode;		// when set, PF_AStar weights edges by pf_danger (Safe route)
+static byte*	pf_edge_flags;		// PF_EdgeWeight out-param: PF_EDGE_* bits for this edge
 static int	pf_path[PF_PATHMAX];
 
 static int PF_SS (fixed_t x, fixed_t y)
@@ -1495,21 +1510,38 @@ static boolean PF_LineWalkable (fixed_t ax, fixed_t ay, fixed_t bx, fixed_t by,
     return true;
 }
 
-static void PF_AddEdge (int u, int v, int w, fixed_t px, fixed_t py)
+static void PF_AddEdgeF (int u, int v, int w, fixed_t px, fixed_t py, int flags)
 {
     int	k;
     if (u < 0 || v < 0 || u == v || w < 0) return;
     for (k = 0; k < pf_nadj[u]; k++)			// dedup, keep cheapest
 	if (pf_adj[u*PF_MAXADJ + k] == v)
 	{ if (w < pf_adjw[u*PF_MAXADJ + k])
-	    { pf_adjw[u*PF_MAXADJ + k] = w; pf_adjpx[u*PF_MAXADJ + k] = px; pf_adjpy[u*PF_MAXADJ + k] = py; }
+	    { pf_adjw[u*PF_MAXADJ + k] = w; pf_adjpx[u*PF_MAXADJ + k] = px; pf_adjpy[u*PF_MAXADJ + k] = py;
+	      pf_adjf[u*PF_MAXADJ + k] = (byte)flags; }
 	  return; }
     if (pf_nadj[u] >= PF_MAXADJ) return;
     pf_adj [u*PF_MAXADJ + pf_nadj[u]] = v;
     pf_adjw[u*PF_MAXADJ + pf_nadj[u]] = w;
     pf_adjpx[u*PF_MAXADJ + pf_nadj[u]] = px;
     pf_adjpy[u*PF_MAXADJ + pf_nadj[u]] = py;
+    pf_adjf[u*PF_MAXADJ + pf_nadj[u]] = (byte)flags;
     pf_nadj[u]++;
+}
+
+static void PF_AddEdge (int u, int v, int w, fixed_t px, fixed_t py)
+{
+    PF_AddEdgeF (u, v, w, px, py, 0);
+}
+
+// Flags on the u->v edge (0 if there is no such edge).
+static int PF_EdgeFlags (int u, int v)
+{
+    int	k;
+    if (u < 0 || v < 0 || !pf_adjf) return 0;
+    for (k = 0; k < pf_nadj[u]; k++)
+	if (pf_adj[u*PF_MAXADJ + k] == v) return pf_adjf[u*PF_MAXADJ + k];
+    return 0;
 }
 
 // Portal point on the u->v edge (a walkable spot just inside v), or v's centroid.
@@ -1605,8 +1637,9 @@ static void PF_Build (mobj_t* ref)
     PF_InitLockedLines ();
 
     free (pf_cx); free (pf_cy); free (pf_nadj); free (pf_adj); free (pf_adjw);
-    free (pf_adjpx); free (pf_adjpy);
+    free (pf_adjpx); free (pf_adjpy); free (pf_adjf);
     free (pf_dist); free (pf_prev); free (pf_done); free (pf_danger);
+    free (pf_heap); free (pf_hpos);
 
     pf_n    = numsubsectors;
     pf_danger = calloc (pf_n, sizeof(int));	// fresh (zeroed) danger heatmap for this graph
@@ -1620,6 +1653,9 @@ static void PF_Build (mobj_t* ref)
     pf_adjw = malloc (pf_n * PF_MAXADJ * sizeof(int));
     pf_adjpx= malloc (pf_n * PF_MAXADJ * sizeof(fixed_t));
     pf_adjpy= malloc (pf_n * PF_MAXADJ * sizeof(fixed_t));
+    pf_adjf = calloc (pf_n * PF_MAXADJ, 1);
+    pf_heap = malloc (pf_n * sizeof(int));
+    pf_hpos = malloc (pf_n * sizeof(int));
     segss   = malloc (numsegs * sizeof(int));
 
     // centroid of each sub-sector (mean of its segs' endpoints) + seg->ss map
@@ -1647,6 +1683,7 @@ static void PF_Build (mobj_t* ref)
 	seg_t*	sg = &segs[j];
 	fixed_t	mx, my, nx, ny, len, ox, oy;
 	int	a, b, self, v, w;
+	byte	eflags;
 
 	if (!sg->backsector) continue;			// one-sided wall
 	mx = (sg->v1->x + sg->v2->x) >> 1;
@@ -1663,14 +1700,26 @@ static void PF_Build (mobj_t* ref)
 	b = PF_SS (mx - ox, my - oy);
 	v = (a != self) ? a : (b != self ? b : -1);
 	if (v < 0) continue;
+	eflags = 0;
+	pf_edge_flags = &eflags;
 	w = PF_EdgeWeight (sg, self, v);
+	pf_edge_flags = NULL;
 	if (w >= 0)
 	{
 	    // Portal = the seg midpoint nudged ~16u INTO v (the destination side), so
 	    // steering at it crosses the shared edge instead of stopping on the wall
 	    // line.  ox,oy is the 4u normal; v sits on the +normal side iff v==a.
-	    int s = (v == a) ? 4 : -4;
-	    PF_AddEdge (self, v, w, mx + s*ox, my + s*oy);
+	    int	s  = (v == a) ? 4 : -4;
+	    fixed_t	px = mx + s*ox, py = my + s*oy;
+
+	    // CLEARANCE, baked once here instead of re-probed on every query: a portal
+	    // the buddy's 32x32 box cannot actually stand in is not a portal.  The
+	    // vertical opening was already checked; nothing checked the horizontal one,
+	    // so a gap narrower than the buddy routed fine and then wedged the steering.
+	    // (A jump link lands past the step, so probe where it lands, not in the step.)
+	    if (P_CheckPosition (ref, px, py)
+		&& tmceilingz - tmfloorz >= ref->height)
+		PF_AddEdgeF (self, v, w, px, py, eflags);
 	}
     }
 
@@ -1740,6 +1789,8 @@ void P_AICoop_NavDirty (void)
 }
 
 // Cost of crossing seg `sg` from sub-sector u to its neighbour v; -1 = blocked.
+// `pf_edge_flags` (set by the caller for the duration of the call) collects PF_EDGE_*
+// bits describing HOW the edge is crossed, so the route can carry them to the steering.
 static int PF_EdgeWeight (seg_t* sg, int u, int v)
 {
     int	w = (int)(P_AproxDistance (pf_cx[u]-pf_cx[v], pf_cy[u]-pf_cy[v]) >> FRACBITS);
@@ -1780,7 +1831,15 @@ static int PF_EdgeWeight (seg_t* sg, int u, int v)
 	    else return -1;
 	}
 	else if (step > 24*FRACUNIT)
-	    return -1;					// step up too high (no lifts)
+	{
+	    // Too tall to WALK up -- but the buddy can jump (the human can, so it may).
+	    // Model it as a real, one-way, costlier edge instead of leaving it out and
+	    // hoping the stuck-handler discovers BT_JUMP by grinding into the step: the
+	    // ROUTE now knows the shortcut exists, and knows to prefer walking round.
+	    if (netgame || step > PF_JUMP_MAX) return -1;	// no jumping in a netgame
+	    if (pf_edge_flags) *pf_edge_flags |= PF_EDGE_JUMP;
+	    w += PF_JUMP_PEN;
+	}
     }
     if (AICoop_DamagingFloor (pf_cx[v], pf_cy[v]))
 	w += PF_HAZARD_PEN;
@@ -1793,27 +1852,86 @@ static int PF_EdgeWeight (seg_t* sg, int u, int v)
 // distances plus only positive door/hazard penalties, so they never undershoot the
 // straight line), so the path stays optimal while far fewer nodes get expanded toward
 // a distant goal than plain Dijkstra (which fans out to everything closer first).
+// --- open set: binary min-heap keyed on f -----------------------------------
+// The old loop rescanned all pf_n nodes to find the cheapest open one, so a search
+// cost O(pop * pf_n) -- on this map that is 8000 * ~3100 node visits for one query,
+// three times a second.  A heap makes it O(pop * log n).
+
+static int	pf_hgx, pf_hgy;		// goal centroid, for PF_H
+
+// Admissible heuristic: straight-line centroid distance to the goal.  Every edge
+// weight is a real centroid distance plus only NON-NEGATIVE penalties (door, hazard,
+// jump, danger), so h can never overestimate and the first pop of the goal is optimal.
+static int PF_H (int u)
+{
+    return (int)(P_AproxDistance (pf_cx[u]-pf_hgx, pf_cy[u]-pf_hgy) >> FRACBITS);
+}
+
+static void PF_HeapSwap (int a, int b)
+{
+    int t = pf_heap[a]; pf_heap[a] = pf_heap[b]; pf_heap[b] = t;
+    pf_hpos[pf_heap[a]] = a;
+    pf_hpos[pf_heap[b]] = b;
+}
+
+static void PF_HeapUp (int i)
+{
+    while (i > 0)
+    {
+	int p = (i - 1) >> 1;
+	if (pf_dist[pf_heap[p]] + PF_H (pf_heap[p]) <= pf_dist[pf_heap[i]] + PF_H (pf_heap[i]))
+	    break;
+	PF_HeapSwap (i, p); i = p;
+    }
+}
+
+static void PF_HeapDown (int i)
+{
+    for (;;)
+    {
+	int l = 2*i + 1, r = l + 1, m = i;
+	if (l < pf_heapn && pf_dist[pf_heap[l]] + PF_H (pf_heap[l]) < pf_dist[pf_heap[m]] + PF_H (pf_heap[m])) m = l;
+	if (r < pf_heapn && pf_dist[pf_heap[r]] + PF_H (pf_heap[r]) < pf_dist[pf_heap[m]] + PF_H (pf_heap[m])) m = r;
+	if (m == i) break;
+	PF_HeapSwap (i, m); i = m;
+    }
+}
+
+static void PF_HeapPush (int v)
+{
+    if (pf_hpos[v] >= 0) { PF_HeapUp (pf_hpos[v]); return; }	// already open -> its f only ever drops
+    pf_heap[pf_heapn] = v; pf_hpos[v] = pf_heapn; pf_heapn++;
+    PF_HeapUp (pf_heapn - 1);
+}
+
+static int PF_HeapPop (void)
+{
+    int v;
+    if (!pf_heapn) return -1;
+    v = pf_heap[0];
+    pf_hpos[v] = -1;
+    pf_heapn--;
+    if (pf_heapn) { pf_heap[0] = pf_heap[pf_heapn]; pf_hpos[pf_heap[0]] = 0; PF_HeapDown (0); }
+    return v;
+}
+
 static boolean PF_AStar (int start, int goal)
 {
     int	i, pop = 0;
-    fixed_t	gx = pf_cx[goal], gy = pf_cy[goal];
 
-    for (i = 0; i < pf_n; i++) { pf_dist[i] = PF_INF; pf_prev[i] = -1; pf_done[i] = 0; }
+    for (i = 0; i < pf_n; i++) { pf_dist[i] = PF_INF; pf_prev[i] = -1; pf_done[i] = 0; pf_hpos[i] = -1; }
+    pf_hgx = pf_cx[goal]; pf_hgy = pf_cy[goal];
+    pf_heapn = 0;
     pf_dist[start] = 0;
+    PF_HeapPush (start);
 
     while (pop < PF_MAXPOP)
     {
-	int	u = -1, bestf = PF_INF, s;
+	int	u = PF_HeapPop (), s;
 
-	for (i = 0; i < pf_n; i++)			// pop lowest f = g + h
-	    if (!pf_done[i] && pf_dist[i] < PF_INF)
-	    {
-		// Dijkstra search (h = 0) prevents path oscillation from heuristic inconsistency
-		int f = pf_dist[i];
-		if (f < bestf) { bestf = f; u = i; }
-	    }
 	if (u < 0) break;				// nothing left reachable
 	if (u == goal) return true;			// goal popped -> optimal path found
+	if (pf_done[u]) continue;
 	pf_done[u] = 1; pop++;
 
 	for (s = 0; s < pf_nadj[u]; s++)
@@ -1822,24 +1940,96 @@ static boolean PF_AStar (int start, int goal)
 	    int	w = pf_adjw[u*PF_MAXADJ + s];
 	    if (pf_done[v]) continue;
 	    if (pf_safemode) w += pf_danger[v] * PF_DANGER_W;	// Safe mode: detour around hot sub-sectors
-	    if (pf_dist[u] + w < pf_dist[v]) { pf_dist[v] = pf_dist[u] + w; pf_prev[v] = u; }
+	    if (pf_dist[u] + w < pf_dist[v])
+	    {
+		pf_dist[v] = pf_dist[u] + w; pf_prev[v] = u;
+		PF_HeapPush (v);
+	    }
 	}
     }
     return pf_dist[goal] < PF_INF;
 }
 
 // Next point to steer toward to reach (dx,dy).  Returns false if unreachable.
+// --- path corridor ----------------------------------------------------------
+// The funnel result is KEPT, not thrown away after handing back one waypoint.  Each
+// tic the buddy re-walks the stored corridor from where it now stands (cheap: a few
+// reach probes) and only re-runs A* when the goal moves to another sub-sector, the
+// corridor runs out, or it drifts off the corridor entirely.  Re-planning from
+// scratch every 10 tics is what made the buddy twitch between two waypoints when the
+// route was marginal -- the plan kept changing under it.
+#define PF_CORR_MAX	64
+static fixed_t	corr_x[PF_CORR_MAX], corr_y[PF_CORR_MAX];
+static byte	corr_jump[PF_CORR_MAX];	// crossing INTO this portal needs a jump
+static int	corr_n;			// portals held
+static int	corr_i;			// next portal to aim for
+static int	corr_goal = -1;		// goal sub-sector the corridor was built for
+static int	corr_next_jump;		// the waypoint just handed back is a jump link
+
+static void PF_CorridorReset (void)
+{
+    corr_n = corr_i = 0; corr_goal = -1; corr_next_jump = 0;
+}
+
+static void PF_NavReset (void)
+{
+    pf_level = -1;			// force a rebuild on the next query
+    PF_CorridorReset ();
+}
+
+// True if the buddy's next steering target is a jump link (the steering presses
+// BT_JUMP when it gets there).  Valid right after PF_NextWaypoint.
+static int PF_NextIsJump (void)
+{
+    return corr_next_jump;
+}
+
 static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx, fixed_t* wy)
 {
     int		start, goal, len, i, c, np, prev;
     fixed_t	portx[PF_PATHMAX], porty[PF_PATHMAX];
+    byte	portj[PF_PATHMAX];
 
     if (pf_level != gameepisode*100 + gamemap || !pf_cx)
-    { PF_Build (mo); pf_level = gameepisode*100 + gamemap; pf_lastbuild = gametic; }
+    { PF_Build (mo); pf_level = gameepisode*100 + gamemap; pf_lastbuild = gametic;
+      PF_CorridorReset (); }
 
+    corr_next_jump = 0;
     start = PF_SS (mo->x, mo->y);
     goal  = PF_SS (dx, dy);
-    if (start == goal) { *wx = dx; *wy = dy; return true; }
+    if (start == goal) { PF_CorridorReset (); *wx = dx; *wy = dy; return true; }
+
+    // Still on the corridor we already planned?  Advance past every portal we have
+    // passed (or can already see beyond) and steer at the furthest one we can walk to.
+    if (corr_n && corr_goal == goal)
+    {
+	while (corr_i < corr_n
+	       && P_AproxDistance (mo->x - corr_x[corr_i], mo->y - corr_y[corr_i]) < 32*FRACUNIT)
+	    corr_i++;
+	if (corr_i >= corr_n)
+	{
+	    if (AICoop_CanReach (mo, dx, dy, true)) { *wx = dx; *wy = dy; return true; }
+	}
+	else
+	{
+	    // Re-funnel from HERE: furthest corridor point still on a straight walk.
+	    // Bounded twice, because this runs every tic: a short window of portals, and
+	    // a range cap so we never pay for a long trace to a portal that is most of a
+	    // map away (it would fail the reach probe anyway, just expensively).
+	    int hi = corr_i + 6;
+	    if (hi > corr_n - 1) hi = corr_n - 1;
+	    for (i = hi; i >= corr_i; i--)
+		if (P_AproxDistance (mo->x - corr_x[i], mo->y - corr_y[i]) <= 512*FRACUNIT
+		    && AICoop_CanReach (mo, corr_x[i], corr_y[i], true))
+		{
+		    corr_i = i;
+		    corr_next_jump = corr_jump[i];
+		    *wx = corr_x[i]; *wy = corr_y[i];
+		    return true;
+		}
+	}
+	PF_CorridorReset ();	// drifted off it -- fall through and re-plan
+    }
     // Search FROM the buddy TO the target.  This used to run PF_AStar(goal, start) --
     // rooted at the target -- and then walk pf_prev from `start`.  That relaxes every
     // edge in the goal->start direction, so the route handed back to the buddy used
@@ -1869,14 +2059,28 @@ static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx,
     while (c != -1 && c != start && len < PF_PATHMAX) { pf_path[len++] = c; c = pf_prev[c]; }
     if (len == 0) { *wx = dx; *wy = dy; return true; }
 
-    // Collect PORTAL points along the route, in travel order (start -> ... -> goal).
+    // Collect PORTAL points along the route, in travel order (start -> ... -> goal),
+    // carrying each edge's flags so a jump link stays a jump link all the way to the
+    // steering.
     np = 0; prev = start;
     for (i = len - 1; i >= 0; i--)
     {
 	fixed_t qx, qy;
-	if (PF_Portal (prev, pf_path[i], &qx, &qy)) { portx[np] = qx; porty[np] = qy; np++; }
+	if (PF_Portal (prev, pf_path[i], &qx, &qy))
+	{
+	    portx[np] = qx; porty[np] = qy;
+	    portj[np] = (PF_EdgeFlags (prev, pf_path[i]) & PF_EDGE_JUMP) ? 1 : 0;
+	    np++;
+	}
 	prev = pf_path[i];
     }
+
+    // Store the corridor (tail-clipped to PF_CORR_MAX: the near end is what steering
+    // uses, and it is re-planned long before the far end matters).
+    corr_n = np < PF_CORR_MAX ? np : PF_CORR_MAX;
+    for (i = 0; i < corr_n; i++)
+	{ corr_x[i] = portx[i]; corr_y[i] = porty[i]; corr_jump[i] = portj[i]; }
+    corr_i = 0; corr_goal = goal;
 
     // Skip the first portal if we are already close to it to ensure we cross it and advance.
     // Skip conditionally if distance is within 56 and the next waypoint is directly reachable,
@@ -1888,6 +2092,8 @@ static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx,
 	fixed_t ty = (np > 1) ? porty[1] : dy;
 	if (dist < 32*FRACUNIT || (dist < 56*FRACUNIT && AICoop_CanReach (mo, tx, ty, true)))
 	{
+	    corr_i = (np > 1) ? 1 : corr_n;
+	    corr_next_jump = (np > 1) ? portj[1] : 0;
 	    *wx = tx; *wy = ty;
 	    return true;
 	}
@@ -1898,8 +2104,16 @@ static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx,
     // first portal (always on our own sub-sector's boundary, hence reachable).
     if (AICoop_CanReach (mo, dx, dy, true)) { *wx = dx; *wy = dy; return true; }
     for (i = np - 1; i >= 0; i--)
-	if (AICoop_CanReach (mo, portx[i], porty[i], true)) { *wx = portx[i]; *wy = porty[i]; return true; }
-    if (np > 0) { *wx = portx[0]; *wy = porty[0]; return true; }
+	if (AICoop_CanReach (mo, portx[i], porty[i], true))
+	{
+	    if (i < corr_n) { corr_i = i; corr_next_jump = portj[i]; }
+	    *wx = portx[i]; *wy = porty[i]; return true;
+	}
+    if (np > 0)
+    {
+	corr_i = 0; corr_next_jump = portj[0];
+	*wx = portx[0]; *wy = porty[0]; return true;
+    }
     *wx = dx; *wy = dy;
     return true;
 }
@@ -2128,6 +2342,8 @@ static void AICoop_NavDump (void)
 		  ok ? "reachable" : "BLOCKED: ", ok ? "" : AICoop_ReachWhy[why]);
 	if (!ok)
 	    NavPrint ("[nav]   blocked at (%d,%d)", fx>>FRACBITS, fy>>FRACBITS);
+	NavPrint ("[nav] corridor: %d portals, at #%d, goal ss%d, this hop = %s",
+		  corr_n, corr_i, corr_goal, corr_next_jump ? "JUMP" : "walk");
     }
     else
 	NavPrint ("[nav] ROUTE FAILED -- no graph path to you (%d sub-sectors)", pf_n);
@@ -2666,6 +2882,7 @@ void P_AICoop_BuildCmd (void)
     static int	navtimer, navgoal = -1;	// pathfinder re-path cooldown / cached goal ss
     static fixed_t navwx, navwy;	// cached waypoint
     static boolean navok;
+    static int	navjump;		// the cached waypoint is reached by JUMPING
     static mobj_t* dmg_mon;		// monster the damage-watchdog is tracking
     static int	dmg_hp0, dmg_firetics;	// its health at baseline / tics fired with no drop
 
@@ -3171,17 +3388,36 @@ void P_AICoop_BuildCmd (void)
 	// Coarse route: BSP portal waypoint toward the player (cached, re-pathed ~3x/s).
 	fixed_t goalx = tx, goaly = ty;
 	int gss = PF_SS (tx, ty);
-	if (--navtimer <= 0 || gss != navgoal)
+	// Re-funnel EVERY tic now that the corridor is kept: while the buddy is still on
+	// its planned corridor this is a handful of reach probes, and PF_NextWaypoint
+	// only re-runs A* when the goal moves to another sub-sector or the corridor is
+	// lost.  Re-PLANNING from scratch on a 10-tic timer was what made the buddy
+	// twitch between two waypoints on a marginal route -- the plan changed under it.
+	// After a failure back off ~10 tics so an unreachable target can't run A* 35x/s.
+	if (navtimer > 0) navtimer--;
+	if (navtimer <= 0 || navok)
 	{
-	    navtimer = 10; navgoal = gss;
+	    navgoal = gss;
 	    // Safe route when retreating/regrouping (summon) or hurt: weight the A* by
 	    // pf_danger so the buddy comes home through calm corridors, not the crossfire.
 	    // Scoped to THIS call so monster/observe queries keep using the shortest path.
 	    pf_safemode = (summon > 0 || bot->health < COOP_SAFE_HP);
 	    navok = PF_NextWaypoint (mo, tx, ty, &navwx, &navwy);
 	    pf_safemode = 0;
+	    navjump = navok ? PF_NextIsJump () : 0;
+	    if (!navok) navtimer = 10;
 	}
 	if (navok && !chase_player) { goalx = navwx; goaly = navwy; }
+
+	// The route says this hop is a jump link (a 24..48 step the buddy cannot walk
+	// up).  Jump on approach, instead of waiting to wedge into the step and letting
+	// the stuck-handler discover BT_JUMP by accident.
+	if (navok && navjump && !chase_player && !netgame
+	    && P_AproxDistance (mo->x - navwx, mo->y - navwy) < 64*FRACUNIT)
+	{
+	    cmd->buttons |= BT_JUMP;
+	    AICoop_Callout ("jump:", 2);
+	}
 	// A closed door on the way?  Head STRAIGHT at the doorway (no sweep) so we
 	// enter the corridor toward it -- TraceSteer would sweep away from the shut
 	// door (it reads as a wall) and the buddy would oscillate beside it forever.
