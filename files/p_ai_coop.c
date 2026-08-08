@@ -2298,6 +2298,21 @@ static void AICoop_VoidLog (mobj_t* mo, const char* why)
 // goes where the marine looks, and the slow turn (COOP_TURN) lags -- so while
 // turning it walks the wrong way, drifts into walls and snags on corners.
 // angleturn still faces the target separately (for aiming/firing).
+// Add to the sideways move, SATURATING at run speed.  ticcmd_t.sidemove is a signed
+// char and COOP_RUN is 0x32, so a plain `cmd->sidemove += COOP_RUN` on top of a move
+// AICoop_ThrustToward already set to +50 reaches 100, and a second one 150 -- which
+// wraps to -106: a thrust twice the legal player maximum, in the OPPOSITE direction.
+// Both adders (the friendly-fire strafe and the wedged-in-geometry wiggle) can fire in
+// the same tic, which is precisely when the buddy is jammed against a wall.
+static void AICoop_AddSide (ticcmd_t* cmd, int add)
+{
+    int	sm = (int)cmd->sidemove + add;
+
+    if (sm >  COOP_RUN) sm =  COOP_RUN;
+    else if (sm < -COOP_RUN) sm = -COOP_RUN;
+    cmd->sidemove = (signed char)sm;
+}
+
 static void AICoop_ThrustToward (ticcmd_t* cmd, mobj_t* mo, fixed_t tx, fixed_t ty)
 {
     angle_t rel = (R_PointToAngle2 (mo->x, mo->y, tx, ty) - mo->angle) >> ANGLETOFINESHIFT;
@@ -3266,7 +3281,7 @@ void P_AICoop_BuildCmd (void)
 		// Friendly fire guard: the autoaim trace hits a PLAYER (the human is
 		// between us and the monster) -- DON'T shoot.  Strafe a little to clear
 		// the angle so the next tic has a safe shot.
-		cmd->sidemove += ((gametic / 16) & 1) ? COOP_RUN : -COOP_RUN;
+		AICoop_AddSide (cmd, ((gametic / 16) & 1) ? COOP_RUN : -COOP_RUN);
 	    }
 	    else if (linetarget && abs(rem) < COOP_FACING && react_timer == 0 && !splash_close)
 	    {
@@ -3417,7 +3432,7 @@ void P_AICoop_BuildCmd (void)
 	// wall/ledge and we'd just spam USE on it (jump/wiggle handles those instead).
 	if (doorwait == 0 && AICoop_DoorInFront (mo)) { cmd->buttons |= BT_USE; doorwait = 45; AICoop_Callout ("door:", 2); }
 	// Sideways wiggle to slip past a barrel / convex corner (non-door wedge).
-	cmd->sidemove += ((wig++ / 24) & 1) ? COOP_RUN : -COOP_RUN;
+	AICoop_AddSide (cmd, ((wig++ / 24) & 1) ? COOP_RUN : -COOP_RUN);
 	// Announce on the rising edge, but also rate-limit to ~once per 25 s -- on tight
 	// geometry the buddy wedges repeatedly and would otherwise complain constantly.
 	{
@@ -3450,10 +3465,18 @@ void P_AICoop_BuildCmd (void)
 
     // (buddy) speed stat: scale the final move by the selected buddy's movement factor
     // (1.0 for the Marine), clamped to the ticcmd's signed-char run range.
-    if (buddy_movescale != FRACUNIT)
+    // The clamp is UNCONDITIONAL -- it used to sit inside the movescale branch, so the
+    // plain Marine (movescale == 1.0, the default buddy) had no bound on its move at
+    // all and any accumulated overshoot went straight into the ticcmd.
     {
-	int fm = FixedMul (cmd->forwardmove << FRACBITS, buddy_movescale) >> FRACBITS;
-	int sm = FixedMul (cmd->sidemove    << FRACBITS, buddy_movescale) >> FRACBITS;
+	int fm = cmd->forwardmove;
+	int sm = cmd->sidemove;
+
+	if (buddy_movescale != FRACUNIT)
+	{
+	    fm = FixedMul (fm << FRACBITS, buddy_movescale) >> FRACBITS;
+	    sm = FixedMul (sm << FRACBITS, buddy_movescale) >> FRACBITS;
+	}
 	if (fm >  0x32) fm =  0x32; else if (fm < -0x32) fm = -0x32;
 	if (sm >  0x32) sm =  0x32; else if (sm < -0x32) sm = -0x32;
 	cmd->forwardmove = (signed char)fm;
