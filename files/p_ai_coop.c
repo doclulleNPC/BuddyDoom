@@ -111,6 +111,7 @@ static int	buddy_dbg = -1;		// BUDDYDBG env var, resolved once (-1 = not yet)
 static fixed_t	vtrace_x[VTRACE_MAX], vtrace_y[VTRACE_MAX], vtrace_z[VTRACE_MAX];
 static int	vtrace_head;		// next slot to write
 static int	vtrace_n;		// entries written since level start (caps at VTRACE_MAX)
+static boolean	void_was_outside;	// buddy was in solid space last tic (edge detect)
 
 static void AICoop_CrumbAdd (fixed_t x, fixed_t y)
 {
@@ -257,6 +258,7 @@ void P_AICoop_ResetSlot (void)
     crumb_link_tic = -1;		// ...and its link table (rebuilt on first use)
     best_pld = 0x7fffffff; noprog = 0;	// ...and the progress watchdog's running minimum
     vtrace_head = 0; vtrace_n = 0;	// ...and the position trace ring
+    void_was_outside = false;		// ...and the "in solid space" edge detector
     PF_NavReset ();			// ...and the nav graph + cached corridor
     summon = 0; summon_stay = 0;	// drop any come/leash order from the previous map
 }
@@ -893,6 +895,12 @@ static boolean AICoop_ReachProbe (mobj_t* self, fixed_t tx, fixed_t ty, boolean 
     if (fx)  *fx  = tx;
     if (fy)  *fy  = ty;
 
+    // Already standing in the hazard?  Then refusing every square that hurts is
+    // exactly backwards -- it pins the buddy inside the nukage until something drags
+    // it out.  Escaping takes priority over not getting wet.
+    if (avoiddmg && AICoop_DamagingFloor (self->x, self->y))
+	avoiddmg = false;
+
     if (dist < 16*FRACUNIT)
 	return true;				// practically there
     // step by the buddy radius (16) so consecutive P_CheckPosition boxes (32 wide)
@@ -1426,11 +1434,17 @@ boolean AICoop_FindDoorAhead (mobj_t* mo, fixed_t gx, fixed_t gy,
 // the chosen heading drives the ticcmd instead of moving the mobj directly.
 
 // Can the buddy walk ~24u along compass heading `d8` (0=E,1=NE,2=N,..,7=SE)?
+// Set while re-running a scan that found nothing walkable, to see whether the only
+// thing in the way was the hazard rule.  Standing still in a fight is worse than a
+// few points of nukage damage.
+static boolean	coop_hazard_desperate;
+
 static boolean AICoop_ChaseTry (mobj_t* mo, int d8)
 {
     angle_t	a    = ((angle_t)d8 * ANG45) >> ANGLETOFINESHIFT;
     fixed_t	step = mo->radius + 24*FRACUNIT;
-    boolean avoiddmg = (mo->player && (mo->player != &players[consoleplayer]));
+    boolean avoiddmg = (mo->player && (mo->player != &players[consoleplayer]))
+		       && !coop_hazard_desperate;
     return AICoop_CanReach (mo, mo->x + FixedMul (step, finecosine[a]),
 				mo->y + FixedMul (step, finesine[a]), avoiddmg);
 }
@@ -1475,6 +1489,23 @@ angle_t AICoop_ChaseDir (mobj_t* mo, fixed_t gx, fixed_t gy, chasedir_t* st)
     }
     if (turn >= 0 && AICoop_ChaseTry (mo, turn))			// last resort: turn around
 	{ st->dir = turn; st->count = 4; return (angle_t)st->dir * ANG45; }
+
+    // Nothing walkable at all.  Before giving up, ask again ignoring the hazard rule:
+    // a buddy ringed by nukage refuses all eight headings and simply stops, and the
+    // only thing that ever un-sticks it is the 12-second recall.  Wading out costs a
+    // few points; standing there costs the whole fight.
+    coop_hazard_desperate = true;
+    for (s = 0; s < 8; s++)
+    {
+	int d = st->flip ? s : (7 - s);
+	if (AICoop_ChaseTry (mo, d))
+	{
+	    coop_hazard_desperate = false;
+	    st->dir = d; st->count = 4;
+	    return (angle_t)st->dir * ANG45;
+	}
+    }
+    coop_hazard_desperate = false;
 
     st->dir = -1;						// boxed in -- head straight at goal
     return R_PointToAngle2 (mo->x, mo->y, gx, gy);
@@ -2497,6 +2528,27 @@ static void AICoop_VoidLog (mobj_t* mo, const char* why)
 	     AICoop_OnGrid (mo->x, mo->y) ? 1 : 0,
 	     coop_home_x>>FRACBITS, coop_home_y>>FRACBITS);
 
+    // Is this spot one the collision code would even ALLOW?  The distinction decides
+    // where to look next: if P_CheckPosition says the buddy's box fits here while it
+    // is a unit from a solid wall, clipping itself is wrong.  If it says NO, then
+    // nothing moved him here through P_TryMove -- he was PLACED, and the culprit is a
+    // caller that skips the line checks (P_TeleportMove does exactly that).
+    {
+	extern int	pf_ignore_actors;
+	boolean		fits;
+	pf_ignore_actors = 1;
+	fits = P_CheckPosition (mo, mo->x, mo->y);
+	pf_ignore_actors = 0;
+	fprintf (f, "[void] radius=%d height=%d flags=%s%s  P_CheckPosition(here)=%s\n",
+		 mo->radius>>FRACBITS, mo->height>>FRACBITS,
+		 (mo->flags & MF_NOCLIP) ? "NOCLIP " : "",
+		 (mo->flags & MF_SOLID)  ? "SOLID"   : "!SOLID",
+		 fits ? "FITS" : "BLOCKED");
+	fprintf (f, "[void]   (only meaningful on an ENTERED line -- once he is deep in\n"
+		    "[void]    the void there are no linedefs near his box, so FITS is\n"
+		    "[void]    trivially true and says nothing about how he got in.)\n");
+    }
+
     // The 2 s of movement leading in.  Knowing WHERE it ended up only says where the
     // leak comes out; the tic it crossed from a real leaf into solid space says where
     // the leak IS.  Print the transition with a few tics either side.
@@ -2510,7 +2562,7 @@ static void AICoop_VoidLog (mobj_t* mo, const char* why)
 	fprintf (f, "[void] trace: never inside a real leaf in the last %d tics\n", n);
     else
     {
-	int lo = first_bad - 6, hi = first_bad + 3;
+	int lo = first_bad - 12, hi = first_bad + 3;
 	if (lo < 0) lo = 0;
 	if (hi > n-1) hi = n-1;
 	fprintf (f, "[void] trace around the crossing ('*' = in solid space):\n");
@@ -2954,6 +3006,18 @@ void P_AICoop_BuildCmd (void)
     vtrace_z[vtrace_head] = mo->z;
     vtrace_head = (vtrace_head + 1) % VTRACE_MAX;
     if (vtrace_n < VTRACE_MAX) vtrace_n++;
+
+    // Log the CROSSING, not the aftermath.  A rescue only fires once the buddy has
+    // been somewhere invalid for a while -- by then the 2 s ring no longer holds the
+    // approach, which is why the last capture could only say "never inside a real
+    // leaf in the last 70 tics".  Catch the exact tic it first leaves a real BSP
+    // leaf, while the ring still shows how it got there.
+    {
+	boolean	now_outside = AICoop_PointOutside (mo->x, mo->y);
+	if (now_outside && !void_was_outside)
+	    AICoop_VoidLog (mo, "ENTERED solid space -- crossing below");
+	void_was_outside = now_outside;
+    }
 
     // Void rescue.  Checked every 5 tics; AICoop_VoidReason is a handful of integer ops
     // (no blockmap/line walk), so it's practically free.  Only recall if HOME is itself
