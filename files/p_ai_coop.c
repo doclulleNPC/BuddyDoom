@@ -2297,6 +2297,7 @@ int P_AICoop_NavRoute (fixed_t* xs, fixed_t* ys, int maxpts)
 #define NAVDBG_FILE	"navdbg.txt"
 
 static FILE*	navdbg_f;		// open only for the duration of one dump
+static boolean	navprint_quiet;		// file only, no console (auto-dump from a rescue)
 
 static void NavPrint (const char* fmt, ...)
 {
@@ -2307,7 +2308,7 @@ static void NavPrint (const char* fmt, ...)
     vsnprintf (buf, sizeof(buf), fmt, ap);
     va_end (ap);
 
-    C_Printf ("%s", buf);
+    if (!navprint_quiet) C_Printf ("%s", buf);
     if (navdbg_f) { fputs (buf, navdbg_f); fputc ('\n', navdbg_f); }
 }
 
@@ -2516,8 +2517,8 @@ static void AICoop_VoidLog (mobj_t* mo, const char* why)
     int		i, n, first_bad = -1;
 
     if (!f) return;
-    fprintf (f, "\n=== void rescue  map %d.%d  tic %d  leveltime %d ===\n"
-		"[void] %s\n"
+    fprintf (f, "\n=== buddy rescue  map %d.%d  tic %d  leveltime %d ===\n"
+		"[void] reason: %s\n"
 		"[void] at (%d,%d) z=%d floor=%d ceil=%d  sector f=%d c=%d  ongrid=%d\n"
 		"[void] recalled to home (%d,%d)\n",
 	     gameepisode, gamemap, gametic, leveltime,
@@ -2559,7 +2560,18 @@ static void AICoop_VoidLog (mobj_t* mo, const char* why)
 	if (AICoop_PointOutside (vtrace_x[k], vtrace_y[k])) { first_bad = i; break; }
     }
     if (first_bad < 0)
-	fprintf (f, "[void] trace: never inside a real leaf in the last %d tics\n", n);
+    {
+	fprintf (f, "[void] trace: buddy was INSIDE valid geometry for all %d traced tics\n"
+		    "[void]        -> NOT a void event.  It simply could not reach the human\n"
+		    "[void]           (blocked route, hazard, or wedged in real geometry).\n"
+		    "[void] full nav diagnosis at the moment of the rescue:\n", n);
+	// Dump the route/steer state right here.  These rescues fire unattended -- there
+	// is nobody at the console to type `navdbg` at the instant the buddy gives up --
+	// and without it all the log can say is "it did not get there".
+	navdbg_f = f; navprint_quiet = true;
+	AICoop_NavDump ();
+	navprint_quiet = false; navdbg_f = NULL;
+    }
     else
     {
 	int lo = first_bad - 12, hi = first_bad + 3;
