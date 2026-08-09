@@ -1989,19 +1989,31 @@ static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx,
     int		start, goal, len, i, c, np, prev;
     fixed_t	portx[PF_PATHMAX], porty[PF_PATHMAX];
     byte	portj[PF_PATHMAX];
+    boolean	owner;			// this query is the buddy's own (see below)
 
     if (pf_level != gameepisode*100 + gamemap || !pf_cx)
     { PF_Build (mo); pf_level = gameepisode*100 + gamemap; pf_lastbuild = gametic;
       PF_CorridorReset (); }
 
-    corr_next_jump = 0;
+    // The corridor is the BUDDY's, and there is exactly one of it.  This entry point
+    // is public (P_AICoop_NextWaypoint) and every director-controlled monster routes
+    // through it too, so without this gate each monster's query would overwrite the
+    // buddy's plan -- and the buddy's would overwrite theirs -- leaving the cache
+    // permanently invalid and forcing a full A* on every call, for every actor.
+    owner = (mo == AICoop_Mo ());
+
+    if (owner) corr_next_jump = 0;
     start = PF_SS (mo->x, mo->y);
     goal  = PF_SS (dx, dy);
-    if (start == goal) { PF_CorridorReset (); *wx = dx; *wy = dy; return true; }
+    if (start == goal)
+    {
+	if (owner) PF_CorridorReset ();
+	*wx = dx; *wy = dy; return true;
+    }
 
     // Still on the corridor we already planned?  Advance past every portal we have
     // passed (or can already see beyond) and steer at the furthest one we can walk to.
-    if (corr_n && corr_goal == goal)
+    if (owner && corr_n && corr_goal == goal)
     {
 	while (corr_i < corr_n
 	       && P_AproxDistance (mo->x - corr_x[corr_i], mo->y - corr_y[corr_i]) < 32*FRACUNIT)
@@ -2077,10 +2089,13 @@ static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx,
 
     // Store the corridor (tail-clipped to PF_CORR_MAX: the near end is what steering
     // uses, and it is re-planned long before the far end matters).
-    corr_n = np < PF_CORR_MAX ? np : PF_CORR_MAX;
-    for (i = 0; i < corr_n; i++)
-	{ corr_x[i] = portx[i]; corr_y[i] = porty[i]; corr_jump[i] = portj[i]; }
-    corr_i = 0; corr_goal = goal;
+    if (owner)
+    {
+	corr_n = np < PF_CORR_MAX ? np : PF_CORR_MAX;
+	for (i = 0; i < corr_n; i++)
+	    { corr_x[i] = portx[i]; corr_y[i] = porty[i]; corr_jump[i] = portj[i]; }
+	corr_i = 0; corr_goal = goal;
+    }
 
     // Skip the first portal if we are already close to it to ensure we cross it and advance.
     // Skip conditionally if distance is within 56 and the next waypoint is directly reachable,
@@ -2092,8 +2107,11 @@ static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx,
 	fixed_t ty = (np > 1) ? porty[1] : dy;
 	if (dist < 32*FRACUNIT || (dist < 56*FRACUNIT && AICoop_CanReach (mo, tx, ty, true)))
 	{
-	    corr_i = (np > 1) ? 1 : corr_n;
-	    corr_next_jump = (np > 1) ? portj[1] : 0;
+	    if (owner)
+	    {
+		corr_i = (np > 1) ? 1 : corr_n;
+		corr_next_jump = (np > 1) ? portj[1] : 0;
+	    }
 	    *wx = tx; *wy = ty;
 	    return true;
 	}
@@ -2106,12 +2124,12 @@ static boolean PF_NextWaypoint (mobj_t* mo, fixed_t dx, fixed_t dy, fixed_t* wx,
     for (i = np - 1; i >= 0; i--)
 	if (AICoop_CanReach (mo, portx[i], porty[i], true))
 	{
-	    if (i < corr_n) { corr_i = i; corr_next_jump = portj[i]; }
+	    if (owner && i < corr_n) { corr_i = i; corr_next_jump = portj[i]; }
 	    *wx = portx[i]; *wy = porty[i]; return true;
 	}
     if (np > 0)
     {
-	corr_i = 0; corr_next_jump = portj[0];
+	if (owner) { corr_i = 0; corr_next_jump = portj[0]; }
 	*wx = portx[0]; *wy = porty[0]; return true;
     }
     *wx = dx; *wy = dy;

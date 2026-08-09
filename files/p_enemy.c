@@ -718,6 +718,16 @@ static void P_DoNewChaseDir (mobj_t* actor, fixed_t deltax, fixed_t deltay)
     }
 
     actor->movedir = DI_NODIR;	// can not move
+
+    // Boxed in.  P_TryWalk is what reseeds movecount (P_Random()&15), and it never
+    // succeeded, so movecount keeps whatever it had -- and A_Chase decrements it every
+    // tic from here on, marching it to -2000 and beyond.  That matters because the
+    // missile gate in A_Chase is `... && actor->movecount`, i.e. a monster may only
+    // fire when movecount is exactly 0 (below Nightmare, without -fast).  A monster
+    // that cannot move therefore also stops shooting FOREVER, which reads in-game as
+    // "the monsters just stand there and ignore me".  Zero it: being stuck should cost
+    // it its movement, not its gun.
+    actor->movecount = 0;
 }
 
 

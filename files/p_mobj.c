@@ -560,6 +560,17 @@ P_SpawnMobj
 	
     mobj->floorz = mobj->subsector->sector->floorheight;
     mobj->ceilingz = mobj->subsector->sector->ceilingheight;
+    // (M) MBF ledge avoidance: seed dropoffz too.  It is only ever written by a
+    // completed P_TryMove, so a freshly spawned actor kept the zero it got from
+    // Z_Malloc+memset -- and MBF's relative rule asks
+    //     thing->dropoffz - tmdropoffz > 24
+    // which for a monster spawned in a sector with a NEGATIVE floor reads
+    // 0 - (-176) = 176 and refuses the move in every direction.  It can then never
+    // move, so P_TryMove never completes, so dropoffz is never corrected: a
+    // permanent deadlock, and (via movecount, see P_NewChaseDir) the monster stops
+    // shooting as well.  Only ever bit maps with floors below 0, which is why it
+    // looked like "some monsters are idle and some are fine".
+    mobj->dropoffz = mobj->floorz;
 
     if (z == ONFLOORZ)
 	mobj->z = mobj->floorz;

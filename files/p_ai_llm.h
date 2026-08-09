@@ -47,4 +47,9 @@ void	A_LLMChase (mobj_t* actor);
 // Returns a one-line status string.
 const char* P_AI_Console (const char* arg);
 
+
+// "mondbg" console command: dump the state of every live monster near the player
+// (target, sight, state, flags, director order) to the console and run/navdbg.txt.
+void	P_AI_MonDebug (void);
+
 #endif

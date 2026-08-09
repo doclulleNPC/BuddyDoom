@@ -61,6 +61,7 @@
 #include "s_sound.h"
 #include "r_main.h"
 
+#include "c_console.h"		// C_Printf -- the "mondbg" dump
 #include "p_ai_llm.h"
 #include "p_ai_coop.h"		// buddy observation + director directives (-aicoop)
 #include "p_ai_director.h"	// L4D stress fields + spawn act verbs (-aidirector)
@@ -368,6 +369,25 @@ void A_LLMChase (mobj_t* actor)
 	AI_MoveToward (actor, actor->target->x, actor->target->y);
 	break;
     }
+
+    // Movement-leg bookkeeping.  movecount is the number of tics left on the current
+    // leg, and the missile gate above only opens when it hits 0 (below nightmare,
+    // without -fast) -- that is what paces vanilla monsters' fire.  A_Chase decrements
+    // it as part of its move step:
+    //
+    //     if (--actor->movecount < 0 || !P_Move (actor)) P_NewChaseDir (actor);
+    //
+    // A_LLMChase READ movecount but never decremented it, so a monster that came under
+    // a director order carrying a non-zero leg -- P_NewChaseDir seeds it P_Random()&15,
+    // so 15 times out of 16 -- had the missile branch gated off permanently.  It would
+    // stand in front of the player, facing it, and never fire again.  Melee still
+    // worked (that branch is above the gate), which is why it looked like only the
+    // ranged monsters had gone passive.
+    //
+    // Reseed rather than call P_NewChaseDir: the order already dictates the direction
+    // each tic, and P_NewChaseDir would fight it (and spin a HOLD monster off-target).
+    if (--actor->movecount < 0)
+	actor->movecount = P_Random () & 15;
 
     if (actor->info->activesound && P_Random () < 3)
 	S_StartSound (actor, actor->info->activesound);
@@ -1142,4 +1162,109 @@ const char* P_AI_Console (const char* arg)
 	snprintf (msg, sizeof(msg), "AI director OFF -- monsters use vanilla AI");
     }
     return msg;
+}
+
+
+// ---------------------------------------------------------------------------
+// "mondbg" console command -- why the monsters around you are (or are not)
+// fighting.  Console AND run/navdbg.txt, same as navdbg.
+//
+// Deliberately reads only side-effect-free state: no P_CheckMissileRange, no
+// P_CheckMeleeRange -- both consume P_Random, and a console command must not
+// move the playsim's RNG.  Everything the gates depend on is reported instead,
+// so the reason can be reconstructed without perturbing the game.
+// ---------------------------------------------------------------------------
+static const char* MonDbg_Target (mobj_t* t)
+{
+    static char	buf[48];
+    int		i;
+
+    if (!t) return "none";
+    for (i = 0; i < MAXPLAYERS; i++)
+	if (players[i].mo == t)
+	{
+	    snprintf (buf, sizeof(buf), i == consoleplayer ? "YOU" : "buddy(p%d)", i+1);
+	    return buf;
+	}
+    snprintf (buf, sizeof(buf), "mobj type %d", t->type);
+    return buf;
+}
+
+static const char* MonDbg_State (mobj_t* m)
+{
+    int	st = (int)(m->state - states);
+
+    if (st == m->info->spawnstate)   return "SPAWN(idle)";
+    if (st == m->info->seestate)     return "SEE";
+    if (st == m->info->missilestate) return "MISSILE";
+    if (st == m->info->meleestate)   return "MELEE";
+    if (st == m->info->painstate)    return "PAIN";
+    return "other";
+}
+
+void P_AI_MonDebug (void)
+{
+    thinker_t*	th;
+    mobj_t*	pl = players[consoleplayer].mo;
+    FILE*	f;
+    int		shown = 0;
+    extern int	notarget;
+
+    if (!pl) { C_Printf ("[mon] no player"); return; }
+
+    f = fopen ("navdbg.txt", "a");
+    if (f) fprintf (f, "\n=== mondbg  map %d.%d  tic %d ===\n", gameepisode, gamemap, gametic);
+
+#define MONP(...) do { C_Printf (__VA_ARGS__); if (f) { fprintf (f, __VA_ARGS__); fputc ('\n', f); } } while (0)
+
+    MONP ("[mon] you (%d,%d)  notarget=%d  ai_on=%d ai_enabled=%d  skill=%d fast=%d",
+	  pl->x>>FRACBITS, pl->y>>FRACBITS, notarget, ai_on, ai_enabled,
+	  (int)gameskill, fastparm);
+    // P_AI_IgnorePlayer (p_enemy.c) makes this fork's blur sphere TRUE invisibility:
+    // a player holding it is not acquirable at all, and chasing monsters forget it.
+    // That reads in-game as "the monsters in front of me have gone passive".
+    MONP ("[mon] you: invisibility=%d (nonzero = monsters ignore you entirely)  players in game: %d%d%d%d",
+	  players[consoleplayer].powers[pw_invisibility],
+	  playeringame[0]?1:0, playeringame[1]?1:0, playeringame[2]?1:0, playeringame[3]?1:0);
+
+    for (th = thinkercap.next; th != &thinkercap && shown < 12; th = th->next)
+    {
+	mobj_t*	m;
+	int	d;
+
+	if (th->function.acp1 != (actionf_p1)P_MobjThinker) continue;
+	m = (mobj_t*)th;
+	if (!(m->flags & MF_COUNTKILL) || m->health <= 0) continue;
+	d = (int)(P_AproxDistance (m->x - pl->x, m->y - pl->y) >> FRACBITS);
+	if (d > 1024) continue;
+
+	shown++;
+	MONP ("[mon] type%-3d d=%-5d hp=%-4d %-11s tgt=%-12s sight=%d",
+	      m->type, d, m->health, MonDbg_State (m), MonDbg_Target (m->target),
+	      P_CheckSight (m, pl) ? 1 : 0);
+	MONP ("[mon]   z=%-5d floorz=%-5d dropoffz=%-5d secfloor=%-5d %s",
+	      m->z>>FRACBITS, m->floorz>>FRACBITS, m->dropoffz>>FRACBITS,
+	      m->subsector->sector->floorheight>>FRACBITS,
+	      m->floorz > m->subsector->sector->floorheight
+		  ? "<-- STANDING ON A THING" : "");
+	MONP ("[mon]   react=%-3d thresh=%-3d movecount=%-3d movedir=%d%s  flags:%s%s%s%s",
+	      m->reactiontime, m->threshold, m->movecount, m->movedir,
+	      m->movedir == 8 ? " (NODIR=stuck)" : "",
+	      (m->flags & MF_FRIEND)       ? " FRIEND"       : "",
+	      (m->flags & MF_AMBUSH)       ? " AMBUSH"       : "",
+	      (m->flags & MF_JUSTATTACKED) ? " JUSTATTACKED" : "",
+	      (m->flags & MF_SHOOTABLE)    ? " SHOOTABLE"    : " !SHOOTABLE");
+	{
+	    aientry_t* e = AI_FindByMobj (m);
+	    MONP ("[mon]   director: active=%d order=%s for=%d after=%d  missilestate=%d",
+		  P_AI_Active (m), e ? AI_OrderName (e->order) : "-",
+		  e ? e->for_tics : 0, e ? e->after_tics : 0,
+		  m->info->missilestate);
+	}
+    }
+    if (!shown)
+	MONP ("[mon] no live COUNTKILL monster within 1024 units");
+#undef MONP
+
+    if (f) { fclose (f); C_Printf ("[mon] appended to navdbg.txt"); }
 }

@@ -395,7 +395,7 @@ static void C_Execute (char* line)
 	C_Printf ("world:  spawn <thing>  skill <1-5>  map <e> <m> / warp <m>");
 	C_Printf ("view:   crosshair 0..3  screenblocks <3-11>");
 	C_Printf ("keys:   bind <key> <command> | unbind <key> | bind (list)");
-	C_Printf ("buddy:  where  come  wait/stay  attack  report  buddygod  buddyheal  buddyarm  buddyhome  navdbg");
+	C_Printf ("buddy:  where  come  wait/stay  attack  report  buddygod  buddyheal  buddyarm  buddyhome  navdbg  mondbg");
 	C_Printf ("monsterAI: director on|off|demo  (LLM<->Doom)");
 	C_Printf ("misc:   clear  echo <text>  quit");
     }
@@ -880,6 +880,8 @@ static void C_Execute (char* line)
 	C_Printf ("%s", P_AICoop_Home ());
     else if (!strcmp(cmd, "navdbg") || !strcmp(cmd, "nav"))
 	P_AICoop_NavDebug ();
+    else if (!strcmp(cmd, "mondbg") || !strcmp(cmd, "mon"))
+	P_AI_MonDebug ();
     else if (!strcmp(cmd, "director") || !strcmp(cmd, "ai") || !strcmp(cmd, "llm"))
 	C_Printf ("%s", P_AI_Console (args));
     else if (!strcmp(cmd, "crosshair") || !strcmp(cmd, "xhair"))

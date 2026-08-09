@@ -688,13 +688,32 @@ P_TryMove
 	// instead whether this step would drop the monster more than 24 below where
 	// it already is, or make the overhang more than 24 worse -- so it can follow
 	// you down (and back up) the stairs, but still will not walk off a cliff.
-	if ( !(thing->flags&(MF_DROPOFF|MF_FLOAT)) )
+	//
+	// (mod) ...but NOT while the actor is standing on ANOTHER ACTOR.  With
+	// over/under 3D clipping, PIT_CheckThing raises tmfloorz to the top of a solid
+	// thing you can stand on, and thing->floorz keeps that value -- while
+	// tmdropoffz is left at the real sector floor.  The relative rule then reads
+	// stepping off a monster's head (or a barrel) as a ~56-unit fall and refuses it
+	// in EVERY direction, so the actor is immobile for good: P_NewChaseDir runs out
+	// of options and leaves movedir = DI_NODIR, and because it never succeeds it
+	// never reseeds movecount either -- which ALSO holds the missile gate in A_Chase
+	// shut permanently.  The monster ends up standing there, seeing you, never
+	// firing and never moving.  Climbing onto something you can always climb off.
+	if ( !(thing->flags&(MF_DROPOFF|MF_FLOAT))
+	     && thing->floorz <= thing->subsector->sector->floorheight )
 	{
 	    extern int monster_smart;
+	    // dropoffz is by definition the LOWEST floor the actor's box touches, so it
+	    // can never exceed floorz.  Enforce that here rather than trusting the
+	    // stored value: a savegame written before dropoffz was seeded at spawn (or
+	    // any future path that sets floorz and forgets dropoffz) would otherwise
+	    // keep the actor frozen forever, since the deadlock prevents the very move
+	    // that would correct it.
+	    fixed_t dropz = thing->dropoffz > thing->floorz ? thing->floorz : thing->dropoffz;
 	    if (!monster_smart
 		? tmfloorz - tmdropoffz > 24*FRACUNIT
 		: thing->floorz  - tmfloorz  > 24*FRACUNIT ||
-		  thing->dropoffz - tmdropoffz > 24*FRACUNIT)
+		  dropz - tmdropoffz > 24*FRACUNIT)
 		return false;
 	}
     }
