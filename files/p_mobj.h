@@ -318,8 +318,14 @@ typedef struct mobj_s
     // Only valid if type == MT_PLAYER
     struct player_s*	player;
 
+    // (X) Hexen thing id.  Hexen's 20-byte THINGS record starts with a TID, and its
+    // scripts address things by it -- Thing_Spawn, Thing_Projectile, Thing_Activate,
+    // Teleport and friends all mean "the thing(s) tagged N", not "the thing here".
+    // 0 = untagged, which is almost everything.
+    int			tid;
+
     // Player number last looked for.
-    int			lastlook;	
+    int			lastlook;
 
     // For nightmare respawn.
     mapthing_t		spawnpoint;	

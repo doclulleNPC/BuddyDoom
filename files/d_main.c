@@ -1766,12 +1766,14 @@ void D_DoomMain (void)
 		    Heretic_Items_Init(void), Heretic_Deco_Init(void), Heretic_MVar_Init(void),
 		    Heretic_Weapons_Init(void);
 	extern void Hexen_Deco_Init(void), Hexen_Items_Init(void), Hexen_Mon_Init(void);
+    extern void Hexen_Things_Init(void);	// (X) Thing_* specials + glass shards
 	extern void Sounds_Heretic_Init(void), Sounds_Hexen_Init(void), Sounds_HWeapons_Init(void);
 	extern void Sounds_Strife_Init(void);
 	extern void Strife_Init(void), Strife_Deco_Init(void), Strife_Mon_Init(void), Strife_Weapons_Init(void), Strife_Items_Init(void);
 	{ extern void Heretic_Splash_Init(void); Heretic_Splash_Init (); }	// (H) liquid-terrain splash actors
 	Heretic_Init (); Heretic_Deco_Init (); Heretic_MVar_Init ();	// (H) monsters + scenery + variants
 	Hexen_Init (); Hexen_Deco_Init (); Hexen_Items_Init (); Hexen_Mon_Init ();	// (X) full Hexen pack
+    Hexen_Things_Init ();						// (X) stained-glass shards
 	Strife_Init (); Strife_Deco_Init (); Strife_Mon_Init ();		// (S) Strife core + scenery + monsters
 	Strife_Weapons_Init ();						// (S) player weapons (overwrites weaponinfo in strife_mode)
 	Strife_Items_Init ();						// (S) pickups (ammo/weapons/armor/keys/inventory)

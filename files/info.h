@@ -343,6 +343,10 @@ typedef enum
     // STLK* frames in buddydoom.wad.  Appended AFTER the Strife block so the reserved
     // Strife sprite numbers stay put.
     SPR_STLK,
+    // (X) Hexen stained-glass shards (native SGSA/SGSB codes, art is in hexen.wad).
+    // Appended at the very END so every reserved sprite number above stays put --
+    // sprnames_builtin[] in info.c must match this order exactly.
+    SPR_SGSA, SPR_SGSB,
     NUMSPRITES
 
 } spritenum_t;
@@ -1899,6 +1903,16 @@ typedef enum
     S_STLKB_DIE1, S_STLKB_DIE2, S_STLKB_DIE3, S_STLKB_DIE4, S_STLKB_DIE5, S_STLKB_DIE6,
     S_STLKB_DIE7, S_STLKB_DIE8, S_STLKB_DIE9, S_STLKB_DIE10, S_STLKB_DIE11, S_STLKB_DIE12,
     S_STLKB_DIE13,
+    // (X) Hexen stained-glass shards (files/hexen_things.c).  Shards 1-5 tumble
+    // through five SGSA frames; 6-0 are single-frame SGSB chips.  Each has a _D
+    // "settled" state it drops into when it stops.
+    S_XSGS1_1, S_XSGS1_2, S_XSGS1_3, S_XSGS1_4, S_XSGS1_5, S_XSGS1_D,
+    S_XSGS2_1, S_XSGS2_2, S_XSGS2_3, S_XSGS2_4, S_XSGS2_5, S_XSGS2_D,
+    S_XSGS3_1, S_XSGS3_2, S_XSGS3_3, S_XSGS3_4, S_XSGS3_5, S_XSGS3_D,
+    S_XSGS4_1, S_XSGS4_2, S_XSGS4_3, S_XSGS4_4, S_XSGS4_5, S_XSGS4_D,
+    S_XSGS5_1, S_XSGS5_2, S_XSGS5_3, S_XSGS5_4, S_XSGS5_5, S_XSGS5_D,
+    S_XSGS6_1, S_XSGS6_D, S_XSGS7_1, S_XSGS7_D, S_XSGS8_1, S_XSGS8_D,
+    S_XSGS9_1, S_XSGS9_D, S_XSGS0_1, S_XSGS0_D,
     NUMSTATES
 } statenum_t;
 
@@ -2278,6 +2292,10 @@ typedef enum {
     // (S) Strife mobjtype reservations (see strife_mt.inc, strife-ve order)
 #include "strife_mt.inc"
     MT_STALKERBUDDY,		// (S) Stalker buddy special (files/strife_stalker.c)
+    // (X) Hexen stained-glass shards -- what a breaking window throws off.
+    // Script-spawned only (Thing_Projectile), never map-placed: doomednum -1.
+    MT_XSGSHARD1, MT_XSGSHARD2, MT_XSGSHARD3, MT_XSGSHARD4, MT_XSGSHARD5,
+    MT_XSGSHARD6, MT_XSGSHARD7, MT_XSGSHARD8, MT_XSGSHARD9, MT_XSGSHARD0,
     NUMMOBJTYPES
 
 } mobjtype_t;

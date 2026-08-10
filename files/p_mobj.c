@@ -795,6 +795,53 @@ void P_SpawnPlayer (mapthing_t* mthing)
 // loader reads this to apply a thing's Z "height" after the spawn.
 mobj_t* P_LastMapThingMobj;
 
+//
+// P_FindMobjFromTID
+//
+// (X) Walk the things tagged with a Hexen thing id.  Pass a thinker_t* cursor
+// initialised to NULL; each call returns the next match and advances it, so a
+// caller can act on EVERY thing with that tag:
+//
+//	thinker_t* s = NULL;  mobj_t* mo;
+//	while ((mo = P_FindMobjFromTID (tid, &s)) != NULL) ...
+//
+// Hexen keeps a TID hash for this.  A thinker walk is simpler and fast enough:
+// the scripts that use it fire on events (a switch, a script call), not per tic.
+//
+mobj_t* P_FindMobjFromTID (int tid, thinker_t** searcher)
+{
+    thinker_t*	th;
+
+    // Tag 0 means UNTAGGED, not "everything".  Hexen keeps an explicit TID list and
+    // only ever puts things with tid != 0 in it (P_CreateTIDList), so a lookup of 0
+    // finds nothing there.  Matching tid == 0 here instead would match every
+    // untagged thing in the level -- and since Thing_Spawn appends more untagged
+    // things as it goes, a script calling it with tag 0 would spawn forever.  That
+    // is not hypothetical: it hung Hexen MAP39 on the first run of this code.
+    if (!tid)
+    {
+	*searcher = NULL;
+	return NULL;
+    }
+
+    th = (*searcher) ? (*searcher)->next : thinkercap.next;
+
+    for ( ; th != &thinkercap ; th = th->next)
+    {
+	mobj_t* mo;
+	if (th->function.acp1 != (actionf_p1)P_MobjThinker)
+	    continue;
+	mo = (mobj_t*) th;
+	if (mo->tid == tid)
+	{
+	    *searcher = th;
+	    return mo;
+	}
+    }
+    *searcher = NULL;
+    return NULL;
+}
+
 // P_SpawnMapThing
 // The fields of the mapthing should
 // already be in host byte order.

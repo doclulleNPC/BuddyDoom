@@ -30,7 +30,7 @@
 // Global parameters/defines.
 //
 // DOOM version
-enum { VERSION_NUM =  124 };	// auto-bumped: mobj_t grew (MBF strafecount, dropoffz, lastenemy)
+enum { VERSION_NUM =  125 };	// auto-bumped: mobj_t grew (MBF strafecount, dropoffz, lastenemy)
 // AUTO-MANAGED.  Both build paths fingerprint the structs p_saveg.c memcpy's and
 // bump this when the fingerprint moves, so stale saves are cleanly REJECTED ("bad
 // version") instead of being read into a layout that no longer matches:

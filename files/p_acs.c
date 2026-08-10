@@ -44,7 +44,8 @@
 #include "z_zone.h"
 #include "hu_stuff.h"
 #include "p_acs.h"
-#include "po_man.h"		// (X) polyobject specials
+#include "po_man.h"
+#include "hexen_things.h"	// (X) Thing_* specials + glass shards
 
 // ACS0 container header: "ACS\0", then the offset of the info block.
 typedef struct
@@ -448,6 +449,19 @@ boolean P_ExecuteLineSpecial (int special, byte* args, line_t* line, int side,
       case 42: return EV_DoCeiling (tl, crushAndRaise) != 0;	// Ceiling_CrushAndRaise
       case 43: return EV_DoCeiling (tl, lowerAndCrush) != 0;	// Ceiling_LowerAndCrush
       case 44: return EV_CeilingCrushStop (tl) != 0;		// Ceiling_CrushStop
+
+      // ---- Thing_* (Hexen 130-137).  These address things by TID, and they are
+      // how Hexen's scripts spawn ambushes, drop items, throw rocks -- and shatter
+      // stained glass (Thing_Projectile with the T_STAINEDGLASS types).  See
+      // files/hexen_things.c.
+      case 130: return EV_ThingActivate   (args, true);		// Thing_Activate
+      case 131: return EV_ThingActivate   (args, false);	// Thing_Deactivate
+      case 132: return EV_ThingRemove     (args, false);	// Thing_Remove
+      case 133: return EV_ThingRemove     (args, true);		// Thing_Destroy
+      case 134: return EV_ThingProjectile (args, false);	// Thing_Projectile
+      case 135: return EV_ThingSpawn      (args, true);		// Thing_Spawn
+      case 136: return EV_ThingProjectile (args, true);		// Thing_ProjectileGravity
+      case 137: return EV_ThingSpawn      (args, false);	// Thing_SpawnNoFog
 
       // ---- teleport
       case 70: return mo ? (EV_Teleport (tl, side, mo) != 0) : false;	// Teleport

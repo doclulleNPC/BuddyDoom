@@ -136,6 +136,7 @@ char *sprnames_builtin[NUMSPRITES] = {
     // (S) Strife native 4-char sprite codes (see strife_sprnames.inc, strife-ve order)
 #include "strife_sprnames.inc"
     "STLK",			// (S) Stalker buddy -- SPID* renamed (buddydoom.wad)
+    "SGSA","SGSB",		// (X) Hexen stained-glass shards (native codes, hexen.wad)
 };
 
 

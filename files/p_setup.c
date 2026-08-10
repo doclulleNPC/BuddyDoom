@@ -520,6 +520,8 @@ void P_LoadNodes (int lump)
 // Set per level by P_SetupLevel: this map uses the HEXEN binary format -- 16-byte
 // LINEDEFS (ACS special byte + 5 args, no tag) and 20-byte THINGS (TID + spawn
 // height), marked by a BEHAVIOR lump.  DOOM/Boom/UDMF maps leave it 0.
+extern mobj_t*	P_LastMapThingMobj;	// p_mobj.c -- the mobj the last P_SpawnMapThing made
+
 int	hexen_map_format = 0;
 
 // True if some mobjtype claims this Hexen map-thing number.  Used to decide
@@ -557,9 +559,12 @@ void P_LoadThings (int lump)
 	
     // Hexen-format maps store 20-byte THINGS (tid, x, y, height, angle, type,
     // flags, special, args[5]) instead of DOOM's 10-byte records.  Read them into
-    // a DOOM mapthing_t so the whole spawn path below is untouched; the extra
-    // fields (TID, spawn height, the ACS special + its args) are dropped, because
-    // nothing downstream can act on them yet.
+    // a DOOM mapthing_t so the whole spawn path below is untouched.
+    //
+    // The TID is now KEPT (stamped onto the spawned mobj below): Hexen's scripts
+    // address things by tag, not by position, so Thing_Spawn / Thing_Projectile /
+    // Thing_Activate and the rest are all no-ops without it.  The spawn height and
+    // the per-thing ACS special are still dropped.
     if (hexen_map_format)
     {
 	mapthing_t	conv;
@@ -600,7 +605,15 @@ void P_LoadThings (int lump)
 		}
 	    }
 	    else if ((conv.type >= 1 && conv.type <= 4) || P_HexenEdnumKnown (conv.type))
+	    {
 		P_SpawnMapThing (&conv);
+		// Stamp the thing id on whatever that spawned.  P_SpawnMapThing has
+		// no room for it (mapthing_t is the 10-byte DOOM record, and it is
+		// read straight off disk for DOOM maps, so it cannot grow a field),
+		// so it hands the mobj back through P_LastMapThingMobj.
+		if (P_LastMapThingMobj)
+		    P_LastMapThingMobj->tid = (short)(r[0] | (r[1] << 8));
+	    }
 	    else
 	    {
 		// Record DISTINCT unmapped numbers, not one line per thing: a map
