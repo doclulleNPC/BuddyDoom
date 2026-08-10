@@ -1145,20 +1145,24 @@ static void I_CreateTexture(void)
 
 // Cross-module hooks used when changing resolution.
 extern int	screenblocks;
-extern int	detailLevel;
-void		R_SetViewSize (int blocks, int detail);
+void		R_SetViewSize (int blocks);
 void		R_ExecuteSetViewSize (void);
 void		ST_SetRes (void);
 void		HU_Buddy_SetRes (void);
 
 //
 // V_SetRes
-// Change the internal rendering resolution at runtime (scale = 1..6).
+// Change the internal rendering resolution at runtime (scale = 2..7).
 // Recreates the SDL texture and rebuilds the renderer / status-bar state.
+//
+// Scale 1 (the original 320x200) is NOT selectable: this renderer is hi-res, every 2D
+// asset is scaled up from BASE coords anyway, and the old 1x path only existed as the
+// vanilla fallback.  Anything lower than 2 clamps to 2, so a stale config or command
+// line asking for 320x200 quietly gets 640x400.
 //
 void V_SetRes(int scale)
 {
-    if (scale < 1) scale = 1;
+    if (scale < 2) scale = 2;
     if (scale > 7) scale = 7;
     if (BASE_WIDTH*scale > MAXWIDTH || BASE_HEIGHT*scale > MAXHEIGHT)
 	return;
@@ -1192,7 +1196,7 @@ void V_SetRes(int scale)
     // which scale internally), but call its hook so it can reallocate any
     // per-resolution scratch buffers it may grow in the future.
     HU_Buddy_SetRes();
-    R_SetViewSize (screenblocks, detailLevel);
+    R_SetViewSize (screenblocks);
     R_ExecuteSetViewSize ();
 
     // Grow/shrink the window to match the new resolution + output aspect (windowed).
@@ -1238,9 +1242,8 @@ void I_InitGraphics(void)
 	grabMouse = false;
 
     // Initial resolution scale (also drives the window size).  Defaults to the
-    // saved value (loaded from the config); -1..-4 / -render N override.
+    // saved value (loaded from the config); -2..-4 / -render N override.
     startscale = hires;
-    if (M_CheckParm("-1")) startscale = 1;
     if (M_CheckParm("-2")) startscale = 2;
     if (M_CheckParm("-3")) startscale = 3;
     if (M_CheckParm("-4")) startscale = 4;
@@ -1249,7 +1252,7 @@ void I_InitGraphics(void)
 	if (p && p < myargc-1)
 	    startscale = atoi(myargv[p+1]);
     }
-    if (startscale < 1) startscale = 1;
+    if (startscale < 2) startscale = 2;		// 320x200 (scale 1) is gone -- see V_SetRes
     if (startscale > 7) startscale = 7;
 
     if (fullscreen_mode || M_CheckParm("-fullscreen"))

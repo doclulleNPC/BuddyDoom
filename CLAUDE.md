@@ -241,8 +241,12 @@ upscale of 320x200. Key design (ported from `../sdldoom-1.10`, adapted to SDL 1.
 
 - `SCREENWIDTH`/`SCREENHEIGHT`/`hires` are **runtime variables** (`doomdef.c`),
   declared `extern` in `doomdef.h`, equal to `BASE_WIDTH*hires` x `BASE_HEIGHT*hires`
-  (`hires` 1..6 → 320x200 … 1920x1200). Renderer static tables and the `screens[]`
-  buffers are sized for `MAXWIDTH`x`MAXHEIGHT` (1920x1200), not the current size.
+  (`hires` **2..7** → 640x400 … 2240x1400). Renderer static tables and the `screens[]`
+  buffers are sized for `MAXWIDTH`x`MAXHEIGHT` (2560x1440), not the current size.
+  **`hires` 1 (320x200) is gone** — `V_SetRes` clamps to 2 — and so is vanilla's
+  **low-detail/"blocky" mode**: `detailshift`/`detailLevel`, `R_DrawColumnLow`,
+  `R_DrawSpanLow` and the `detaillevel` config key no longer exist (it had been a
+  forced no-op for a while; `R_SetViewSize` now takes only `blocks`).
 - **All 2D drawing is authored in 320x200 (`BASE_*`) coordinates** and scaled up by
   `hires` inside the `V_*` functions (`v_video.c`: `V_DrawPatch`, `V_CopyRect`,
   `V_DrawPatchFlipped`). The 3D view, automap and screen wipe render natively at
@@ -255,7 +259,7 @@ upscale of 320x200. Key design (ported from `../sdldoom-1.10`, adapted to SDL 1.
   resolution), reallocates the status-bar buffer (`ST_SetRes`), and flags a renderer
   rebuild via `R_SetViewSize`. Reached from **Options → Video** (`m_menu.c`,
   `M_DrawVideo`/`M_VideoRes`/`M_VideoFullscreen`, drawn as text — no graphic lumps),
-  or `-1`/`-2`/`-3`/`-4` / `-render N` at startup. Persisted in the config as
+  or `-2`/`-3`/`-4` / `-render N` at startup. Persisted in the config as
   `screen_resolution` and `fullscreen` (`m_misc.c` `defaults[]`).
 - **Video filters** (Options → Video, default off, persisted as `antialiasing`/`blur`):
   `antialiasing` toggles the texture scale mode (`SDL_SCALEMODE_LINEAR` vs `NEAREST`,
@@ -321,8 +325,8 @@ portable game code that calls into them through the `I_*` interface.
 - **Renderer (`r_*`)** — software BSP renderer. `r_main` (frame setup, view),
   `r_bsp` (BSP traversal, visplane/drawseg setup), `r_segs`/`r_plane`/`r_things`
   (walls, flats, sprites/masked columns), `r_data` (texture/flat composition),
-  `r_draw` (the inner column/span pixel loops), `r_sky`. Output is the 320x200
-  8-bit paletted buffer that `i_video.c` blits.
+  `r_draw` (the inner column/span pixel loops), `r_sky`. Output is the 8-bit
+  paletted `SCREENWIDTH`x`SCREENHEIGHT` buffer that `i_video.c` blits.
 
 - **WAD & memory** — `w_wad.c` is the lump archive loader (the only file access
   abstraction; everything loads "lumps" by name/number). `z_zone.c` is the custom

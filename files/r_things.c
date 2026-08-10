@@ -693,7 +693,7 @@ R_DrawVisSprite
 	    ( (vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT-8) );
     }
 	
-    dc_iscale = abs(vis->xiscale)>>detailshift;
+    dc_iscale = abs(vis->xiscale);
     dc_texturemid = vis->texturemid;
     frac = vis->startfrac;
     spryscale = vis->scale;
@@ -722,7 +722,7 @@ R_DrawVisSprite
     }
     dc_baseclip = -1;		// (H) don't leak the foot clip into other sprites/psprites
 
-    colfunc = basecolfunc;
+    colfunc = R_DrawColumn;
 
     // Overlay the full-colour HD image on screen32, over the quantised sprite that
     // was just drawn to screens[0]/screen32.  The composite then shows this instead
@@ -864,7 +864,7 @@ void R_ProjectSprite (mobj_t* thing)
     vis->mobjflags2 = thing->flags2;
     vis->translation = (thing == r_buddycolor_mo) ? r_buddycolor_xlat : NULL;
     vis->floorz = thing->floorz;
-    vis->scale = xscale<<detailshift;
+    vis->scale = xscale;
     vis->gx = thing->x;
     vis->gy = thing->y;
     vis->gz = thing->z;
@@ -924,7 +924,7 @@ void R_ProjectSprite (mobj_t* thing)
     else
     {
 	// diminished light
-	index = xscale>>(LIGHTSCALESHIFT-detailshift);
+	index = LIGHTSCALEIDX(xscale);		// base-unit index (see r_main.h)
 
 	if (index >= MAXLIGHTSCALE) 
 	    index = MAXLIGHTSCALE-1;
@@ -1046,7 +1046,7 @@ void R_DrawPSprite (pspdef_t* psp)
         vis->texturemid += 16 << FRACBITS; }   // lift by half the 32px bar (centery shift)
     vis->x1 = x1 < 0 ? 0 : x1;
     vis->x2 = x2 >= viewwidth ? viewwidth-1 : x2;	
-    vis->scale = pspritescale<<detailshift;
+    vis->scale = pspritescale;
     
     if (flip)
     {

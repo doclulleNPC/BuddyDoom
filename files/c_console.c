@@ -572,13 +572,13 @@ static void C_Execute (char* line)
     else if (!strcmp(cmd, "screenblocks") || !strcmp(cmd, "viewsize"))
     {
 	// Set the 3D view size (the old screen-size slider, now console-only).
-	extern int  screenblocks, detailLevel;
-	extern void R_SetViewSize (int blocks, int detail);
+	extern int  screenblocks;
+	extern void R_SetViewSize (int blocks);
 	int b;
 	if (sscanf (args, "%d", &b) == 1 && b >= 3 && b <= 11)
 	{
 	    screenblocks = b;
-	    R_SetViewSize (screenblocks, detailLevel);
+	    R_SetViewSize (screenblocks);
 	    C_Printf ("screenblocks = %d", b);
 	}
 	else

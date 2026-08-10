@@ -81,8 +81,6 @@ int			mouseSensitivity;       // has default
 int			showMessages;
 	
 
-// Blocky mode, has default, 0 = high, 1 = normal
-int			detailLevel;		
 int			screenblocks;		// has default (fixed; screen-size slider removed)
 
 // -1 = no quicksave slot picked!
@@ -1197,7 +1195,6 @@ void M_Episode(int choice)
 //
 // M_Options
 //
-char    detailNames[2][9]	= {"M_GDHIGH","M_GDLOW"};
 char	msgNames[2][9]		= {"M_MSGOFF","M_MSGON"};
 
 
@@ -1655,7 +1652,7 @@ void M_DrawBuddy (void)
 void M_LightDither(int choice)
 {
     dither_lighting = !dither_lighting;
-    R_SetViewSize (screenblocks, detailLevel);	// recompute r_dither_on
+    R_SetViewSize (screenblocks);		// recompute r_dither_on
     M_SaveDefaults ();
 }
 
@@ -1684,7 +1681,7 @@ void M_StatusBarStyle(int choice)
 {
     if (choice) statusbar_style = (statusbar_style + 1) % 3;
     else        statusbar_style = (statusbar_style + 2) % 3;
-    R_SetViewSize (screenblocks, detailLevel);	// styles 1/2 need a full-height view
+    R_SetViewSize (screenblocks);		// styles 1/2 need a full-height view
     M_SaveDefaults ();
 }
 
@@ -1897,7 +1894,7 @@ void M_VideoRes(int choice)
     }
     else
     {
-	if (hires > 1) V_SetRes(hires-1);
+	if (hires > 2) V_SetRes(hires-1);	// 2 = 640x400 is the floor (no 320x200)
     }
     M_SaveDefaults();		// persist now, not just at quit
 }
@@ -2126,9 +2123,11 @@ void M_ChangeSensitivity(int choice)
 
 
 
-// M_ChangeDetail removed: vanilla's low-detail (half-horizontal-res) mode is a dead
-// no-op in this hi-res renderer -- R_ExecuteSetViewSize forces detailshift=0.  The
-// `detailLevel` config value is kept (harmless) so old configs still load.
+// Vanilla's low-detail ("blocky") mode is gone for good: it halved the horizontal
+// resolution and doubled every column, which is meaningless on this hi-res renderer
+// and had never been adapted to it (at hi-res widescreen the doubled scale projected
+// walls off the framebuffer and crashed).  M_ChangeDetail, detailLevel/detailshift and
+// R_DrawColumnLow/R_DrawSpanLow were all removed with it.
 
 
 

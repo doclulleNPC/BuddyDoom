@@ -33,11 +33,12 @@ rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 
 // Location for any defines turned variables.
 
-// Internal rendering resolution.  Defaults to 320x200 (hires==1); changed at
-// runtime by V_SetRes() (see i_video.c) from the Video menu.
-int	SCREENWIDTH  = BASE_WIDTH;
-int	SCREENHEIGHT = BASE_HEIGHT;
-int	hires        = 1;
+// Internal rendering resolution.  The lowest scale is 2 (640x400) -- the original
+// 320x200 was dropped, this renderer is hi-res.  These are the pre-config values;
+// V_SetRes() (i_video.c) sets the real ones at startup and from the Video menu.
+int	SCREENWIDTH  = BASE_WIDTH  * 2;
+int	SCREENHEIGHT = BASE_HEIGHT * 2;
+int	hires        = 2;
 
 // Widescreen (Hor+) support, crispy-doom style.  When `widescreen` is on,
 // SCREENWIDTH is made wider than the 4:3/16:10 reference NONWIDEWIDTH; the 3D
@@ -46,7 +47,7 @@ int	hires        = 1;
 // BASE (320-wide) coords -- HUD edge elements shift out by it.
 int	aspect        = 2;		// config: 0=4:3, 1=16:9, 2=16:10 (native base)
 int	widescreen    = 0;		// derived in V_SetRes: 1 when aspect==16:9 (Hor+)
-int	NONWIDEWIDTH  = BASE_WIDTH;	// the 16:10 width for the current hires
+int	NONWIDEWIDTH  = BASE_WIDTH * 2;	// the 16:10 width for the current hires
 int	WIDESCREENDELTA = 0;		// (SCREENWIDTH-NONWIDEWIDTH)/hires/2, BASE coords
 
 

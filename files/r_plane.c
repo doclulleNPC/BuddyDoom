@@ -176,8 +176,8 @@ R_MapPlane
     {
 	cachedheight[y] = planeheight;
 	distance = cacheddistance[y] = FixedMul (planeheight, yslope[y]);
-	ds_xstep = cachedxstep[y] = FixedDiv (FixedMul (viewsin, planeheight), dy) << detailshift;
-	ds_ystep = cachedystep[y] = FixedDiv (FixedMul (viewcos, planeheight), dy) << detailshift;
+	ds_xstep = cachedxstep[y] = FixedDiv (FixedMul (viewsin, planeheight), dy);
+	ds_ystep = cachedystep[y] = FixedDiv (FixedMul (viewcos, planeheight), dy);
     }
     else
     {
@@ -530,7 +530,7 @@ void R_DrawPlanes (void)
 	    // horizon at centery via (y - centery), so the scale must stay fixed -- keying it on the
 	    // pitched centery stretched the sky when looking up/down (centery grows -> iscale shrinks).
 	    { int basecy = viewheight/2;
-	      dc_iscale = (basecy > 0 ? (100*FRACUNIT / basecy) : pspriteiscale) >> detailshift;
+	      dc_iscale = (basecy > 0 ? (100*FRACUNIT / basecy) : pspriteiscale);
 	      dc_iscale = (dc_iscale * 5) / 8; }
 
 	    // SKYDEFS scaley: vertical scale of 100*(1/scaley) -> divide the inverse scale.

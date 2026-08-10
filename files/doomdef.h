@@ -136,7 +136,8 @@ typedef enum
 // authored in 320x200 (BASE) coordinates and scaled up by the V_ functions.
 extern int	SCREENWIDTH;
 extern int	SCREENHEIGHT;
-// Integer scale factor, SCREENHEIGHT/BASE_HEIGHT (1 = 320x200, 2 = 640x400, ...).
+// Integer scale factor, SCREENHEIGHT/BASE_HEIGHT.  Range 2..7 (640x400 .. 2240x1400);
+// scale 1 / 320x200 was dropped, V_SetRes clamps to 2.
 extern int	hires;
 
 // Widescreen (Hor+); see doomdef.c.  In 16:10 modes NONWIDEWIDTH == SCREENWIDTH

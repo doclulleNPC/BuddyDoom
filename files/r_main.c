@@ -90,9 +90,6 @@ fixed_t			viewsin;
 
 player_t*		viewplayer;
 
-// 0 = high, 1 = low
-int			detailshift;	
-
 //
 // precalculated math tables
 //
@@ -134,7 +131,6 @@ int			extralight;
 
 
 void (*colfunc) (void);
-void (*basecolfunc) (void);
 void (*fuzzcolfunc) (void);
 void (*transcolfunc) (void);
 void (*spanfunc) (void);
@@ -494,7 +490,7 @@ fixed_t R_ScaleFromGlobalAngle (angle_t visangle)
     // both sines are allways positive
     sinea = finesine[anglea>>ANGLETOFINESHIFT];	
     sineb = finesine[angleb>>ANGLETOFINESHIFT];
-    num = FixedMul(projection,sineb)<<detailshift;
+    num = FixedMul(projection,sineb);
     den = FixedMul(rw_distance,sinea);
 
     // WiggleHack II: the clamp is now per-wall (R_FixWiggle sets max_rwscale from the
@@ -626,6 +622,13 @@ void R_InitTextureMapping (void)
 // Only inits the zlight table,
 //  because the scalelight table changes with view size.
 //
+// zlight[] is indexed by a WORLD distance (R_MapPlane: planeheight * yslope, and yslope
+// divides out `hires`), so the table must be built in 320-wide base units and must NOT
+// depend on the internal resolution -- BASE_WIDTH, not NONWIDEWIDTH.  This is called
+// exactly once from R_Init, which today still runs before I_InitGraphics/V_SetRes has
+// scaled NONWIDEWIDTH up, so the old expression was right by accident and would have
+// broken the moment anything rebuilt the table after a resolution change.
+//
 #define DISTMAP		2
 
 void R_InitLightTables (void)
@@ -643,7 +646,7 @@ void R_InitLightTables (void)
 	startmap = ((LIGHTLEVELS-1-i)*2)*NUMCOLORMAPS/LIGHTLEVELS;
 	for (j=0 ; j<MAXLIGHTZ ; j++)
 	{
-	    scale = FixedDiv ((NONWIDEWIDTH/2*FRACUNIT), (j+1)<<LIGHTZSHIFT);
+	    scale = FixedDiv ((BASE_WIDTH/2*FRACUNIT), (j+1)<<LIGHTZSHIFT);
 	    scale >>= LIGHTSCALESHIFT;
 	    level = startmap - scale/DISTMAP;
 	    
@@ -655,7 +658,7 @@ void R_InitLightTables (void)
 
 	    zlight[i][j] = colormaps + level*256;
 	    {	// fine level for 2D light dithering (mirrors the above at 16x)
-		int rawf = FixedDiv ((NONWIDEWIDTH/2*FRACUNIT), (j+1)<<LIGHTZSHIFT) >> (LIGHTSCALESHIFT-4);
+		int rawf = FixedDiv ((BASE_WIDTH/2*FRACUNIT), (j+1)<<LIGHTZSHIFT) >> (LIGHTSCALESHIFT-4);
 		int l16 = startmap*16 - rawf/DISTMAP;
 		if (l16 < 0) l16 = 0;
 		if (l16 > (NUMCOLORMAPS-1)*16) l16 = (NUMCOLORMAPS-1)*16;
@@ -676,17 +679,12 @@ void R_InitLightTables (void)
 boolean		setsizeneeded;
 int		setblocks;
 extern int	statusbar_style;	// small/alt HUD overlay a full view
-int		setdetail;
 
 
-void
-R_SetViewSize
-( int		blocks,
-  int		detail )
+void R_SetViewSize (int blocks)
 {
     setsizeneeded = true;
     setblocks = blocks;
-    setdetail = detail;
 }
 
 
@@ -728,15 +726,9 @@ void R_ExecuteSetViewSize (void)
 	}
     }
 
-    // Force high detail.  The vanilla "low detail" blocky mode (half horizontal resolution, each
-    // column doubled via R_DrawColumnLow) is pointless on the hi-res renderer and was never adapted
-    // to it -- at hi-res widescreen the doubled scale over-projected walls off the framebuffer and
-    // segfaulted (no RANGECHECK in release).  Ignore the setting; keep the flag consistent.
-    setdetail = 0;
-    detailshift = setdetail;
-    viewwidth = scaledviewwidth>>detailshift;
-    viewwidth_nonwide = scaledviewwidth_nonwide>>detailshift;
-    if (getenv("RDBG")) fprintf(stderr,"[RDBG] hires=%d SCREENWIDTH=%d SCREENHEIGHT=%d setblocks=%d detail=%d viewwidth=%d viewheight=%d scaledvw=%d\n", hires, SCREENWIDTH, SCREENHEIGHT, setblocks, detailshift, viewwidth, viewheight, scaledviewwidth);
+    viewwidth = scaledviewwidth;
+    viewwidth_nonwide = scaledviewwidth_nonwide;
+    if (getenv("RDBG")) fprintf(stderr,"[RDBG] hires=%d SCREENWIDTH=%d SCREENHEIGHT=%d setblocks=%d viewwidth=%d viewheight=%d scaledvw=%d\n", hires, SCREENWIDTH, SCREENHEIGHT, setblocks, viewwidth, viewheight, scaledviewwidth);
 
     centery = viewheight/2;
     centerx = viewwidth/2;
@@ -745,20 +737,10 @@ void R_ExecuteSetViewSize (void)
     centeryfrac = centery<<FRACBITS;
     projection = centerxfrac_nonwide;		// Hor+: vertical FOV from the 4:3 ref
 
-    if (!detailshift)
-    {
-	colfunc = basecolfunc = R_DrawColumn;
-	fuzzcolfunc = R_DrawFuzzColumn;
-	transcolfunc = R_DrawTranslatedColumn;
-	spanfunc = R_DrawSpan;
-    }
-    else
-    {
-	colfunc = basecolfunc = R_DrawColumnLow;
-	fuzzcolfunc = R_DrawFuzzColumn;
-	transcolfunc = R_DrawTranslatedColumn;
-	spanfunc = R_DrawSpanLow;
-    }
+    colfunc = R_DrawColumn;
+    fuzzcolfunc = R_DrawFuzzColumn;
+    transcolfunc = R_DrawTranslatedColumn;
+    spanfunc = R_DrawSpan;
 
     R_InitBuffer (scaledviewwidth, viewheight);
 	
@@ -783,16 +765,16 @@ void R_ExecuteSetViewSize (void)
 	// Hor+ widescreen: floor/ceiling slope must use the NON-wide width to match
 	// the wall projection (focal = centerxfrac_nonwide); using the wide viewwidth
 	// projected floors at the wrong distance -> a bright rectangular seam.
-	yslope[i] = FixedDiv ( (viewwidth_nonwide<<detailshift)/2*FRACUNIT, dy);
+	yslope[i] = FixedDiv ( viewwidth_nonwide/2*FRACUNIT, dy);
     }
-	
+
     for (i=0 ; i<viewwidth ; i++)
     {
 	cosadj = abs(finecosine[xtoviewangle[i]>>ANGLETOFINESHIFT]);
 	distscale[i] = FixedDiv (FRACUNIT,cosadj);
     }
-    
-    r_dither_on = dither_lighting && (detailshift == 0);
+
+    r_dither_on = dither_lighting;
 
     // Calculate the light levels to use
     //  for each level / scale combination.
@@ -801,8 +783,8 @@ void R_ExecuteSetViewSize (void)
 	startmap = ((LIGHTLEVELS-1-i)*2)*NUMCOLORMAPS/LIGHTLEVELS;
 	for (j=0 ; j<MAXLIGHTSCALE ; j++)
 	{
-	    level = startmap - j*NONWIDEWIDTH/(viewwidth_nonwide<<detailshift)/DISTMAP;
-	    
+	    level = startmap - j*NONWIDEWIDTH/viewwidth_nonwide/DISTMAP;
+
 	    if (level < 0)
 		level = 0;
 
@@ -810,7 +792,7 @@ void R_ExecuteSetViewSize (void)
 		level = NUMCOLORMAPS-1;
 
 	    scalelight[i][j] = colormaps + level*256;
-	    {	int l16 = startmap*16 - j*NONWIDEWIDTH*16/(viewwidth_nonwide<<detailshift)/DISTMAP;
+	    {	int l16 = startmap*16 - j*NONWIDEWIDTH*16/viewwidth_nonwide/DISTMAP;
 		if (l16 < 0) l16 = 0;
 		if (l16 > (NUMCOLORMAPS-1)*16) l16 = (NUMCOLORMAPS-1)*16;
 		scalelight_fine[i][j] = l16;
@@ -824,7 +806,6 @@ void R_ExecuteSetViewSize (void)
 //
 // R_Init
 //
-extern int	detailLevel;
 extern int	screenblocks;
 
 
@@ -836,10 +817,10 @@ void R_Init (void)
     R_InitPointToAngle ();
     printf ("\nR_InitPointToAngle");
     R_InitTables ();
-    // viewwidth / viewheight / detailLevel are set by the defaults
+    // viewwidth / viewheight are set by the defaults
     printf ("\nR_InitTables");
 
-    R_SetViewSize (screenblocks, detailLevel);
+    R_SetViewSize (screenblocks);
     R_InitPlanes ();
     printf ("\nR_InitPlanes");
     R_InitLightTables ();
@@ -911,7 +892,7 @@ void R_SetupFrame (player_t* player)
 	{
 	    dy = ((i-centery)<<FRACBITS)+FRACUNIT/2;
 	    if (dy < 0) dy = -dy;
-	    yslope[i] = FixedDiv ( (viewwidth_nonwide<<detailshift)/2*FRACUNIT, dy);
+	    yslope[i] = FixedDiv ( viewwidth_nonwide/2*FRACUNIT, dy);
 	}
     }
 

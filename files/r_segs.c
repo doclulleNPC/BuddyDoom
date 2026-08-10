@@ -186,7 +186,7 @@ R_RenderMaskedSegRange
 	{
 	    if (!fixedcolormap)
 	    {
-		index = spryscale>>LIGHTSCALESHIFT;
+		index = LIGHTSCALEIDX(spryscale);	// base-unit index (see r_main.h)
 
 		if (index >=  MAXLIGHTSCALE )
 		    index = MAXLIGHTSCALE-1;
@@ -326,7 +326,7 @@ void R_RenderSegLoop (void)
 	    texturecolumn = rw_offset-FixedMul(finetangent[angle],rw_distance);
 	    texturecolumn >>= FRACBITS;
 	    // calculate lighting
-	    index = rw_scale>>LIGHTSCALESHIFT;
+	    index = LIGHTSCALEIDX(rw_scale);		// base-unit index (see r_main.h)
 
 	    if (index >=  MAXLIGHTSCALE )
 		index = MAXLIGHTSCALE-1;
@@ -526,7 +526,7 @@ R_StoreWallRange
 			
 	    gxt = FixedMul(trx,viewcos); 
 	    gyt = -FixedMul(try,viewsin); 
-	    ds_p->scale1 = FixedDiv(projection, gxt-gyt)<<detailshift;
+	    ds_p->scale1 = FixedDiv(projection, gxt-gyt);
 	}
 #endif
 	ds_p->scale2 = ds_p->scale1;

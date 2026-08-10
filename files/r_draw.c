@@ -639,72 +639,6 @@ void R_DrawColumn (void)
 #endif
 
 
-void R_DrawColumnLow (void) 
-{ 
-    int			count; 
-    byte*		dest; 
-    byte*		dest2;
-    fixed_t		frac;
-    fixed_t		fracstep;	 
- 
-    count = dc_yh - dc_yl; 
-
-    // Zero length.
-    if (count < 0) 
-	return; 
-				 
-#ifdef RANGECHECK 
-    if ((unsigned)dc_x >= SCREENWIDTH
-	|| dc_yl < 0
-	|| dc_yh >= SCREENHEIGHT)
-    {
-	
-	I_Error ("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x);
-    }
-    //	dccount++; 
-#endif 
-    // Blocky mode, need to multiply by 2.
-    dc_x <<= 1;
-    
-    dest = ylookup[dc_yl] + columnofs[dc_x];
-    dest2 = ylookup[dc_yl] + columnofs[dc_x+1];
-    
-    fracstep = dc_iscale; 
-    frac = dc_texturemid + (dc_yl-centery)*fracstep;
-    
-    {
-	int heightmask = dc_texheight - 1;
-	unsigned int*	cm32   = TC_INRANGE(dc_colormap) ? colormap32 + (dc_colormap - colormaps) : NULL;
-	unsigned int*	dst32  = cm32 ? screen32 + (dest  - screens[0]) : NULL;
-	unsigned int*	dst32b = cm32 ? screen32 + (dest2 - screens[0]) : NULL;
-	if (dc_texheight & heightmask)		// non-power-of-two: modulo wrap
-	{
-	    heightmask = dc_texheight << FRACBITS;
-	    if (frac < 0) while ((frac += heightmask) < 0) ;
-	    else          while (frac >= heightmask) frac -= heightmask;
-	    do {
-		byte px = dc_source[frac>>FRACBITS];
-		*dest2 = *dest = dc_colormap[px];
-		if (cm32) { *dst32b = *dst32 = cm32[px]; dst32 += SCREENWIDTH; dst32b += SCREENWIDTH; }
-		dest += SCREENWIDTH; dest2 += SCREENWIDTH;
-		if ((frac += fracstep) >= heightmask) frac -= heightmask;
-	    } while (count--);
-	}
-	else
-	{
-	    do {
-		byte px = dc_source[(frac>>FRACBITS) & heightmask];
-		*dest2 = *dest = dc_colormap[px];
-		if (cm32) { *dst32b = *dst32 = cm32[px]; dst32 += SCREENWIDTH; dst32b += SCREENWIDTH; }
-		dest += SCREENWIDTH;
-		dest2 += SCREENWIDTH;
-		frac += fracstep;
-	    } while (count--);
-	}
-    }
-}
-
-
 //
 // Spectre/Invisibility.
 //
@@ -800,32 +734,6 @@ void R_DrawFuzzColumn (void)
 #endif
 
 
-    // Keep till detailshift bug in blocky mode fixed,
-    //  or blocky mode removed.
-    /* WATCOM code 
-    if (detailshift)
-    {
-	if (dc_x & 1)
-	{
-	    outpw (GC_INDEX,GC_READMAP+(2<<8) ); 
-	    outp (SC_INDEX+1,12); 
-	}
-	else
-	{
-	    outpw (GC_INDEX,GC_READMAP); 
-	    outp (SC_INDEX+1,3); 
-	}
-	dest = destview + dc_yl*80 + (dc_x>>1); 
-    }
-    else
-    {
-	outpw (GC_INDEX,GC_READMAP+((dc_x&3)<<8) ); 
-	outp (SC_INDEX+1,1<<(dc_x&3)); 
-	dest = destview + dc_yl*80 + (dc_x>>2); 
-    }*/
-
-    
-    // Does not work with blocky mode.
     dest = ylookup[dc_yl] + columnofs[dc_x];
 
     // Looks familiar.
@@ -894,27 +802,7 @@ void R_DrawTranslatedColumn (void)
 #endif 
 
 
-    // WATCOM VGA specific.
-    /* Keep for fixing.
-    if (detailshift)
-    {
-	if (dc_x & 1)
-	    outp (SC_INDEX+1,12); 
-	else
-	    outp (SC_INDEX+1,3);
-	
-	dest = destview + dc_yl*80 + (dc_x>>1); 
-    }
-    else
-    {
-	outp (SC_INDEX+1,1<<(dc_x&3)); 
-
-	dest = destview + dc_yl*80 + (dc_x>>2); 
-    }*/
-
-    
-    // FIXME. As above.
-    dest = ylookup[dc_yl] + columnofs[dc_x]; 
+    dest = ylookup[dc_yl] + columnofs[dc_x];
 
     // Looks familiar.
     fracstep = dc_iscale; 
@@ -1237,58 +1125,6 @@ void R_DrawSpan (void)
     } 
 } 
 #endif
-
-
-//
-// Again..
-//
-void R_DrawSpanLow (void) 
-{ 
-    fixed_t		xfrac;
-    fixed_t		yfrac; 
-    byte*		dest; 
-    int			count;
-    int			spot; 
-	 
-#ifdef RANGECHECK 
-    if (ds_x2 < ds_x1
-	|| ds_x1<0
-	|| ds_x2>=SCREENWIDTH  
-	|| (unsigned)ds_y>SCREENHEIGHT)
-    {
-	I_Error( "R_DrawSpan: %i to %i at %i",
-		 ds_x1,ds_x2,ds_y);
-    }
-//	dscount++; 
-#endif 
-	 
-    xfrac = ds_xfrac; 
-    yfrac = ds_yfrac; 
-
-    // Blocky mode, need to multiply by 2.
-    ds_x1 <<= 1;
-    ds_x2 <<= 1;
-    
-    dest = ylookup[ds_y] + columnofs[ds_x1];
-
-    count = ds_x2 - ds_x1;
-    {
-	unsigned int*	cm32  = TC_INRANGE(ds_colormap) ? colormap32 + (ds_colormap - colormaps) : NULL;
-	unsigned int*	dst32 = cm32 ? screen32 + (dest - screens[0]) : NULL;
-	do
-	{
-	    byte px;
-	    spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
-	    // Lowres/blocky mode does it twice, while scale is adjusted appropriately.
-	    px = ds_source[spot];
-	    *dest++ = ds_colormap[px];
-	    *dest++ = ds_colormap[px];
-	    if (cm32) { *dst32++ = cm32[px]; *dst32++ = cm32[px]; }
-	    xfrac += ds_xstep;
-	    yfrac += ds_ystep;
-	} while (count--);
-    }
-}
 
 //
 // R_InitBuffer 

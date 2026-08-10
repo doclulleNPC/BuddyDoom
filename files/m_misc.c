@@ -241,7 +241,6 @@ extern int	show_inventory_hud;	// hu_buddy.c -- (J) artifact inventory readout
 extern int	buddy_select;		// m_menu.c -- selected co-op buddy (Buddy menu)
 extern int	buddy_color;		// m_menu.c -- buddy player-colour index (Buddy menu)
 
-extern int	detailLevel;
 extern int	automap_style;		// automap style: 0 vanilla / 1 boom / 2 textured (am_map.c)
 
 extern int	screenblocks;
@@ -349,11 +348,11 @@ default_t	defaults[] =
     {"joyb_speed",&joybspeed,2},
 
     {"screenblocks",&screenblocks, 10},
-    {"detaillevel",&detailLevel, 0},
     {"automap_style",&automap_style, 2},	// automap: 0 vanilla, 1 boom(overlay), 2 textured
 
-    // Video: internal resolution scale (1 = 320x200 ... 6 = 1920x1200) and
-    // fullscreen flag.  Applied by i_video.c at startup.
+    // Video: internal resolution scale (2 = 640x400 ... 7 = 2240x1400) and fullscreen
+    // flag.  Applied by i_video.c at startup.  (Scale 1 / 320x200 was dropped -- the
+    // renderer is hi-res now; V_SetRes clamps anything lower to 2.)
     {"screen_resolution",&hires, 3},
     {"statusbar_style",&statusbar_style, 0},	// 0=vanilla 1=small 2=alt HUD
     {"light_dither",&dither_lighting, 0},	// soften light banding

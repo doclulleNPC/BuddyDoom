@@ -47,11 +47,9 @@ extern byte*		dc_source;
 //  here.
 void 	R_DrawColumn (void);
 void 	R_DrawSkyColumn (void);		// clamping column for the sky (no vertical tiling)
-void 	R_DrawColumnLow (void);
 
 // The Spectre/Invisibility effect.
 void 	R_DrawFuzzColumn (void);
-void 	R_DrawFuzzColumnLow (void);
 void 	R_DrawShadowColumn (void);
 
 // Boom 260 translucent 2S middle texture.
@@ -90,9 +88,6 @@ extern byte*		dc_translation;
 // Span blitting for rows, floor/ceiling.
 // No Sepctre effect needed.
 void 	R_DrawSpan (void);
-
-// Low resolution mode, 160x200?
-void 	R_DrawSpanLow (void);
 
 
 void

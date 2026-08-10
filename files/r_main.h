@@ -78,6 +78,20 @@ extern int		loopcount;
 #define MAXLIGHTZ	       128
 #define LIGHTZSHIFT		20
 
+// Light index from a projected scale.
+//
+// scalelight[]/zlight[] are authored in 320-wide (BASE) projection units -- the
+// distance at which a given colormap level kicks in must not depend on the internal
+// resolution.  But rw_scale / spryscale / a sprite's xscale are FRAMEBUFFER-space
+// scales (they come off centerxfrac_nonwide), so they grow with `hires`: at hires=4 a
+// wall reports 4x the scale it has at 320x200 and is lit as though it were 4x closer.
+// Raw, that wiped out the diminished lighting on walls and sprites at every hi-res
+// setting -- and left them mismatched against the floors/ceilings next to them, which
+// are lit from zlight[] indexed by a resolution-independent world distance.
+// Normalise back to base units before indexing.  (crispy-doom does the same with
+// `>> (LIGHTSCALESHIFT + hires)`, where its hires is a 0/1 shift instead of a factor.)
+#define LIGHTSCALEIDX(scale)	(((scale)/hires)>>LIGHTSCALESHIFT)
+
 extern lighttable_t*	scalelight[LIGHTLEVELS][MAXLIGHTSCALE];
 extern lighttable_t*	scalelightfixed[MAXLIGHTSCALE];
 extern lighttable_t*	zlight[LIGHTLEVELS][MAXLIGHTZ];
@@ -102,18 +116,11 @@ void R_DrawColumnDither (void);
 void R_DrawSpanDither (void);
 
 
-// Blocky/low detail mode.
-//B remove this?
-//  0 = high, 1 = low
-extern	int		detailshift;	
-
-
 //
 // Function pointers to switch refresh/drawing functions.
 // Used to select shadow mode etc.
 //
 extern void		(*colfunc) (void);
-extern void		(*basecolfunc) (void);
 extern void		(*fuzzcolfunc) (void);
 // No shadow effects on floors.
 extern void		(*spanfunc) (void);
@@ -177,7 +184,7 @@ void R_RenderPlayerView (player_t *player);
 void R_Init (void);
 
 // Called by M_Responder.
-void R_SetViewSize (int blocks, int detail);
+void R_SetViewSize (int blocks);
 
 #endif
 //-----------------------------------------------------------------------------
