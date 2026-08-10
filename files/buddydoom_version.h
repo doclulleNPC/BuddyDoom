@@ -3,5 +3,5 @@
 // when you cut a release tag (and the patch keeps counting builds from there).
 #ifndef __BUDDYDOOM_VERSION__
 #define __BUDDYDOOM_VERSION__
-#define BUDDYDOOM_VERSION "0.11.156"
+#define BUDDYDOOM_VERSION "0.11.162"
 #endif

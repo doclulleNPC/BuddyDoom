@@ -519,20 +519,29 @@ void HU_Buddy_Drawer (void)
 // became obtainable its offsets pushed the draw off the top of the screen and
 // V_DrawPatch wrote outside the framebuffer.  Reject anything that will not sit
 // inside 320x200 and let the caller fall back to the text tag.
+// (x,y) is the coordinate that will be handed to V_DrawPatch -- NOT the icon's
+// top-left.  V_DrawPatch draws at (x - leftoffset, y - topoffset), so that is the
+// rect to test.  Testing (x,y) directly measured the box from the wrong corner and
+// over-estimated the right edge by leftoffset, which is about half a sprite's
+// width: the selected-item box sits against the right edge, so its icon always
+// came out "too wide to fit" and silently fell back to the text tag.  The medikit
+// (28 wide, offset 13) was rejected at 334+28=362 > 355 while really occupying
+// 321..349.
 static boolean HU_IconFits (patch_t* p, int x, int y)
 {
-    int w, h;
+    int w, h, l, t;
     if (!p) return false;
     w = SHORT (p->width); h = SHORT (p->height);
     if (w <= 0 || h <= 0 || w > 40 || h > 40) return false;	// slot-sized icons only
+
+    l = x - SHORT (p->leftoffset);		// where it actually lands
+    t = y - SHORT (p->topoffset);
+
     // Bound against the DRAWABLE area, which in widescreen is wider than
-    // BASE_WIDTH -- that is the limit V_DrawPatch itself uses.  Testing against
-    // BASE_WIDTH rejected icons that fit perfectly well, and since this strip is
-    // drawn from the right edge leftward, in widescreen that was every one of them:
-    // the whole buddy inventory silently degraded to text tags.
-    return x >= 0 && y >= 0
-	&& x + w <= SCREENWIDTH / hires
-	&& y + h <= SCREENHEIGHT / hires;
+    // BASE_WIDTH -- that is the limit V_DrawPatch itself uses.
+    return l >= 0 && t >= 0
+	&& l + w <= SCREENWIDTH / hires
+	&& t + h <= SCREENHEIGHT / hires;
 }
 
 void HU_Inventory_Drawer (void)
