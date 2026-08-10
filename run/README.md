@@ -8,6 +8,11 @@ Buddy mode (off / `-coop` / `-aicoop`), the Monster mode (vanilla / L4D /
 `-aidirector`), and the Skill, then hit **Launch** — it starts the game with the
 right flags and auto-starts the native `director` sidecar when an AI mode is chosen.
 
+The **DEH** dropdown (last row, under WAD2) lists every loose `*.deh` in `ID0/` or
+`run/` and passes the pick as `-deh <file>`, for the classic "wad + separate patch"
+packaging. A `DEHACKED` lump *inside* a wad needs no dropdown — the engine applies
+those automatically for every loaded wad.
+
 > **Monster modes:** **vanilla** = stock 1993 AI; **L4D** = the rule-based `-director`
 > (stress-driven extra spawns + the spoken game-master "voice of god"); **`-aidirector`** =
 > the LLM monster director (Ollama). A selected **SIGIL / SIGIL II** PWAD is checksum-verified

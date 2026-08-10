@@ -94,6 +94,7 @@
 #define IWAD_SHOW 9			// IWAD dropdown rows shown at once (rest via mouse-wheel scroll)
 #define PWAD_Y    390			// extra WAD1 selector (one row below IWAD)
 #define WAD2_Y    418			// extra WAD2 selector (one row below WAD1)
+#define DEH_Y     446			// DeHackEd/BEX patch selector (one row below WAD2)
 #define LAUNCH_Y  544			// lowered 50px (window grew 50px to match)
 #define LAUNCH_H  34
 
@@ -200,6 +201,16 @@ static int     wad2_sel;			// 0 = none, else index into pwads[]
 static int     wad2_dd_open;			// WAD2 dropdown open
 static int     wad2_scroll;			// first visible row when the open list overflows
 
+// Loose DeHackEd/BEX patches (*.deh) found next to the WADs.  A DEHACKED lump INSIDE a
+// PWAD is applied automatically by the engine (D_ProcessDehInWads); this dropdown is for
+// the classic "wad + separate .deh" packaging, which needs an explicit "-deh <file>".
+#define MAX_DEHS 64
+static char    dehs[MAX_DEHS][64];
+static int     deh_count;
+static int     deh_sel;				// 0 = none, else index into dehs[]
+static int     deh_dd_open;			// DEH dropdown open
+static int     deh_scroll;			// first visible row when the open list overflows
+
 // Mode selections.
 static int     buddy_mode = BUDDY_RULE;	// default: buddy on (rule-based)
 static int     mon_mode   = MON_L4D;     // default: L4D pacing
@@ -211,8 +222,20 @@ static int     opt_freedoom;			// -file freedoomstuff.wad (DOOM2 monsters, free 
 static int     opt_heretic;			// -file hereticstuff.wad   (Heretic monsters)
 static int     opt_hexen;			// -file hexenstuff.wad     (Hexen monsters)
 static int     opt_skill = 3;			// difficulty 0..4 -> -skill 1..5; default 3 = Ultra-Violence
-static int     map_idx = 0;			// warp-map row index -> map_vals[]; default 0 = map 1
-static const int map_vals[4] = { 1, 10, 19, 28 };	// DOOM2: MAPnn; DOOM1/Heretic: episode starts E1M1/E2M1/E3M1/E4M1
+// Warp target.  Slot 0 is "Start" -- wherever the loaded content actually begins, which is
+// NOT always map 1: a PWAD can declare its own start via UMAPINFO (KDiKDiZD begins on MAP13),
+// and a partial-replacement PWAD often ships a stray MAP01 stub that is not the real start.
+// Slots 1.. are the maps that genuinely EXIST, read from the PWAD when it brings maps, else
+// from the IWAD -- so Strife lists its 34 MAPxx, Heretic its ExMy, and Hexen skips the slots
+// it leaves empty (it has no MAP07) instead of offering four hardcoded Doom episode starts.
+#define MAX_MAPLIST 128
+static char    map_label[MAX_MAPLIST][12];	// what the row shows ("Start", "2", "E1M2", ...)
+static char    map_warp [MAX_MAPLIST][12];	// the matching -warp argument ("13", "1 2", ...)
+static int     map_count;
+static int     map_sel;				// 0 = Start
+static int     map_dd_open;
+static int     map_scroll;
+static char    map_pref[12];			// label restored from launcher.ini (see restore_map_pref)
 static int     dropdown_open;
 
 // Status line shown under the controls (e.g. a launch error).  err -> red.
@@ -695,6 +718,37 @@ static void scan_pwads(void)
     if (wad2_sel >= pwad_count) wad2_sel = 0;
 }
 
+static void deh_add(const char* fname)
+{
+    size_t L = fname ? strlen(fname) : 0;
+    if (deh_count >= MAX_DEHS || L < 5 || L >= 60) return;
+    if (strcasecmp(fname + L - 4, ".deh") != 0) return;
+    for (int i=1; i<deh_count; i++)                         // de-dupe (same name in two dirs)
+        if (strcasecmp(dehs[i], fname) == 0) return;
+    snprintf(dehs[deh_count], sizeof dehs[0], "%s", fname);
+    deh_count++;
+}
+
+static void scan_dehs(void)
+{
+    deh_count = 0;
+    snprintf(dehs[deh_count++], sizeof dehs[0], "(none)");   // index 0 = no DEH patch
+
+    char id0[300];
+    snprintf(id0, sizeof id0, "%s/ID0", run_dir());
+    const char* dirs[2] = { id0, run_dir() };
+    const char* pats[2] = { "*.deh", "*.DEH" };		// SDL_GlobDirectory is case-sensitive
+    for (int d = 0; d < 2; d++)
+        for (int p = 0; p < 2; p++) {
+            int count = 0;
+            char** files = SDL_GlobDirectory(dirs[d], pats[p], 0, &count);
+            if (!files) continue;
+            for (int i = 0; i < count; i++) deh_add(files[i]);
+            SDL_free(files);
+        }
+    if (deh_sel >= deh_count) deh_sel = 0;
+}
+
 // ----------------------------------------------------------------- banner
 //
 // "DOOM" banner drawn as text scaled 4x, baseline-aligned to the bottom of
@@ -966,6 +1020,128 @@ static int hit_wad2_dropdown(int mouse_px, int mouse_py)
     return -1;
 }
 
+// ----------------------------------------------------------------- map dropdown
+// Sits in the mode-row band (label left, control right) like Skill above it, not as a
+// full-width bar like the WAD rows -- but it is a real dropdown, because the map count is
+// whatever the loaded wad has (34 for Strife, 40 slots for Hexen) and no longer four pills.
+#define MAP_BOX_W 200
+#define MAP_BOX_H 26
+#define MAP_SHOW  8
+#define MAP_BOX_X (WINW - PAD - MAP_BOX_W)
+#define MAP_BOX_Y (MAP_Y + (BUDDY_H - MAP_BOX_H)/2)
+
+static void draw_map_dropdown(void)
+{
+    float x = MAP_BOX_X, y = MAP_BOX_Y, w = MAP_BOX_W, h = MAP_BOX_H;
+    const char* val = map_count ? map_label[map_sel] : "(no maps)";
+
+    text(PAD, MAP_Y + (BUDDY_H - FONT_CH)/2, "Map", 220, 220, 220);
+
+    rect(x, y, w, h, COL_DD_BG);
+    draw_rect_outline(x, y, w, h, COL_DD_BD_R, COL_DD_BD_G, COL_DD_BD_B);
+    text(x + 8, y + (h - FONT_CH)/2, val,
+         map_sel ? 255 : COL_CHECK_R, map_sel ? 230 : COL_CHECK_G, map_sel ? 100 : COL_CHECK_B);
+    text(x + w - FONT_CW - 6, y + (h - FONT_CH)/2, map_dd_open ? "^" : "v", COL_DIM);
+
+    if (map_dd_open && map_count > 0) {
+        float dy = y + h;
+        int max_scroll = map_count - MAP_SHOW; if (max_scroll < 0) max_scroll = 0;
+        if (map_scroll > max_scroll) map_scroll = max_scroll;
+        if (map_scroll < 0) map_scroll = 0;
+        int show = map_count < MAP_SHOW ? map_count : MAP_SHOW;
+        for (int i = 0; i < show; i++) {
+            int idx = map_scroll + i;
+            float oy = dy + i * IWAD_H;
+            int hover = (mouse_x >= x && mouse_x <= x+w && mouse_y >= oy && mouse_y <= oy + IWAD_H);
+            rect(x, oy, w, IWAD_H, hover ? COL_DD_HOV : COL_DD_BG);
+            draw_rect_outline(x, oy, w, IWAD_H, COL_DD_BD_R, COL_DD_BD_G, COL_DD_BD_B);
+            text(x + 8, oy + (IWAD_H - FONT_CH)/2, map_label[idx],
+                 idx==map_sel ? 255 : 210, idx==map_sel ? 230 : 210, idx==map_sel ? 100 : 200);
+            if (i == 0 && map_scroll > 0)
+                text(x + w - FONT_CW - 6, oy + (IWAD_H - FONT_CH)/2, "^", COL_DIM);
+            if (i == show-1 && map_scroll < max_scroll)
+                text(x + w - FONT_CW - 6, oy + (IWAD_H - FONT_CH)/2, "v", COL_DIM);
+        }
+    }
+}
+
+static int hit_map_dropdown(int mouse_px, int mouse_py)
+{
+    if (mouse_px >= MAP_BOX_X && mouse_px <= MAP_BOX_X + MAP_BOX_W &&
+        mouse_py >= MAP_BOX_Y && mouse_py <= MAP_BOX_Y + MAP_BOX_H)
+        return 0;        // toggles the dropdown
+
+    if (!map_dd_open) return -1;
+
+    int show = map_count < MAP_SHOW ? map_count : MAP_SHOW;
+    for (int i = 0; i < show; i++) {
+        float oy = MAP_BOX_Y + MAP_BOX_H + i * IWAD_H;
+        if (mouse_px >= MAP_BOX_X && mouse_px <= MAP_BOX_X + MAP_BOX_W &&
+            mouse_py >= oy && mouse_py <= oy + IWAD_H)
+            return map_scroll + i + 1;   // 1-based, scroll-adjusted
+    }
+    return -1;
+}
+
+// ----------------------------------------------------------------- deh dropdown
+// Same control for a loose DeHackEd/BEX patch -> "-deh <file>".  It is the LAST row, so
+// its open list must fit above the window bottom: 5 rows (DEH_Y+IWAD_H+5*IWAD_H = 578 < WINH).
+#define DEH_SHOW 5
+static void draw_deh_dropdown(void)
+{
+    float x = PAD, y = DEH_Y, w = WINW - 2*PAD, h = IWAD_H;
+    rect(x, y, w, h, COL_DD_BG);
+    draw_rect_outline(x, y, w, h, COL_DD_BD_R, COL_DD_BD_G, COL_DD_BD_B);
+
+    text(x + 8, y + (h - FONT_CH)/2, "DEH:", COL_DIM);
+    text(x + 8 + 5*FONT_CW + 6, y + (h - FONT_CH)/2,	// 5 chars: value column lines up with WAD1/WAD2
+         deh_count ? dehs[deh_sel] : "(none)",
+         deh_sel ? 255 : 150, deh_sel ? 230 : 150, deh_sel ? 100 : 150);
+
+    const char* arrow = deh_dd_open ? "^" : "v";
+    text(x + w - FONT_CW - 6, y + (h - FONT_CH)/2, arrow, COL_DIM);
+
+    if (deh_dd_open && deh_count > 0) {
+        float dy = y + h;
+        int max_scroll = deh_count - DEH_SHOW; if (max_scroll < 0) max_scroll = 0;
+        if (deh_scroll > max_scroll) deh_scroll = max_scroll;
+        if (deh_scroll < 0) deh_scroll = 0;
+        int show = deh_count < DEH_SHOW ? deh_count : DEH_SHOW;
+        for (int i=0; i<show; i++) {
+            int idx = deh_scroll + i;
+            float oy = dy + i * IWAD_H;
+            int hover = (mouse_x >= x && mouse_x <= x+w &&
+                         mouse_y >= oy && mouse_y <= oy + IWAD_H);
+            rect(x, oy, w, IWAD_H, hover ? COL_DD_HOV : COL_DD_BG);
+            draw_rect_outline(x, oy, w, IWAD_H, COL_DD_BD_R, COL_DD_BD_G, COL_DD_BD_B);
+            text(x + 8, oy + (IWAD_H - FONT_CH)/2, dehs[idx],
+                 idx==deh_sel ? 255 : 210, idx==deh_sel ? 230 : 210, idx==deh_sel ? 100 : 200);
+            if (i == 0 && deh_scroll > 0)
+                text(x + w - FONT_CW - 6, oy + (IWAD_H - FONT_CH)/2, "^", COL_DIM);
+            if (i == show-1 && deh_scroll < max_scroll)
+                text(x + w - FONT_CW - 6, oy + (IWAD_H - FONT_CH)/2, "v", COL_DIM);
+        }
+    }
+}
+
+static int hit_deh_dropdown(int mouse_px, int mouse_py)
+{
+    if (mouse_px >= PAD && mouse_px <= WINW-PAD &&
+        mouse_py >= DEH_Y && mouse_py <= DEH_Y + IWAD_H)
+        return 0;        // toggles the dropdown
+
+    if (!deh_dd_open) return -1;
+
+    int show = deh_count < DEH_SHOW ? deh_count : DEH_SHOW;
+    for (int i=0; i<show; i++) {
+        float oy = DEH_Y + IWAD_H + i * IWAD_H;
+        if (mouse_px >= PAD && mouse_px <= WINW-PAD &&
+            mouse_py >= oy && mouse_py <= oy + IWAD_H)
+            return deh_scroll + i + 1;   // 1-based, scroll-adjusted index
+    }
+    return -1;
+}
+
 // ----------------------------------------------------------------- checkboxes
 //
 // A small amber-accented toggle: empty box + label when off, filled box +
@@ -1043,40 +1219,239 @@ static int wad_present(const char* name)
     return 0;
 }
 
-// Find the selected PWAD's FIRST map and write the matching -warp args ("7" for MAP07,
-// "2 4" for E2M4) into `warp`.  A custom map rarely sits on MAP01/E1M1, so blindly warping
-// there would drop the player into the IWAD's vanilla first map instead of the PWAD.  Leaves
-// `warp` empty if the PWAD has no map (then the caller keeps its default).
-static void pwad_first_map_warp(const char* name, char* warp, int wn)
+// Open a PWAD by bare name the same way the engine does: run/ID0/ first, then run/.
+static FILE* pwad_open(const char* name)
 {
-    warp[0] = 0;
     char p[1024]; FILE* f;
     snprintf(p, sizeof p, "%s/ID0/%s", run_dir(), name);
-    if (!(f = fopen(p, "rb"))) { snprintf(p, sizeof p, "%s/%s", run_dir(), name); f = fopen(p, "rb"); }
-    if (!f) return;
+    if ((f = fopen(p, "rb"))) return f;
+    snprintf(p, sizeof p, "%s/%s", run_dir(), name);
+    return fopen(p, "rb");
+}
+
+// Read a lump by name into a malloc'd, NUL-terminated buffer (NULL if absent).
+static char* pwad_read_lump(const char* name, const char* lump, int* out_len)
+{
+    FILE* f = pwad_open(name);
     unsigned char hdr[12];
-    if (fread(hdr, 1, 12, f) != 12) { fclose(f); return; }
-    unsigned nl = hdr[4] | hdr[5]<<8 | hdr[6]<<16 | (unsigned)hdr[7]<<24;
-    unsigned of = hdr[8] | hdr[9]<<8 | hdr[10]<<16 | (unsigned)hdr[11]<<24;
-    if (!nl || nl > 100000 || fseek(f, (long)of, SEEK_SET) != 0) { fclose(f); return; }
-    int best = 1000, mode = 0, be = 0, bm = 0;   // mode 1 = MAPxx, 2 = ExMy
-    for (unsigned i = 0; i < nl; i++) {
-        unsigned char e[16];
+    unsigned nl, of, i;
+    if (!f) return NULL;
+    if (fread(hdr, 1, 12, f) != 12) { fclose(f); return NULL; }
+    nl = hdr[4] | hdr[5]<<8 | hdr[6]<<16 | (unsigned)hdr[7]<<24;
+    of = hdr[8] | hdr[9]<<8 | hdr[10]<<16 | (unsigned)hdr[11]<<24;
+    if (!nl || nl > 100000 || fseek(f, (long)of, SEEK_SET) != 0) { fclose(f); return NULL; }
+    for (i = 0; i < nl; i++) {
+        unsigned char e[16]; char nm[9];
+        unsigned pos, sz;
         if (fread(e, 1, 16, f) != 16) break;
-        char nm[9]; memcpy(nm, e+8, 8); nm[8] = 0;
-        if (nm[0]=='M' && nm[1]=='A' && nm[2]=='P' &&
-            isdigit((unsigned char)nm[3]) && isdigit((unsigned char)nm[4]) && !nm[5]) {
-            int mp = (nm[3]-'0')*10 + (nm[4]-'0');
-            if (mp < best) { best = mp; mode = 1; bm = mp; }
-        } else if (nm[0]=='E' && nm[1]>='1' && nm[1]<='9' &&
-                   nm[2]=='M' && nm[3]>='1' && nm[3]<='9' && !nm[4]) {
-            int key = (nm[1]-'0')*10 + (nm[3]-'0');
-            if (key < best) { best = key; mode = 2; be = nm[1]-'0'; bm = nm[3]-'0'; }
+        pos = e[0] | e[1]<<8 | e[2]<<16 | (unsigned)e[3]<<24;
+        sz  = e[4] | e[5]<<8 | e[6]<<16 | (unsigned)e[7]<<24;
+        memcpy(nm, e+8, 8); nm[8] = 0;
+        if (strncasecmp(nm, lump, 8) == 0 && sz && sz < (1u<<22)) {
+            char* buf = malloc(sz + 1);
+            if (buf && fseek(f, (long)pos, SEEK_SET) == 0 && fread(buf, 1, sz, f) == sz) {
+                buf[sz] = 0;
+                if (out_len) *out_len = (int)sz;
+                fclose(f);
+                return buf;
+            }
+            free(buf);
+            break;
         }
     }
     fclose(f);
-    if      (mode == 1) snprintf(warp, wn, "%d", bm);
-    else if (mode == 2) snprintf(warp, wn, "%d %d", be, bm);
+    return NULL;
+}
+
+// UMAPINFO episode start.  A megawad that replaces a SLICE of the map slots (KDiKDiZD sits on
+// MAP13..MAP23 + MAP31) declares where a new game begins with the `episode` key, on the MAP
+// block that the episode starts from:
+//
+//     MAP MAP13
+//     {
+//         episode = clear
+//         episode = "M_EPI1", "Knee-Deep in KDiZD", "1"
+//
+// Without this we picked the numerically lowest map lump, and such wads usually ALSO ship a
+// stray MAP01 (a title/credits stub) -- so we started there while GZDoom, reading the same
+// intent out of (Z)MAPINFO, started on Z1M1.  Returns 1 and fills `warp` when found.
+// "episode = clear" alone only WIPES the menu and is not a start, so it is skipped.
+static int pwad_umapinfo_warp(const char* name, char* warp, int wn)
+{
+    char  curmap[16] = "";
+    char* txt = pwad_read_lump(name, "UMAPINFO", NULL);
+    char* s;
+    int   found = 0;
+
+    if (!txt) return 0;
+
+    for (s = txt; *s && !found; )
+    {
+        char* line = s;
+        char* eol  = strpbrk(s, "\r\n");
+        if (eol) { *eol = 0; s = eol + 1; } else s = line + strlen(line);
+
+        while (*line == ' ' || *line == '\t') line++;
+
+        if (!strncasecmp(line, "map", 3) && (line[3] == ' ' || line[3] == '\t'))
+        {
+            char* v = line + 3;
+            int   i = 0;
+            while (*v == ' ' || *v == '\t') v++;
+            while (v[i] && v[i] != ' ' && v[i] != '\t' && v[i] != '{' && i < (int)sizeof curmap - 1)
+                { curmap[i] = v[i]; i++; }
+            curmap[i] = 0;
+        }
+        else if (!strncasecmp(line, "episode", 7))
+        {
+            char* v = strchr(line, '=');
+            if (v)
+            {
+                v++;
+                while (*v == ' ' || *v == '\t') v++;
+                if (strncasecmp(v, "clear", 5) && curmap[0])
+                {
+                    int e, m;
+                    if (sscanf(curmap, "MAP%2d", &m) == 1 || sscanf(curmap, "map%2d", &m) == 1)
+                        { snprintf(warp, wn, "%d", m); found = 1; }
+                    else if (sscanf(curmap, "E%1dM%1d", &e, &m) == 2
+                          || sscanf(curmap, "e%1dm%1d", &e, &m) == 2)
+                        { snprintf(warp, wn, "%d %d", e, m); found = 1; }
+                }
+            }
+        }
+    }
+
+    free(txt);
+    return found;
+}
+
+// Collect the MAPxx / ExMy lump names of an open WAD, sorted, de-duplicated.  Returns how
+// many were written.  Map lumps are just directory entries -- no need to parse anything.
+static int wad_collect_maps(FILE* f, char out[][12], int max)
+{
+    unsigned char hdr[12];
+    unsigned nl, of, i;
+    int n = 0, j, k;
+
+    if (!f) return 0;
+    if (fread(hdr, 1, 12, f) != 12) return 0;
+    nl = hdr[4] | hdr[5]<<8 | hdr[6]<<16 | (unsigned)hdr[7]<<24;
+    of = hdr[8] | hdr[9]<<8 | hdr[10]<<16 | (unsigned)hdr[11]<<24;
+    if (!nl || nl > 100000 || fseek(f, (long)of, SEEK_SET) != 0) return 0;
+
+    for (i = 0; i < nl && n < max; i++) {
+        unsigned char e[16]; char nm[9];
+        if (fread(e, 1, 16, f) != 16) break;
+        memcpy(nm, e+8, 8); nm[8] = 0;
+        int ok = (nm[0]=='M' && nm[1]=='A' && nm[2]=='P' &&
+                  isdigit((unsigned char)nm[3]) && isdigit((unsigned char)nm[4]) && !nm[5])
+              || (nm[0]=='E' && nm[1]>='1' && nm[1]<='9' &&
+                  nm[2]=='M' && nm[3]>='1' && nm[3]<='9' && !nm[4]);
+        if (!ok) continue;
+        for (j = 0; j < n; j++) if (!strcmp(out[j], nm)) break;
+        if (j < n) continue;					// already have it
+        snprintf(out[n++], 12, "%s", nm);
+    }
+
+    // Sort by (episode, map) -- MAPxx sorts as episode 0 so a wad mixing both stays sane.
+    for (j = 1; j < n; j++) {
+        char t[12]; int kj, kk;
+        snprintf(t, sizeof t, "%s", out[j]);
+        kj = (t[0]=='E') ? (t[1]-'0')*100 + (t[3]-'0') : (t[3]-'0')*10 + (t[4]-'0');
+        for (k = j - 1; k >= 0; k--) {
+            kk = (out[k][0]=='E') ? (out[k][1]-'0')*100 + (out[k][3]-'0')
+                                  : (out[k][3]-'0')*10 + (out[k][4]-'0');
+            if (kk <= kj) break;
+            snprintf(out[k+1], 12, "%s", out[k]);
+        }
+        snprintf(out[k+1], 12, "%s", t);
+    }
+    return n;
+}
+
+// Turn a map lump name into its row label and its -warp argument.
+static void map_name_to_entry(const char* nm, char* label, int ln, char* warp, int wn)
+{
+    if (nm[0] == 'E') {						// E1M2 -> "E1M2", "-warp 1 2"
+        snprintf(label, ln, "%s", nm);
+        snprintf(warp,  wn, "%c %c", nm[1], nm[3]);
+    } else {							// MAP07 -> "7", "-warp 7"
+        int m = (nm[3]-'0')*10 + (nm[4]-'0');
+        snprintf(label, ln, "%d", m);
+        snprintf(warp,  wn, "%d", m);
+    }
+}
+
+// (re)build the Map dropdown for the current IWAD + PWAD selection.
+static void scan_maps(void)
+{
+    char        names[MAX_MAPLIST][12];
+    const char* src = NULL;		// bare PWAD name supplying the list (NULL = the IWAD)
+    int         n = 0, i;
+    char        start[12] = "";
+    char        keep[12] = "";		// the map that WAS picked, by label
+
+    if (map_sel > 0 && map_sel < map_count)
+        snprintf(keep, sizeof keep, "%s", map_label[map_sel]);
+
+    // A PWAD that actually brings maps defines the map list; otherwise the IWAD does.
+    // (Asset-only PWADs -- texture packs, buddy packs -- must not blank the list.)
+    if (pwad_sel > 0 && pwad_sel < pwad_count) {
+        FILE* f = pwad_open(pwads[pwad_sel]);
+        n = wad_collect_maps(f, names, MAX_MAPLIST);
+        if (f) fclose(f);
+        if (n) src = pwads[pwad_sel];
+    }
+    if (!n && wad2_sel > 0 && wad2_sel < pwad_count) {
+        FILE* f = pwad_open(pwads[wad2_sel]);
+        n = wad_collect_maps(f, names, MAX_MAPLIST);
+        if (f) fclose(f);
+        if (n) src = pwads[wad2_sel];
+    }
+    if (!n && iwad_sel >= 0 && iwad_sel < iwad_count) {
+        FILE* f = fopen(iwads[iwad_sel].path, "rb");	// IWADs are stored as absolute paths
+        n = wad_collect_maps(f, names, MAX_MAPLIST);
+        if (f) fclose(f);
+    }
+
+    // Slot 0 -- "Start".  A PWAD's own UMAPINFO episode wins; else the first map it has;
+    // else the IWAD's first map (E1M1 for Doom/Heretic, MAP01 for Doom2/Hexen/Strife).
+    if (src) pwad_umapinfo_warp(src, start, sizeof start);
+    if (!start[0] && n) {
+        char dummy[12];
+        map_name_to_entry(names[0], dummy, sizeof dummy, start, sizeof start);
+    }
+    snprintf(map_label[0], sizeof map_label[0], "%s", "Start");
+    snprintf(map_warp [0], sizeof map_warp [0], "%s", start);
+    map_count = 1;
+
+    for (i = 0; i < n && map_count < MAX_MAPLIST; i++) {
+        char label[12], warp[12];
+        map_name_to_entry(names[i], label, sizeof label, warp, sizeof warp);
+        if (!strcmp(warp, map_warp[0])) continue;		// that one IS "Start"
+        snprintf(map_label[map_count], sizeof map_label[0], "%s", label);
+        snprintf(map_warp [map_count], sizeof map_warp [0], "%s", warp);
+        map_count++;
+    }
+
+    // Keep the pick across a wad change if that map still exists -- by LABEL, since the same
+    // index means a different map once the list comes from another wad.  Otherwise: Start.
+    map_sel = 0;
+    if (keep[0])
+        for (i = 1; i < map_count; i++)
+            if (!strcmp(map_label[i], keep)) { map_sel = i; break; }
+}
+
+// Re-select the map saved in launcher.ini, once scan_maps has built the list for the
+// restored wads.  Falls back to "Start" when that map is not in this wad.
+static void restore_map_pref(void)
+{
+    int i;
+    if (!map_pref[0]) return;
+    for (i = 1; i < map_count; i++)
+        if (!strcmp(map_label[i], map_pref)) { map_sel = i; return; }
+    map_sel = 0;
 }
 
 // --- SIGIL pack verification ------------------------------------------------------------------
@@ -1127,6 +1502,10 @@ static void save_launcher_prefs(void)
     fprintf(f, "iwad %s\n",     (iwad_sel >= 0 && iwad_sel < iwad_count) ? iwads[iwad_sel].name : "");
     fprintf(f, "pwad %s\n",     (pwad_sel > 0 && pwad_sel < pwad_count) ? pwads[pwad_sel] : "");
     fprintf(f, "wad2 %s\n",     (wad2_sel > 0 && wad2_sel < pwad_count) ? pwads[wad2_sel] : "");
+    fprintf(f, "deh %s\n",      (deh_sel  > 0 && deh_sel  < deh_count)  ? dehs[deh_sel]   : "");
+    // The Map pick is stored as its LABEL, not its index: the list is rebuilt from whatever
+    // wad is loaded, so index 5 means a different map after changing the PWAD.
+    fprintf(f, "map %s\n",      (map_sel  > 0 && map_sel  < map_count)  ? map_label[map_sel] : "");
     fprintf(f, "buddy %d\n",    buddy_mode);
     fprintf(f, "monster %d\n",  mon_mode);
     fprintf(f, "skill %d\n",    opt_skill);
@@ -1155,6 +1534,8 @@ static void load_launcher_prefs(void)
         if      (!strcmp(key, "iwad"))    { for (i=0;i<iwad_count;i++) if (!strcmp(iwads[i].name,val)) { iwad_sel=i; break; } }
         else if (!strcmp(key, "pwad"))    { pwad_sel=0; for (i=1;i<pwad_count;i++) if (!strcmp(pwads[i],val)) { pwad_sel=i; break; } }
         else if (!strcmp(key, "wad2"))    { wad2_sel=0; for (i=1;i<pwad_count;i++) if (!strcmp(pwads[i],val)) { wad2_sel=i; break; } }
+        else if (!strcmp(key, "deh"))     { deh_sel=0;  for (i=1;i<deh_count;i++)  if (!strcmp(dehs[i],val))  { deh_sel=i;  break; } }
+        else if (!strcmp(key, "map"))       snprintf(map_pref, sizeof map_pref, "%s", val);   // matched in restore_map_pref
         else if (!strcmp(key, "buddy"))     buddy_mode   = atoi(val);
         else if (!strcmp(key, "monster"))   mon_mode     = atoi(val);
         else if (!strcmp(key, "skill"))     opt_skill    = atoi(val);
@@ -1253,33 +1634,32 @@ static void build_command(char* out, int n, const char* iwad_path)
     if (files[0])
         off += snprintf(out + off, n - off, " -file%s", files);
 
-    // Warp target.  A selected PWAD's own first map wins (custom maps rarely sit on E1M1/MAP01);
-    // otherwise warp to the "Map" row's value (1/10/19/28).  DOOM2 takes a flat MAPnn (-warp 10);
-    // DOOM1 / Heretic are EPISODIC (-warp E M), so the flat map number is converted to episode+map
-    // (map 10 -> E2M1 = "2 1", 19 -> E3M1, 28 -> E4M1).  DOOM2-vs-DOOM1 is detected by a MAP01 lump.
+    // Loose DeHackEd/BEX patch.  MUST come after the -file list: the engine reads names
+    // following -file until the next "-arg", so anything appended inside that run would be
+    // swallowed as a WAD name.  The game resolves the bare name against run/ID0/ (d_deh.c).
+    if (deh_sel > 0 && deh_sel < deh_count) {
+        const char* dp = dehs[deh_sel];
+        off += snprintf(out + off, n - off, strchr(dp, ' ') ? " -deh \"%s\"" : " -deh %s", dp);
+    }
+
+    // Warp target.  The Map dropdown already carries the ready-made -warp argument for every
+    // entry (scan_maps built them from the wad that supplies the maps), so nothing here has to
+    // guess at episode arithmetic any more -- which is what used to break every non-Doom game:
+    // the old row offered four fixed Doom episode starts (1/10/19/28) and converted them with
+    // (map-1)/9+1, nonsense for Strife's 34 flat maps and for Hexen's gapped slots.
+    // Slot 0 is "Start", and only there does a verified SIGIL pack override the wad's own start.
     char warp[32] = "";
-    if (sigil == 1)
+    if (map_sel == 0 && sigil == 1)
         snprintf(warp, sizeof warp, "%d 1", sigil_ep);		// verified SIGIL -> E5/E3/E6 M1
-    else if (sigil2 == 1)
+    else if (map_sel == 0 && sigil2 == 1)
         snprintf(warp, sizeof warp, "%d 1", sigil_ep2);
-    else if (load_pwad) {
-        char w[32]; pwad_first_map_warp(pwads[pwad_sel], w, sizeof w);
-        if (w[0]) snprintf(warp, sizeof warp, "%s", w);
-    } else if (load_wad2) {
-        char w[32]; pwad_first_map_warp(pwads[wad2_sel], w, sizeof w);
-        if (w[0]) snprintf(warp, sizeof warp, "%s", w);
-    }
-    if (!warp[0]) {
-        int mapnum = map_vals[map_idx];
-        int is_doom2 = (iwad_sel >= 0 && iwad_sel < iwad_count
-                        && wad_has_lump("", iwads[iwad_sel].path, "MAP01"));
-        if (is_doom2)
-            snprintf(warp, sizeof warp, "%d", mapnum);				// MAPnn
-        else
-            snprintf(warp, sizeof warp, "%d %d", (mapnum-1)/9 + 1, (mapnum-1)%9 + 1);  // ExMy
-    }
+    else if (map_sel >= 0 && map_sel < map_count)
+        snprintf(warp, sizeof warp, "%s", map_warp[map_sel]);
     if (warp[0])
-        off += snprintf(out + off, n - off, " -warp %s -skill %d", warp, opt_skill + 1);
+        off += snprintf(out + off, n - off, " -warp %s", warp);
+    // -skill stands on its own: it used to ride inside the -warp printf, so a wad we could
+    // find no map in silently dropped the difficulty too.
+    off += snprintf(out + off, n - off, " -skill %d", opt_skill + 1);
 
     (void)n;
 }
@@ -1509,7 +1889,10 @@ int main(int argc, char** argv)
     hero_init();
     scan_iwads();
     scan_pwads();
+    scan_dehs();
     load_launcher_prefs();   // restore the last session's selection
+    scan_maps();             // map list depends on the restored IWAD/PWAD picks
+    restore_map_pref();      // ...and the saved pick is a LABEL, matched against that list
 
     int running = 1;
     SDL_Event ev;
@@ -1519,10 +1902,12 @@ int main(int argc, char** argv)
             case SDL_EVENT_QUIT: running = 0; break;
             case SDL_EVENT_KEY_DOWN:
                 if (ev.key.key == SDLK_ESCAPE) {
-                    if (dropdown_open || pwad_dd_open || wad2_dd_open) { dropdown_open = 0; pwad_dd_open = 0; wad2_dd_open = 0; }
+                    if (dropdown_open || pwad_dd_open || wad2_dd_open || deh_dd_open || map_dd_open)
+                        { dropdown_open = 0; pwad_dd_open = 0; wad2_dd_open = 0; deh_dd_open = 0; map_dd_open = 0; }
                     else running = 0;
                 }
-                if (ev.key.key == SDLK_RETURN && !dropdown_open && !pwad_dd_open && !wad2_dd_open) {
+                if (ev.key.key == SDLK_RETURN && !dropdown_open && !pwad_dd_open && !wad2_dd_open
+                    && !deh_dd_open && !map_dd_open) {
                     do_launch();
                 }
                 break;
@@ -1537,22 +1922,34 @@ int main(int argc, char** argv)
                     // takes clicks (a click anywhere closes it / picks an item).
                     if (dropdown_open) {
                         int hh = hit_iwad_dropdown(mouse_x, mouse_y);
-                        if (hh > 0) iwad_sel = hh - 1;
+                        if (hh > 0) { iwad_sel = hh - 1; scan_maps(); }   // map list follows the wad
                         dropdown_open = 0;
                     } else if (pwad_dd_open) {
                         int hh = hit_pwad_dropdown(mouse_x, mouse_y);
-                        if (hh > 0) pwad_sel = hh - 1;
+                        if (hh > 0) { pwad_sel = hh - 1; scan_maps(); }
                         pwad_dd_open = 0;
                     } else if (wad2_dd_open) {
                         int hh = hit_wad2_dropdown(mouse_x, mouse_y);
-                        if (hh > 0) wad2_sel = hh - 1;
+                        if (hh > 0) { wad2_sel = hh - 1; scan_maps(); }
                         wad2_dd_open = 0;
+                    } else if (deh_dd_open) {
+                        int hh = hit_deh_dropdown(mouse_x, mouse_y);
+                        if (hh > 0) deh_sel = hh - 1;
+                        deh_dd_open = 0;
+                    } else if (map_dd_open) {
+                        int hh = hit_map_dropdown(mouse_x, mouse_y);
+                        if (hh > 0) map_sel = hh - 1;
+                        map_dd_open = 0;
                     } else if (hit_iwad_dropdown(mouse_x, mouse_y) == 0) {
                         dropdown_open = 1; iwad_scroll = 0;
                     } else if (hit_pwad_dropdown(mouse_x, mouse_y) == 0) {
                         pwad_dd_open = 1; pwad_scroll = 0;
                     } else if (hit_wad2_dropdown(mouse_x, mouse_y) == 0) {
                         wad2_dd_open = 1; wad2_scroll = 0;
+                    } else if (hit_deh_dropdown(mouse_x, mouse_y) == 0) {
+                        deh_dd_open = 1; deh_scroll = 0;
+                    } else if (hit_map_dropdown(mouse_x, mouse_y) == 0) {
+                        map_dd_open = 1; map_scroll = 0;
                     } else if (hit_launch_button(mouse_x, mouse_y)) {
                         do_launch();
                     } else {
@@ -1603,21 +2000,7 @@ int main(int argc, char** argv)
                             }
                         }
 
-                        // Map row (4 pills) -- right-aligned like Skill, width 64
-                        {
-                            const float mpw = 80;	// wider pills for the "10(EP2)" labels
-                            float mrx = WINW - PAD - mpw*4 - gap*3;
-                            float mry = MAP_Y + (BUDDY_H - 26)/2;
-                            if (mouse_y >= mry && mouse_y <= mry + 26) {
-                                for (int i=0; i<4; i++) {
-                                    float px = mrx + i * (mpw + gap);
-                                    if (mouse_x >= px && mouse_x <= px + mpw) {
-                                        map_idx = i;
-                                        g_status[0] = 0;
-                                    }
-                                }
-                            }
-                        }
+                        // (the Map row is a dropdown now -- handled above with the other lists)
 
                         // Options row: toggle the two checkboxes.
                         if (hit_checkbox(OPT_NOFF_X, OPTS_Y, "No friendly fire", mouse_x, mouse_y))
@@ -1669,6 +2052,16 @@ int main(int argc, char** argv)
                     wad2_scroll -= (int)ev.wheel.y;
                     if (wad2_scroll < 0)  wad2_scroll = 0;
                     if (wad2_scroll > ms) wad2_scroll = ms;
+                } else if (deh_dd_open) {      // scroll the open DEH list
+                    int ms = deh_count - DEH_SHOW; if (ms < 0) ms = 0;
+                    deh_scroll -= (int)ev.wheel.y;
+                    if (deh_scroll < 0)  deh_scroll = 0;
+                    if (deh_scroll > ms) deh_scroll = ms;
+                } else if (map_dd_open) {      // scroll the open Map list
+                    int ms = map_count - MAP_SHOW; if (ms < 0) ms = 0;
+                    map_scroll -= (int)ev.wheel.y;
+                    if (map_scroll < 0)  map_scroll = 0;
+                    if (map_scroll > ms) map_scroll = ms;
                 }
                 break;
             case SDL_EVENT_WINDOW_RESIZED: {
@@ -1702,11 +2095,7 @@ int main(int argc, char** argv)
             draw_mode_row(SKILL_Y, "Skill",
                           skill_opts, 5, opt_skill, 64, NULL);
         }
-        // Map row (4 pills): warp target -- 1/10/19/28 (build_command picks DOOM1/DOOM2 warp form)
-        {
-            static const char* map_opts[] = { "1(EP1)", "10(EP2)", "19(EP3)", "28(EP4)" };
-            draw_mode_row(MAP_Y, "Map", map_opts, 4, map_idx, 80, NULL);
-        }
+        // (Map row: drawn with the other dropdowns below, for z-order)
         // Options row (toggles)
         {
             text(PAD, OPTS_Y + (CHK_BOX - FONT_CH)/2, "Options", COL_DIM);
@@ -1744,10 +2133,18 @@ int main(int argc, char** argv)
             else              text(PAD, LAUNCH_Y - 30, g_status, COL_CHECK);
         }
 
-        if (dropdown_open) { draw_pwad_dropdown(); draw_wad2_dropdown(); draw_iwad_dropdown(); }
-        else if (pwad_dd_open) { draw_iwad_dropdown(); draw_wad2_dropdown(); draw_pwad_dropdown(); }
-        else if (wad2_dd_open) { draw_iwad_dropdown(); draw_pwad_dropdown(); draw_wad2_dropdown(); }
-        else                   { draw_iwad_dropdown(); draw_pwad_dropdown(); draw_wad2_dropdown(); }
+        // Z-order: every CLOSED selector first, then the one open list on top of them
+        // (only one can be open at a time -- opening a dropdown is modal).
+        if (!map_dd_open)   draw_map_dropdown();
+        if (!dropdown_open) draw_iwad_dropdown();
+        if (!pwad_dd_open)  draw_pwad_dropdown();
+        if (!wad2_dd_open)  draw_wad2_dropdown();
+        if (!deh_dd_open)   draw_deh_dropdown();
+        if (dropdown_open)  draw_iwad_dropdown();
+        if (pwad_dd_open)   draw_pwad_dropdown();
+        if (wad2_dd_open)   draw_wad2_dropdown();
+        if (deh_dd_open)    draw_deh_dropdown();
+        if (map_dd_open)    draw_map_dropdown();	// opens DOWNWARD over the rows below it
 
         SDL_RenderPresent(ren);
     }
