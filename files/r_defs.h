@@ -446,6 +446,7 @@ typedef struct vissprite_s
     lighttable_t*	colormap;
    
     int			mobjflags;
+    int			mobjflags2;	// (X) MF2_ALTSHADOW -- see R_DrawVisSprite
 
     fixed_t     floorz;
 

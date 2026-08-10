@@ -283,6 +283,13 @@ typedef struct mobj_s
 #define MF2_RIP           0x00020000   // rips through things instead of exploding
 #define MF2_FULLVOLSOUNDS 0x00040000
 #define MF2_DONTDRAW      0x00080000   // not rendered (ZDoom RF_INVISIBLE) -- e.g. submerged Serpent
+// (X) Hexen MF_ALTSHADOW: drawn PARTLY transparent, still lit and coloured normally.
+// Hexen has two translucency levels where DOOM has one -- MF_SHADOW (the spectre
+// fuzz) and MF_ALTSHADOW (a plain ~40% blend).  The ghostly "Mash" monsters are the
+// second kind; giving them MF_SHADOW instead made them fizz like spectres, which is
+// far more aggressive and reads as a rendering fault.  Blended through Boom's
+// tranmap in R_DrawVisSprite.
+#define MF2_ALTSHADOW     0x00100000
     int			health;
 
     // Movement direction, movement generation (zig-zagging).

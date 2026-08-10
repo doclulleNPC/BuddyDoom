@@ -977,27 +977,29 @@ void Hexen_Mon_Init (void)
     // ---- "Mash" variants (Hexen ednums 100-103): the same actor, but bloodless,
     //      ghostly and with NO death sequence -- they simply vanish when killed.
     //      They reuse their normal counterpart's states, so no new states here.
-    //      crispy renders them MF_ALTSHADOW (40% alpha); this engine has no alpha
-    //      blending, so MF_SHADOW (the spectre fuzz) stands in. ----
+    //      Hexen draws them MF_ALTSHADOW: a plain ~40% blend, NOT the spectre fuzz.
+    //      MF2_ALTSHADOW reproduces that through Boom's tranmap (r_things.c).
+    //      They used to be given MF_SHADOW, which fizzed like a spectre -- far
+    //      harsher than Hexen's effect, and it read as a rendering fault. ----
     m = &mobjinfo[MT_XETTIN_MASH];
     *m = mobjinfo[MT_XETTIN];
     m->doomednum = -1; m->deathstate = S_NULL; m->xdeathstate = S_NULL;
-    m->flags |= MF_NOBLOOD | MF_SHADOW;
+    m->flags |= MF_NOBLOOD; m->flags2 |= MF2_ALTSHADOW;
 
     m = &mobjinfo[MT_XCENTAUR_MASH];
     *m = mobjinfo[MT_XCENTAUR];
     m->doomednum = -1; m->deathstate = S_NULL; m->xdeathstate = S_NULL;
-    m->flags |= MF_NOBLOOD | MF_SHADOW;
+    m->flags |= MF_NOBLOOD; m->flags2 |= MF2_ALTSHADOW;
 
     m = &mobjinfo[MT_XDEMON_MASH];
     *m = mobjinfo[MT_XDEMON];
     m->doomednum = -1; m->deathstate = S_NULL; m->xdeathstate = S_NULL;
-    m->flags |= MF_NOBLOOD | MF_SHADOW;
+    m->flags |= MF_NOBLOOD; m->flags2 |= MF2_ALTSHADOW;
 
     m = &mobjinfo[MT_XDEMON2_MASH];
     *m = mobjinfo[MT_XDEMON2];
     m->doomednum = -1; m->deathstate = S_NULL; m->xdeathstate = S_NULL;
-    m->flags |= MF_NOBLOOD | MF_SHADOW;
+    m->flags |= MF_NOBLOOD; m->flags2 |= MF2_ALTSHADOW;
 
     // ---- Fighter class boss (crispy S_FIGHTER*, sprite XPLA = Hexen PLAY) ----
     ST (S_XFTR_LOOK1, SPR_XPLA,  0,  5, (actionf_p1)A_Look,          S_XFTR_LOOK1);

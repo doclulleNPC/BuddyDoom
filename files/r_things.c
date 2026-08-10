@@ -41,6 +41,7 @@ rcsid[] = "$Id: r_things.c,v 1.5 1997/02/03 16:47:56 b1 Exp $";
 #include "r_local.h"
 
 #include "doomstat.h"
+extern byte*	main_tranmap;	// r_data.c -- Boom 260 translucency map
 #ifndef ST_HEXEN_HEIGHT
 #define ST_HEXEN_HEIGHT 66	// Hexen bar: BASE_HEIGHT - H2BAR y (200-134)
 #endif
@@ -668,6 +669,16 @@ R_DrawVisSprite
 	// NULL colormap = shadow draw
 	colfunc = fuzzcolfunc;
     }
+    // (X) Hexen MF_ALTSHADOW: partly transparent, but still lit and coloured
+    // normally -- Hexen's second translucency level, which DOOM does not have.
+    // Blend through Boom's tranmap rather than using the spectre fuzz: fuzz is a
+    // much harsher effect and reads as a rendering fault on an ordinary monster.
+    // Falls back to a solid draw if the WAD gave us no tranmap.
+    else if ((vis->mobjflags2 & MF2_ALTSHADOW) && main_tranmap)
+    {
+	colfunc = R_DrawTLColumn;
+	dc_tranmap = main_tranmap;
+    }
     else if (vis->translation)
     {
 	// Explicit per-actor buddy-colour remap (arbitrary named colour) -- takes
@@ -850,6 +861,7 @@ void R_ProjectSprite (mobj_t* thing)
     // store information in a vissprite
     vis = R_NewVisSprite ();
     vis->mobjflags = thing->flags;
+    vis->mobjflags2 = thing->flags2;
     vis->translation = (thing == r_buddycolor_mo) ? r_buddycolor_xlat : NULL;
     vis->floorz = thing->floorz;
     vis->scale = xscale<<detailshift;
