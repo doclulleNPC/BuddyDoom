@@ -899,8 +899,12 @@ void G_Ticker (void)
 	    if (demorecording) 
 		G_WriteDemoTiccmd (cmd);
 	    
-	    // check for turbo cheats
-	    if (cmd->forwardmove > TURBOTHRESHOLD 
+	    // check for turbo cheats.  The AI buddy is exempt: a BUDDYDEF `speed` above
+	    // the default legitimately pushes its forwardmove past the run threshold
+	    // (p_ai_coop.c), and it is our own bot, not a cheating peer -- without this
+	    // every fast buddy nagged "player 2 is turbo!" every 32 tics.
+	    if (cmd->forwardmove > TURBOTHRESHOLD
+		&& i != P_AICoop_Slot()
 		&& !(gametic&31) && ((gametic>>5)&3) == i )
 	    {
 		static char turbomessage[80];

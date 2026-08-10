@@ -208,6 +208,21 @@ static boolean Buddy_SpritePresent (const char base[4])
     return W_CheckNumForName (n) >= 0;
 }
 
+// Cross-game sprite-name collisions (docs/BUDDY_SPRITE_COLLISIONS.md).  A buddy pack
+// borrowing a monster's art names it with that monster's NATIVE 4-char code, but this is
+// one shared sprite namespace and a few Strife codes duplicate a Doom one.  The flagged
+// case: the Strife Stalker's frames are SPID* in strife1.wad, and SPID is Doom's Spider
+// Mastermind -- a `sprite SPID` buddy loaded in Doom therefore rendered as the Spider
+// Mastermind.  BuddyDoom ships those frames under the collision-free base STLK in
+// buddydoom.wad (exactly what ZDoom does), so redirect the native code to it.
+//
+// Add a row here for each collision as its art lands in the asset WAD; the redirect only
+// fires when the placeholder actually HAS art, so a pack keeps working if it doesn't.
+static const struct { const char native[5], placeholder[5]; } buddy_sprite_alias[] =
+{
+    { "SPID", "STLK" },		// Strife Stalker vs Doom Spider Mastermind
+};
+
 // Find or append a 4-char sprite name; returns the spritenum (SPR_TNT1 on failure).
 static int Buddy_RegSprite (const char* raw)
 {
@@ -215,6 +230,17 @@ static int Buddy_RegSprite (const char* raw)
     int i;
     for (i = 0; i < 4; i++)
 	base[i] = raw[i] ? toupper((unsigned char)raw[i]) : ' ';
+
+    for (i = 0; i < (int)(sizeof buddy_sprite_alias / sizeof buddy_sprite_alias[0]); i++)
+	if (!strncmp (base, buddy_sprite_alias[i].native, 4)
+	    && Buddy_SpritePresent (buddy_sprite_alias[i].placeholder))
+	{
+	    printf ("Buddy: sprite %.4s -> %.4s (cross-game collision; see "
+		    "docs/BUDDY_SPRITE_COLLISIONS.md).\n",
+		    base, buddy_sprite_alias[i].placeholder);
+	    memcpy (base, buddy_sprite_alias[i].placeholder, 4);
+	    break;
+	}
 
     // already known?
     for (i = 0; i < num_sprites; i++)
@@ -329,7 +355,8 @@ static void Buddy_Register (buddyparse_t* b)
 	r->reactiontime = b->reactiontime;
     }
     printf ("Buddy: registered '%s' (roster slot %d, sprite %.4s).\n",
-	    b->name, nroster - 1, b->sprite);
+	    b->name, nroster - 1, (spr >= 0 && spr < num_sprites && sprnames[spr])
+				  ? sprnames[spr] : b->sprite);	// the RESOLVED name (see the alias table)
 }
 
 // ---------------------------------------------------------------------------

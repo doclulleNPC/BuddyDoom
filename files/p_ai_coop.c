@@ -3794,21 +3794,30 @@ void P_AICoop_BuildCmd (void)
     AICoop_DodgeMissile (cmd, mo);
 
     // (buddy) speed stat: scale the final move by the selected buddy's movement factor
-    // (1.0 for the Marine), clamped to the ticcmd's signed-char run range.
-    // The clamp is UNCONDITIONAL -- it used to sit inside the movescale branch, so the
-    // plain Marine (movescale == 1.0, the default buddy) had no bound on its move at
-    // all and any accumulated overshoot went straight into the ticcmd.
+    // (1.0 for the Marine).
+    //
+    // ORDER MATTERS.  Bound the AI's own move to the run speed FIRST -- the steering code
+    // accumulates overshoot and unbounded that alone makes every buddy outrun a sprinting
+    // player.  Only THEN apply the speed stat.  Clamping after the scale (the old order)
+    // capped the result back at run speed, so a BUDDYDEF `speed` ABOVE the default 8 was
+    // silently a no-op -- the AI already steers at 0x32, so scaling up and re-clamping
+    // gave back exactly 0x32.  Only speeds BELOW 8 did anything, which read as "the Speed
+    // parameter is ignored".  ticcmd_t fields are signed char; the 2x movescale cap keeps
+    // the scaled value at 0x64 worst case, well inside that.
     {
 	int fm = cmd->forwardmove;
 	int sm = cmd->sidemove;
+
+	if (fm >  0x32) fm =  0x32; else if (fm < -0x32) fm = -0x32;
+	if (sm >  0x32) sm =  0x32; else if (sm < -0x32) sm = -0x32;
 
 	if (buddy_movescale != FRACUNIT)
 	{
 	    fm = FixedMul (fm << FRACBITS, buddy_movescale) >> FRACBITS;
 	    sm = FixedMul (sm << FRACBITS, buddy_movescale) >> FRACBITS;
+	    if (fm >  127) fm =  127; else if (fm < -127) fm = -127;
+	    if (sm >  127) sm =  127; else if (sm < -127) sm = -127;
 	}
-	if (fm >  0x32) fm =  0x32; else if (fm < -0x32) fm = -0x32;
-	if (sm >  0x32) sm =  0x32; else if (sm < -0x32) sm = -0x32;
 	cmd->forwardmove = (signed char)fm;
 	cmd->sidemove    = (signed char)sm;
     }
