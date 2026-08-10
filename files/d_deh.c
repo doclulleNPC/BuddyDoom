@@ -155,6 +155,7 @@ void deh_procSprites(DEHFILE *, FILE*, char *);
 void deh_procSoundsList(DEHFILE *, FILE*, char *);
 void deh_procError(DEHFILE *, FILE*, char *);
 void deh_procBexCodePointers(DEHFILE *, FILE*, char *);
+boolean deh_procStringSub(char *key, char *lookfor, char *newstring, FILE *fpout);
 
 // Structure deh_block is used to hold the block names that can
 // be encountered, and the routines to use to decipher them
@@ -692,8 +693,17 @@ void ProcessDehFile(char *filename, char *outfilename, int lumpnum)
     {
       if (!(infile.inp = (void *) fopen(filename,"rt")))
         {
-          printf("-deh file %s not found\n",filename);
-          return;  // should be checked up front anyway
+          // Game content lives in run/ID0/ -- retry there before giving up, exactly as
+          // W_AddFile does for WADs, so "-deh foo.deh" resolves without a path (that is
+          // what the launcher's DEH dropdown passes).
+          static char id0path[1024];
+          snprintf(id0path, sizeof(id0path), "ID0/%s", filename);
+          if (!(infile.inp = (void *) fopen(id0path,"rt")))
+            {
+              printf("-deh file %s not found\n",filename);
+              return;  // should be checked up front anyway
+            }
+          filename = id0path;
         }
       infile.lump = NULL;
     }
@@ -1468,10 +1478,126 @@ void deh_procMisc(DEHFILE *fpin, FILE* fpout, char *line)
 //          line  -- current line in file to process
 // Returns: void
 //
+// Applied-rename tallies, reported once by D_ProcessDehInWads -- a silently dropped
+// rename is invisible otherwise, and that is exactly how this went unnoticed.
+static int deh_sprite_renames, deh_sound_renames;
+
+// A classic (pre-BEX) "Text <fromlen> <tolen>" block is one unbroken run of
+// fromlen+tolen characters -- NOT lines -- holding the old text immediately followed by
+// the new one.  It is DeHackEd's only way to rename a SPRITE, a sound or a music lump,
+// and big patches lean on it hard: kdikdizd.deh alone carries 129 sprite renames
+// (PISG->VPSG, TLMP->CHAI, COLU->VCOL, ...).  This used to just skip the bytes, so every
+// one of those was silently dropped: the patch's Frame entries were remapped to the NEW
+// sprite's frame letters while the sprite name stayed vanilla, which drew the wrong art
+// (the pistol) and left frames with no matching lump invisible -- decorations that
+// flickered in and out as their state cycled.  Now handled, in DeHackEd's own order:
+// 4/4 -> sprite, both < 7 -> sfx then music, otherwise hand it to the string table.
 void deh_procText(DEHFILE *fpin, FILE* fpout, char *line)
-{ int fromlen, tolen, i; (void)fpout;   // (M2b) skip the from/to bytes so parsing stays in sync
-  if (sscanf(line, "%*s %d %d", &fromlen, &tolen) == 2)
-    for (i = 0; i < fromlen + tolen && !dehfeof(fpin); i++) dehfgetc(fpin);
+{
+  char		inbuffer[DEH_BUFFERMAX * 2];
+  int		fromlen, tolen;
+  int		i, c, totlen = 0;
+  boolean	found = false;
+  extern int	num_sfx;
+  extern boolean devparm;
+
+  if (sscanf(line, "%*s %d %d", &fromlen, &tolen) != 2 || fromlen < 0 || tolen < 0
+      || fromlen + tolen >= (int)sizeof inbuffer)
+    return;
+
+  // Read the raw run.  CRs are dropped and NOT counted (a DOS-CRLF patch read as
+  // binary -- or a DEHACKED lump straight out of a WAD -- would otherwise lose a
+  // character per line and desync the rest of the block).
+  while (totlen < fromlen + tolen && (c = dehfgetc(fpin)) != EOF)
+    if (c != '\r')
+      inbuffer[totlen++] = (char)c;
+  inbuffer[totlen] = '\0';
+  if (totlen < fromlen + tolen)
+    return;					// truncated block
+
+  // Sprite rename.  Search from index 0 so the vanilla names -- which come first in
+  // sprnames_builtin[] -- win over any same-named entry a later game's block added.
+  //
+  // Skip a from->to pair we have already applied.  The SAME patch routinely reaches us
+  // twice (a PWAD's DEHACKED lump plus the launcher's -deh pick of the same .deh --
+  // KDiKDi_B.wad is exactly that), and DeHackEd renames are meant to be idempotent.  They
+  // are not here: sprnames[] carries a few DUPLICATE 4-char names, because Strife keeps
+  // its native codes and a handful (SPID, TLMP, TRE1, PLAY, ...) collide with Doom's --
+  // see docs/BUDDY_SPRITE_COLLISIONS.md.  The first pass renames Doom's entry, so a
+  // second pass no longer finds it and walks on to STRIFE's, renaming a sprite the patch
+  // never asked about.  One application per pair, and that can't happen.
+  if (fromlen == 4 && tolen == 4)
+  {
+    static char (*applied)[8];
+    static int   napplied, maxapplied;
+
+    for (i = 0; i < napplied; i++)
+      if (!strncasecmp (applied[i], inbuffer, 8))
+	return;						// already done -- no-op
+
+    if (napplied == maxapplied)
+    {
+      maxapplied = maxapplied ? maxapplied * 2 : 64;
+      applied = realloc (applied, maxapplied * sizeof *applied);
+    }
+    memcpy (applied[napplied++], inbuffer, 8);
+
+    for (i = 0; i < num_sprites; i++)
+      if (sprnames[i] && !strncasecmp(sprnames[i], inbuffer, 4))
+      {
+	char* s = malloc(5);
+	memcpy(s, &inbuffer[4], 4); s[4] = '\0';
+	if (fpout) fprintf(fpout, "Changing name of sprite at index %d from %.4s to %.4s\n",
+			   i, sprnames[i], s);
+	if (devparm) printf ("DEH: sprite %.4s -> %.4s\n", sprnames[i], s);
+	deh_sprite_renames++;
+	sprnames[i] = s;		// orphan the old name (may be a string literal)
+	found = true;
+	break;
+      }
+  }
+
+  // Sound / music lump rename (both names are 6 chars or shorter).
+  if (!found && fromlen < 7 && tolen < 7)
+  {
+    for (i = 1; i < num_sfx; i++)	// slot 0 is the "none" sfx
+      if (S_sfx[i].name && (int)strlen(S_sfx[i].name) == fromlen
+	  && !strncasecmp(S_sfx[i].name, inbuffer, fromlen))
+      {
+	char* s = malloc(tolen + 1);
+	memcpy(s, &inbuffer[fromlen], tolen); s[tolen] = '\0';
+	if (fpout) fprintf(fpout, "Changing name of sfx from %s to %s\n", S_sfx[i].name, s);
+	if (devparm) printf ("DEH: sfx %s -> %s\n", S_sfx[i].name, s);
+	deh_sound_renames++;
+	S_sfx[i].name = s;
+	found = true;
+	break;
+      }
+
+    if (!found)
+      for (i = 1; i < NUMMUSIC; i++)
+	if (S_music[i].name && (int)strlen(S_music[i].name) == fromlen
+	    && !strncasecmp(S_music[i].name, inbuffer, fromlen))
+	{
+	  char* s = malloc(tolen + 1);
+	  memcpy(s, &inbuffer[fromlen], tolen); s[tolen] = '\0';
+	  if (fpout) fprintf(fpout, "Changing name of music from %s to %s\n", S_music[i].name, s);
+	  if (devparm) printf ("DEH: music %s -> %s\n", S_music[i].name, s);
+	  deh_sound_renames++;
+	  S_music[i].name = s;
+	  found = true;
+	  break;
+	}
+  }
+
+  // Not a rename -- it is a plain text substitution (level names, menu strings, ...).
+  if (!found)
+  {
+    char* newtext = strdup(&inbuffer[fromlen]);
+    inbuffer[fromlen] = '\0';			// split the run into old / new
+    deh_procStringSub(NULL, inbuffer, newtext, fpout);
+    free(newtext);
+  }
 }
 
 void deh_procError(DEHFILE *fpin, FILE* fpout, char *line)
@@ -1785,6 +1911,10 @@ void D_ProcessDehInWads(void)
   if (p)
     while (++p < myargc && myargv[p][0] != '-')
       ProcessDehFile(myargv[p], NULL, 0);
+
+  if (deh_sprite_renames || deh_sound_renames)
+    printf ("DEH: %d sprite and %d sound/music rename(s) applied (-devparm lists them).\n",
+	    deh_sprite_renames, deh_sound_renames);
 }
 
 // ====================================================================
