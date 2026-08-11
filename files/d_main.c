@@ -1431,6 +1431,7 @@ static void D_PrintHelp (void)
 "  -deathmatch / -altdeath   deathmatch modes   -timer <min>  frag time limit\n"
 "\n"
 "DEV / MISC\n"
+"  -deh <file>...    apply DeHackEd/BEX patches   -dehout [file|-]  log what they did\n"
 "  -devparm          developer mode (cheats, fps)   -debugfile  write debug.txt\n"
 "  -cdrom            CD-ROM save paths\n"
 "  -help / -h / -?   show this help and exit\n"

@@ -1230,9 +1230,14 @@ void deh_procAmmo(DEHFILE *fpin, FILE* fpout, char *line)
   sscanf(inbuffer,"%s %i",key, &indexnum);
   if (fpout) fprintf(fpout,"Processing Ammo at index %d: %s\n",
                      indexnum, key);
+  // A bad index used to be reported and then USED anyway -- maxammo[indexnum] with indexnum
+  // out of range is an out-of-bounds write from a malformed patch.  Refuse the block.
   if (indexnum < 0 || indexnum >= NUMAMMO)
-    if (fpout) fprintf(fpout,"Bad ammo number %d of %d\n",
-                       indexnum,NUMAMMO);
+    {
+      if (fpout) fprintf(fpout,"Bad ammo number %d of %d -- block ignored\n",
+                         indexnum,NUMAMMO);
+      return;
+    }
 
   while (!dehfeof(fpin) && *inbuffer && (*inbuffer != ' '))
     {
@@ -1244,6 +1249,7 @@ void deh_procAmmo(DEHFILE *fpin, FILE* fpout, char *line)
           if (fpout) fprintf(fpout,"Bad data pair in '%s'\n",inbuffer);
           continue;
         }
+      if (fpout) fprintf(fpout,"Assigned %ld to %s(%d)\n",value,key,indexnum);
       if (!strcasecmp(key,deh_ammo[0]))  // Max ammo
         maxammo[indexnum] = value;
       else
@@ -1276,9 +1282,14 @@ void deh_procWeapon(DEHFILE *fpin, FILE* fpout, char *line)
   sscanf(inbuffer,"%s %i",key, &indexnum);
   if (fpout) fprintf(fpout,"Processing Weapon at index %d: %s\n",
                      indexnum, key);
+  // Same as deh_procAmmo: a bad index was reported and then indexed anyway (and the message
+  // even quoted NUMAMMO).  Refuse the block instead of writing past weaponinfo[].
   if (indexnum < 0 || indexnum >= NUMWEAPONS)
-    if (fpout) fprintf(fpout,"Bad weapon number %d of %d\n",
-                       indexnum, NUMAMMO);
+    {
+      if (fpout) fprintf(fpout,"Bad weapon number %d of %d -- block ignored\n",
+                         indexnum, NUMWEAPONS);
+      return;
+    }
 
   while (!dehfeof(fpin) && *inbuffer && (*inbuffer != ' '))
     {
@@ -1290,6 +1301,7 @@ void deh_procWeapon(DEHFILE *fpin, FILE* fpout, char *line)
           if (fpout) fprintf(fpout,"Bad data pair in '%s'\n",inbuffer);
           continue;
         }
+      if (fpout) fprintf(fpout,"Assigned %ld to %s(%d)\n",value,key,indexnum);
       if (!strcasecmp(key,deh_weapon[0]))  // Ammo type
         weaponinfo[indexnum].ammo = value;
       else
@@ -1461,10 +1473,39 @@ void deh_procCheat(DEHFILE *fpin, FILE* fpout, char *line)
 //          line  -- current line in file to process
 // Returns: void
 //
+// The Misc block sets the engine's magic numbers.  Only the ones this engine actually keeps
+// in a variable can be honoured; the rest are still hardcoded in p_inter.c / m_cheat.c, so
+// they are REPORTED as unsupported rather than silently dropped -- the block used to be
+// consumed whole and in silence, which is how "BFG Cells/Shot = 1" (KDiKDiZD makes the BFG
+// cost a single cell) went missing with no trace anywhere.
 void deh_procMisc(DEHFILE *fpin, FILE* fpout, char *line)
-{ char inbuffer[DEH_BUFFERMAX]; (void)fpout; (void)line;   // (M2b) deferred -- consume the block
-  while (!dehfeof(fpin) && (dehfgets(inbuffer, sizeof inbuffer, fpin)))
-    { lfstrip(inbuffer); if (!*inbuffer) break; }
+{
+  char		key[DEH_MAXKEYLEN];
+  char		inbuffer[DEH_BUFFERMAX];
+  long		value;
+  extern int	bfgcells;			// p_pspr.c
+  (void)line;
+
+  strncpy(inbuffer, line, DEH_BUFFERMAX-1); inbuffer[DEH_BUFFERMAX-1] = '\0';
+
+  while (!dehfeof(fpin) && *inbuffer && (*inbuffer != ' '))
+    {
+      if (!dehfgets(inbuffer, sizeof(inbuffer), fpin)) break;
+      lfstrip(inbuffer);
+      if (!*inbuffer) break;
+      if (!deh_GetData(inbuffer, key, &value, NULL, fpout))
+        {
+          if (fpout) fprintf(fpout, "Bad data pair in '%s'\n", inbuffer);
+          continue;
+        }
+      if (!strcasecmp(key, "BFG Cells/Shot"))
+        {
+          bfgcells = (int)value;
+          if (fpout) fprintf(fpout, "Assigned %ld to BFG Cells/Shot\n", value);
+        }
+      else if (fpout)
+        fprintf(fpout, "Misc key '%s' = %ld is not supported by this engine\n", key, value);
+    }
 }
 
 // ====================================================================
@@ -1897,20 +1938,42 @@ boolean deh_GetData(char *s, char *k, long *l, char **strval, FILE *fpout)
 // ====================================================================
 // Scan every loaded WAD for DEHACKED lumps (+ any -deh <file> args) and apply them,
 // earliest first so later PWADs override.  Called from D_DoomMain after WAD init.
+// M_CheckParm compares only strlen(check) characters, so "-deh" also matches "-dehout" --
+// which made -dehout's own output file be loaded as a patch.  Match the whole word.
+static int deh_CheckParm (const char* name)
+{
+  int i;
+  for (i = 1; i < myargc; i++)
+    if (!strcasecmp (myargv[i], name))
+      return i;
+  return 0;
+}
+
 void D_ProcessDehInWads(void)
 {
   extern int numlumps;
   extern lumpinfo_t *lumpinfo;
   int i, p;
+  char* dehout = NULL;
+
+  // -dehout <file> ("-" = stdout): write the parser's own log -- every field it assigns and
+  // every line it rejects ("Bad data pair", "Invalid ... index", "Unmatched Block").  The
+  // whole logging path existed but nothing ever passed an output file, so a patch could be
+  // half-ignored in silence.  This is the way to tell whether a patch went in whole.
+  p = deh_CheckParm("-dehout");
+  if (p && p < myargc-1 && (myargv[p+1][0] != '-' || !myargv[p+1][1]))
+    dehout = myargv[p+1];			// a lone "-" means stdout
+  else if (p)
+    dehout = "dehout.txt";
 
   for (i = 0; i < numlumps; i++)
     if (!strncasecmp(lumpinfo[i].name, "DEHACKED", 8))
-      ProcessDehFile(NULL, NULL, i);
+      ProcessDehFile(NULL, dehout, i);
 
-  p = M_CheckParm("-deh");
+  p = deh_CheckParm("-deh");
   if (p)
     while (++p < myargc && myargv[p][0] != '-')
-      ProcessDehFile(myargv[p], NULL, 0);
+      ProcessDehFile(myargv[p], dehout, 0);
 
   if (deh_sprite_renames || deh_sound_renames)
     printf ("DEH: %d sprite and %d sound/music rename(s) applied (-devparm lists them).\n",

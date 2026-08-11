@@ -48,8 +48,10 @@ rcsid[] = "$Id: p_pspr.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #define WEAPONTOP		32*FRACUNIT
 
 
-// plasma cells for a bfg attack
-#define BFGCELLS		40		
+// Plasma cells for a bfg attack.  A variable, not a #define: DeHackEd's Misc block can set
+// it ("BFG Cells/Shot", see deh_procMisc) and mods do -- KDiKDiZD makes the BFG cost 1.
+int	bfgcells = 40;
+#define BFGCELLS		bfgcells
 
 
 //
