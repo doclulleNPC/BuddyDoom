@@ -235,6 +235,13 @@ boolean P_CheckMeleeRange (mobj_t*	actor)
     return true;		
 }
 
+// (M) MBF helpers, defined further down but used from here on.  Without these
+// prototypes the calls below fall back on an implicit `int f()` declaration, which the
+// later `static` definitions then contradict -- an ERROR on gcc 14 (and only silent on
+// the MSVC build), so the file did not compile at all with build.sh.
+static boolean	P_HitFriend (mobj_t* actor);
+static int	P_IsUnderDamage (mobj_t* actor);
+
 //
 // P_CheckMissileRange
 //

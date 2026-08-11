@@ -1600,6 +1600,26 @@ static void AM_drawFlats (void)
     #undef BLK
 }
 
+// The buddy's planned route to you, as a line on the automap -- the fastest way to see
+// WHY it is walking somewhere strange.  Debug output, so it rides on the IDDT map cheat
+// (the same gate AM_drawThings uses) rather than showing in normal play.
+// P_AICoop_NavRoute caches its answer per gametic, so drawing it every frame is cheap.
+static void AM_drawBuddyRoute (void)
+{
+    fixed_t	xs[64], ys[64];
+    int		n, i;
+    mline_t	l;
+
+    n = P_AICoop_NavRoute (xs, ys, 64);
+    if (n < 2) return;
+    for (i = 0; i < n - 1; i++)
+    {
+	l.a.x = xs[i];   l.a.y = ys[i];
+	l.b.x = xs[i+1]; l.b.y = ys[i+1];
+	AM_drawMline (&l, GREENS);
+    }
+}
+
 void AM_Drawer (void)
 {
     if (!automapactive) return;
@@ -1618,6 +1638,8 @@ void AM_Drawer (void)
 	AM_drawGrid(GRIDCOLORS);
     AM_drawWalls();
     AM_drawPlayers();
+    if (cheating)
+	AM_drawBuddyRoute();
     if (cheating==2)
 	AM_drawThings(THINGCOLORS, THINGRANGE);
     AM_drawCrosshair(XHAIRCOLORS);
