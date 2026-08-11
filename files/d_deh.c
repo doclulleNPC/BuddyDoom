@@ -118,8 +118,13 @@ boolean deh_pars = FALSE; // in wi_stuff to allow pars in modified games
 
 // ====================================================================
 // Any of these can be changed using the bex extensions
+#include <stdarg.h>	// DEH_AddStr builds mnemonics with vsnprintf
+#include <stdlib.h>	// ...and grows the table with realloc.  This file only pulled stdlib
+			// in halfway down (line ~730), which left realloc implicitly declared
+			// up here and clashing with the real one further on.
 #include "dstrings.h"  // to get the initial values
 #include "dstrings_bex.h"
+#include "f_finale.h"	// castinfo_t / castorder -- the CC_* cast names
 typedef struct { char **ppstr; char *lookup; } deh_strs;
 
 // BEX [STRINGS]: BuddyDoom's HUD strings are compile-time #defines, so we keep a runtime
@@ -131,13 +136,90 @@ typedef struct { char **ppstr; char *lookup; } deh_strs;
 BEX_PICKUP_STRINGS(X)
 #undef X
 
-static deh_strs deh_strlookup[] = {
-#define X(name) { &deh_##name, #name },
+// The lookup is built at RUNTIME rather than as a static initialiser.  Most of these
+// strings already live in char* arrays owned by other modules -- hu_stuff's four map-name
+// tables, f_finale's texts, background flats and cast list -- so the table just points at
+// them and a substitution writes straight through, with no consumer changes anywhere.
+// Building it in a loop also beats hand-writing the ~130 HUSTR_/PHUSTR_/THUSTR_ rows.
+static deh_strs*	deh_strlookup;
+static int		deh_numstrlookup, deh_maxstrlookup;
+
+static void DEH_AddStr (char** ppstr, const char* fmt, ...)
+{
+  va_list ap;
+  char    name[32];
+
+  va_start (ap, fmt);
+  vsnprintf (name, sizeof name, fmt, ap);
+  va_end (ap);
+
+  if (deh_numstrlookup == deh_maxstrlookup)
+    {
+      deh_maxstrlookup = deh_maxstrlookup ? deh_maxstrlookup * 2 : 256;
+      deh_strlookup = realloc (deh_strlookup, deh_maxstrlookup * sizeof *deh_strlookup);
+    }
+  deh_strlookup[deh_numstrlookup].ppstr  = ppstr;
+  deh_strlookup[deh_numstrlookup].lookup = strdup (name);
+  deh_numstrlookup++;
+}
+
+// Register every string a BEX [STRINGS] key (or a classic Text substitution) may replace.
+// Called once, before the first patch is read.
+void DEH_InitStrTable (void)
+{
+  extern char*	mapnames[];		// hu_stuff.c -- E1M1..E4M9
+  extern char*	mapnames2[];		//              MAP01..MAP32
+  extern char*	mapnamesp[];		//              Plutonia
+  extern char*	mapnamest[];		//              TNT
+  extern char	*e1text, *e2text, *e3text, *e4text;			// f_finale.c
+  extern char	*c1text, *c2text, *c3text, *c4text, *c5text, *c6text;
+  extern char	*p1text, *p2text, *p3text, *p4text, *p5text, *p6text;
+  extern char	*t1text, *t2text, *t3text, *t4text, *t5text, *t6text;
+  extern char	*bgflatE1, *bgflatE2, *bgflatE3, *bgflatE4;
+  extern char	*bgflat06, *bgflat11, *bgflat20, *bgflat30, *bgflat15, *bgflat31;
+  extern char	*bgcastcall;
+  int		i;
+
+  // The cast-call mnemonics, in castorder[]'s order (f_finale.c).
+  static const char* const cc[] = {
+    "CC_ZOMBIE","CC_SHOTGUN","CC_HEAVY","CC_IMP","CC_DEMON","CC_LOST","CC_CACO",
+    "CC_HELL","CC_BARON","CC_ARACH","CC_PAIN","CC_REVEN","CC_MANCU","CC_ARCH",
+    "CC_SPIDER","CC_CYBER","CC_HERO"
+  };
+
+  if (deh_numstrlookup) return;			// already built
+
+#define X(name) DEH_AddStr (&deh_##name, "%s", #name);
   BEX_PICKUP_STRINGS(X)
 #undef X
-  { 0, "" }
-};
-static int deh_numstrlookup = sizeof(deh_strlookup)/sizeof(deh_strlookup[0]) - 1;
+
+  for (i = 0; i < 36; i++) DEH_AddStr (&mapnames[i],  "HUSTR_E%dM%d", i/9 + 1, i%9 + 1);
+  for (i = 0; i < 32; i++) DEH_AddStr (&mapnames2[i], "HUSTR_%d",  i + 1);
+  for (i = 0; i < 32; i++) DEH_AddStr (&mapnamesp[i], "PHUSTR_%d", i + 1);
+  for (i = 0; i < 32; i++) DEH_AddStr (&mapnamest[i], "THUSTR_%d", i + 1);
+
+  DEH_AddStr (&e1text, "E1TEXT"); DEH_AddStr (&e2text, "E2TEXT");
+  DEH_AddStr (&e3text, "E3TEXT"); DEH_AddStr (&e4text, "E4TEXT");
+  DEH_AddStr (&c1text, "C1TEXT"); DEH_AddStr (&c2text, "C2TEXT");
+  DEH_AddStr (&c3text, "C3TEXT"); DEH_AddStr (&c4text, "C4TEXT");
+  DEH_AddStr (&c5text, "C5TEXT"); DEH_AddStr (&c6text, "C6TEXT");
+  DEH_AddStr (&p1text, "P1TEXT"); DEH_AddStr (&p2text, "P2TEXT");
+  DEH_AddStr (&p3text, "P3TEXT"); DEH_AddStr (&p4text, "P4TEXT");
+  DEH_AddStr (&p5text, "P5TEXT"); DEH_AddStr (&p6text, "P6TEXT");
+  DEH_AddStr (&t1text, "T1TEXT"); DEH_AddStr (&t2text, "T2TEXT");
+  DEH_AddStr (&t3text, "T3TEXT"); DEH_AddStr (&t4text, "T4TEXT");
+  DEH_AddStr (&t5text, "T5TEXT"); DEH_AddStr (&t6text, "T6TEXT");
+
+  DEH_AddStr (&bgflatE1, "BGFLATE1"); DEH_AddStr (&bgflatE2, "BGFLATE2");
+  DEH_AddStr (&bgflatE3, "BGFLATE3"); DEH_AddStr (&bgflatE4, "BGFLATE4");
+  DEH_AddStr (&bgflat06, "BGFLAT06"); DEH_AddStr (&bgflat11, "BGFLAT11");
+  DEH_AddStr (&bgflat20, "BGFLAT20"); DEH_AddStr (&bgflat30, "BGFLAT30");
+  DEH_AddStr (&bgflat15, "BGFLAT15"); DEH_AddStr (&bgflat31, "BGFLAT31");
+  DEH_AddStr (&bgcastcall, "BGCASTCALL");
+
+  for (i = 0; i < (int)(sizeof cc / sizeof cc[0]) && castorder[i].name; i++)
+    DEH_AddStr (&castorder[i].name, "%s", cc[i]);
+}
 
 void deh_procThing(DEHFILE *, FILE*, char *);
 void deh_procFrame(DEHFILE *, FILE*, char *);
@@ -1955,6 +2037,8 @@ void D_ProcessDehInWads(void)
   extern lumpinfo_t *lumpinfo;
   int i, p;
   char* dehout = NULL;
+
+  DEH_InitStrTable ();		// must exist before any patch is read
 
   // -dehout <file> ("-" = stdout): write the parser's own log -- every field it assigns and
   // every line it rejects ("Bad data pair", "Invalid ... index", "Unmatched Block").  The

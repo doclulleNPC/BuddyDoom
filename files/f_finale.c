@@ -42,6 +42,7 @@ rcsid[] = "$Id: f_finale.c,v 1.5 1997/02/03 21:26:34 b1 Exp $";
 #include "doomstat.h"
 #include "r_state.h"
 #include "g_game.h"		// secretexit
+#include "f_finale.h"		// castinfo_t / castorder (shared with d_deh.c)
 #include "u_mapinfo.h"		// UMAPINFO intertext / end-game finales
 
 // ?
@@ -86,6 +87,22 @@ char*	t6text = T6TEXT;
 
 char*	finaletext;
 char*	finaleflat;
+
+// The finale background FLATS, as runtime strings so a BEX [STRINGS] entry (or a classic
+// Text substitution of the flat name) can replace them -- the standard BGFLAT* mnemonics.
+// They used to be literals assigned inline below, which is why a patch renaming e.g.
+// RROCK07 changed nothing.  BGCASTCALL is the cast-call backdrop (a patch, not a flat).
+char*	bgflatE1 = "FLOOR4_8";		// after E1
+char*	bgflatE2 = "SFLR6_1";		// after E2
+char*	bgflatE3 = "MFLR8_4";		// after E3
+char*	bgflatE4 = "MFLR8_3";		// after E4
+char*	bgflat06 = "SLIME16";		// after MAP06
+char*	bgflat11 = "RROCK14";		// after MAP11
+char*	bgflat20 = "RROCK07";		// after MAP20
+char*	bgflat30 = "RROCK17";		// after MAP30
+char*	bgflat15 = "RROCK13";		// after MAP15 (secret)
+char*	bgflat31 = "RROCK19";		// after MAP31 (secret)
+char*	bgcastcall = "BOSSBACK";	// cast call
 
 // UMAPINFO finale state (0 => a plain IWAD finale; see F_StartFinale).
 static int	um_endflags;		// U_END_* for this finale
@@ -162,19 +179,19 @@ void F_StartFinale (void)
 	switch (gameepisode)
 	{
 	  case 1:
-	    finaleflat = "FLOOR4_8";
+	    finaleflat = bgflatE1;
 	    finaletext = e1text;
 	    break;
 	  case 2:
-	    finaleflat = "SFLR6_1";
+	    finaleflat = bgflatE2;
 	    finaletext = e2text;
 	    break;
 	  case 3:
-	    finaleflat = "MFLR8_4";
+	    finaleflat = bgflatE3;
 	    finaletext = e3text;
 	    break;
 	  case 4:
-	    finaleflat = "MFLR8_3";
+	    finaleflat = bgflatE4;
 	    finaletext = e4text;
 	    break;
 	  default:
@@ -192,27 +209,27 @@ void F_StartFinale (void)
 	  switch (gamemap)
 	  {
 	    case 6:
-	      finaleflat = "SLIME16";
+	      finaleflat = bgflat06;
 	      finaletext = c1text;
 	      break;
 	    case 11:
-	      finaleflat = "RROCK14";
+	      finaleflat = bgflat11;
 	      finaletext = c2text;
 	      break;
 	    case 20:
-	      finaleflat = "RROCK07";
+	      finaleflat = bgflat20;
 	      finaletext = c3text;
 	      break;
 	    case 30:
-	      finaleflat = "RROCK17";
+	      finaleflat = bgflat30;
 	      finaletext = c4text;
 	      break;
 	    case 15:
-	      finaleflat = "RROCK13";
+	      finaleflat = bgflat15;
 	      finaletext = c5text;
 	      break;
 	    case 31:
-	      finaleflat = "RROCK19";
+	      finaleflat = bgflat31;
 	      finaletext = c6text;
 	      break;
 	    default:
@@ -405,12 +422,6 @@ void F_TextWrite (void)
 // Casting by id Software.
 //   in order of appearance
 //
-typedef struct
-{
-    char		*name;
-    mobjtype_t	type;
-} castinfo_t;
-
 castinfo_t	castorder[] = {
     {CC_ZOMBIE, MT_POSSESSED},
     {CC_SHOTGUN, MT_SHOTGUY},
@@ -659,8 +670,8 @@ void F_CastDrawer (void)
     patch_t*		patch;
     
     // erase the entire screen to a background (absent in Heretic -> black)
-    if (W_CheckNumForName ("BOSSBACK") >= 0)
-	V_DrawPatch (0,0,0, W_CacheLumpName ("BOSSBACK", PU_CACHE));
+    if (W_CheckNumForName (bgcastcall) >= 0)
+	V_DrawPatch (0,0,0, W_CacheLumpName (bgcastcall, PU_CACHE));
     else
 	memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
 

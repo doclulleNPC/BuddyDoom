@@ -26,6 +26,7 @@
 
 #include "doomtype.h"
 #include "d_event.h"
+#include "info.h"		// mobjtype_t, for castinfo_t below
 //
 // FINALE
 //
@@ -41,6 +42,16 @@ void F_Drawer (void);
 
 
 void F_StartFinale (void);
+
+// The character cast, exposed so d_deh.c can register each name under its CC_* mnemonic
+// for BEX [STRINGS] / DeHackEd Text substitution.  Terminated by a NULL name.
+typedef struct
+{
+    char*	name;
+    mobjtype_t	type;
+} castinfo_t;
+
+extern castinfo_t	castorder[];
 
 
 
