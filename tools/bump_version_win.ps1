@@ -46,7 +46,17 @@ if ($p.Count -eq 3) {
 #define BUDDYDOOM_VERSION "$fork"
 #endif
 "@
-  Set-Content -LiteralPath $verf -Value $txt -Encoding ascii
+  # Write LF, not CRLF.  .gitattributes declares *.h as `eol=lf`, so a CRLF anywhere in
+  # here left Git reporting files/buddydoom_version.h as modified after every single
+  # Windows build.  Two separate sources of one:
+  #   1. Set-Content terminates its output with a PLATFORM newline (CRLF) no matter what
+  #      the string holds -- that alone was the stray CR, and there is no switch for it.
+  #   2. On a fresh clone this .ps1 is itself CRLF (.gitattributes: *.ps1 text eol=crlf,
+  #      which cmd/PowerShell need), and a here-string carries whatever the script file
+  #      uses -- so $txt is CRLF there even though it is LF in a tree predating that rule.
+  # WriteAllText writes the string verbatim, so normalising it first covers both.
+  [System.IO.File]::WriteAllText($verf, ($txt -replace "`r`n", "`n") + "`n",
+                                 [System.Text.Encoding]::ASCII)
   Write-Host "[build] fork version $fork"
 }
 
