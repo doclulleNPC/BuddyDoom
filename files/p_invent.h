@@ -26,6 +26,14 @@ boolean		P_DropArtifact (player_t* player);
 // (bound to the inventory-use key while dead).  Returns true if it revived the player.
 boolean		P_InventorySelfRevive (player_t* player);
 
+// Pick the health artifact to pay for a revive, and the HP the body stands up on.
+// `bigheal` true takes the largest ordinary heal (the human reviving himself), false the
+// smallest (the human reviving the buddy -- keep the medikit).  Jackpot heals (Mystic Urn,
+// Surgery Kit) are only touched when the pack holds nothing else.  False = can't pay.
+// One shared table for both revive paths -- see reviveitems[] in p_invent.c.
+boolean		P_ReviveItemPick (player_t* player, boolean bigheal,
+				  artitype_t* arti, int* hp);
+
 // Store overflow into an inventory slot.  `amount` is 1 for the item artifacts
 // (stimpack..bluearmor) and the ammo amount for the arti_ammo_* slots.  Returns
 // false if it can't be stored (item count at MAXARTICOUNT / ammo store at cap),

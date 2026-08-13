@@ -381,21 +381,75 @@ boolean P_DropArtifact (player_t* player)
 
 
 // ---------------------------------------------------------------------------
+// Health artifacts a revive can be PAID with, and the HP the revived body stands up on.
+//
+// ONE table for both revives -- the human's own (P_InventorySelfRevive, below) and the
+// buddy's (P_AICoop_RevivePress).  They were two hand-written if/else chains and they
+// drifted: Strife's Med Patch / Medical Kit / Surgery Kit were wired into the inventory
+// and into ApplyStrifeArtifact but into neither chain, so a Strife player with a full
+// medical pack could neither get himself up nor pick the buddy up.  Add an artifact here
+// and both revives learn it.
+//
+// `spendlast` = only reach for it when nothing else is in the pack.  The Urn and the
+// Surgery Kit are jackpot heals and burning one just to stand up is never the good trade.
+// ---------------------------------------------------------------------------
+static const struct {
+    artitype_t	arti;
+    int		hp;
+    boolean	spendlast;
+} reviveitems[] = {
+    { arti_stimpack,	 10, false },
+    { s_arti_medpatch,	 10, false },	// (S) Med Patch
+    { arti_medikit,	 25, false },
+    { h_arti_flask,	 25, false },	// (H) Quartz Flask
+    { s_arti_medkit,	 25, false },	// (S) Medical Kit
+    { h_arti_urn,	100, true  },	// (H) Mystic Urn
+    { s_arti_stamina,	100, true  },	// (S) Stamina Implant / Surgery Kit
+};
+
+// Choose what to spend on a revive.  The two callers want deliberately opposite policies:
+//   bigheal true  -- the human reviving HIMSELF: take the LARGEST ordinary heal, so he is
+//                    back on his feet with something to fight on.
+//   bigheal false -- the human reviving the BUDDY: take the SMALLEST, so his own medikit
+//                    survives the favour.
+// Returns false when the pack holds nothing that can pay.
+boolean P_ReviveItemPick (player_t* player, boolean bigheal, artitype_t* arti, int* hp)
+{
+    int	pass, i, best = -1;
+
+    for (pass = 0; pass < 2 && best < 0; pass++)	// ordinary heals first, jackpots only after
+	for (i = 0; i < (int)(sizeof(reviveitems)/sizeof(reviveitems[0])); i++)
+	{
+	    if (reviveitems[i].spendlast != (pass == 1))	continue;
+	    if (player->inventory[reviveitems[i].arti] <= 0)	continue;
+	    if (best < 0
+		|| ( bigheal && reviveitems[i].hp > reviveitems[best].hp)
+		|| (!bigheal && reviveitems[i].hp < reviveitems[best].hp))
+		best = i;
+	}
+
+    if (best < 0) return false;
+    *arti = reviveitems[best].arti;
+    *hp   = reviveitems[best].hp;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // (buddy mode) Self-revive: a DOWNED human spends a stored medikit/stimpack to get
 // back up himself (NOT automatic -- triggered by the inventory-use key while dead).
 // Mirrors the buddy's revive: un-corpse the body, restore health to the item's heal
 // value, stand up, raise the weapon.  Returns true if it had an item and revived.
+// Spends the BIGGEST ordinary heal on purpose -- coming back up on a 10 HP stimpack
+// while a medikit sits in the pack just gets you downed again.
 // ---------------------------------------------------------------------------
 boolean P_InventorySelfRevive (player_t* player)
 {
     mobj_t*	mo = player->mo;
+    artitype_t	cost;
     int		heal;
     if (!mo) return false;
-    if      (player->inventory[arti_medikit]  > 0) { player->inventory[arti_medikit]--;  heal = 25; }
-    else if (player->inventory[h_arti_flask]  > 0) { player->inventory[h_arti_flask]--;  heal = 25; }	// (H) Quartz Flask
-    else if (player->inventory[arti_stimpack] > 0) { player->inventory[arti_stimpack]--; heal = 10; }
-    else if (player->inventory[h_arti_urn]    > 0) { player->inventory[h_arti_urn]--;    heal = 100; }	// (H) Mystic Urn
-    else return false;
+    if (!P_ReviveItemPick (player, true, &cost, &heal)) return false;
+    player->inventory[cost]--;
 
     mo->flags |=  (MF_SOLID | MF_SHOOTABLE);
     mo->flags &= ~MF_CORPSE;			// un-corpse; KEEP MF_DROPOFF -- the player

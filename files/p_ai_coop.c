@@ -3573,16 +3573,14 @@ boolean P_AICoop_RevivePress (player_t* presser)
 	dmo->height = savedh;
 	if (!seen) return false;
     }
-    // Reviving costs a health artifact from the human's pack -- a Stimpack or a Medikit (prefer
-    // the smaller Stimpack so the Medikit is saved).  The buddy comes back up on that item's heal
-    // value.  With neither in the inventory, the buddy can't be revived: say so and bail.
+    // Reviving costs a health artifact from the human's pack, and the buddy comes back up on
+    // that item's heal value.  `false` = spend the SMALLEST one available, so the human's
+    // medikit survives the favour.  The candidate list is shared with the human's own
+    // self-revive (reviveitems[] in p_invent.c) so the two can't drift apart again.
+    // With nothing that can pay, the buddy can't be revived: say so and bail.
     artitype_t	cost;
     int		reviveHP;
-    if      (presser->inventory[arti_stimpack] > 0) { cost = arti_stimpack;  reviveHP = 10; }
-    else if (presser->inventory[h_arti_flask]  > 0) { cost = h_arti_flask;   reviveHP = 25; }	// (H) Quartz Flask
-    else if (presser->inventory[arti_medikit]  > 0) { cost = arti_medikit;   reviveHP = 25; }
-    else if (presser->inventory[h_arti_urn]    > 0) { cost = h_arti_urn;     reviveHP = 100; }	// (H) Mystic Urn
-    else
+    if (!P_ReviveItemPick (presser, false, &cost, &reviveHP))
     {
 	presser->message = "NEED A HEALTH ITEM TO REVIVE YOUR BUDDY";
 	return false;
@@ -3617,11 +3615,18 @@ const char* P_AICoop_Heal (void)
 // hunting around the level for a med-pack.  One per call (called each tic while hurt), in a
 // value order that doesn't burn the big Mystic Urn or the trivial +1 health bonuses first.
 // P_UseArtifact applies the effect + consumes one, and refuses (no-op) at full health.
+//
+// Separate from reviveitems[] in p_invent.c on purpose -- this one HEALS rather than paying
+// for a revive, so it also carries the +1 bonus, which is no use standing anyone back up.
+// Keep the two in step when a new health artifact appears.
 extern boolean P_UseArtifact (player_t* player, artitype_t which);
 static void AICoop_AutoHeal (player_t* bot)
 {
     static const artitype_t healers[] =
-	{ arti_medikit, h_arti_flask, arti_stimpack, h_arti_urn, arti_healthbonus };
+	{ arti_medikit, h_arti_flask, s_arti_medkit,		// 25 HP
+	  arti_stimpack, s_arti_medpatch,			// 10 HP
+	  h_arti_urn, s_arti_stamina,				// full heal -- late
+	  arti_healthbonus };					// +1 -- last
     int i;
     for (i = 0; i < (int)(sizeof(healers)/sizeof(healers[0])); i++)
 	if (bot->inventory[healers[i]] > 0 && P_UseArtifact (bot, healers[i]))
