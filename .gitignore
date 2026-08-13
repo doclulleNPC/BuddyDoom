@@ -152,6 +152,11 @@ run/navdbg.txt
 *.wad.backup*
 *.wad.*.autosave*
 
+# Scratch area: work-in-progress sprite sheets, reference art, PK3s to look at
+# later.  Nothing in here is built or loaded by the game, and the PNGs run to
+# several MB each, so it stays out of the repo.
+tools/TODO/
+
 # Extracted Heretic Iron-Lich frames for bake_lichling.py (Raven assets -- do not redistribute)
 run/ID0/lich/
 # Corvus mugshot PNGs for the Heretic buddy HUD (Raven Heretic assets -- do not redistribute)
