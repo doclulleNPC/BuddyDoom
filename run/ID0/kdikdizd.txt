@@ -1,0 +1,232 @@
+===========================================================================
+Advanced engine needed  : Doom2.exe 1.9, Chocolate Doom, Eternity, etc.
+Primary purpose         : Single play
+===========================================================================
+Title                   : Knee-Deep in KDiZD
+Filename                : kdikdizd.zip
+Release date            : 04/09/2023
+Version                 : 1.7.1
+Author                  : Esselfortium & KDiKDiZD team
+Email Address           : [redacted]
+Other Files By Author   : Back to Saturn X, SpaceDM9, Vaporware Demo, etc.
+Misc. Author Info       : Doom mapper, composer, texture artist, person
+
+Description             : Your name is Doom Guy, an actor. You've been
+                          cast in a cable TV reenactment of 2007's
+                          "Knee-Deep In ZDoom". You were never much of a
+                          history buff, but it'll put food on the table
+                          and help cover Daisy's vet bills. Maybe it'll
+                          even revive your acting career. You adjust the
+                          prop helmet to breathe a little easier, try out
+                          a few cheesy poses with your character's
+                          handgun, and ready yourself for the first day
+                          of filming.
+
+Full Credits            : 
+  
+  Individual map credits:
+
+      Z1M1 (MAP13):
+      - Map by Esselfortium
+      - Music by Esselfortium
+      - Based on the KDiZD map by Tormentor667 and Risen
+      - Original Doom map by John Romero
+
+      Z1M2 (MAP14):
+      - Map by Nuxius and Esselfortium
+      - Thingplacing by Esselfortium
+      - Music by Jimmy
+      - Based on the KDiZD map by Risen, NiGHTMARE, and Tormentor667
+      - Original Doom map by John Romero
+
+      Z1M3 (MAP15):
+      - Map by Esselfortium, Tun, and Tango
+      - Thingplacing by Esselfortium
+      - Music by Jimmy
+      - Based on the KDiZD map by Nmn, Vader, and Ellmo
+      - Original Doom map by John Romero
+
+      Z1M4 (MAP16):
+      - Map by Esselfortium
+      - Music by Esselfortium
+      - Based on the KDiZD map by Nmn, Risen, and NiGHTMARE
+      - Original Doom map by Tom Hall and John Romero
+
+      Z1M5 (MAP17):
+      - Map by Esselfortium
+      - Music by Esselfortium
+      - Based on the KDiZD map by Tormentor667, NiGHTMARE, Risen, and Kirby
+      - Original Doom map by John Romero
+      - Thanks to Antares031 for helping with the teleport trick :)
+
+      Z1M6 (MAP18):
+      - Map by Esselfortium, Nuxius, and Butts
+      - Thingplacing by Esselfortium
+      - Music by Jimmy
+      - Based on the KDiZD map by Vader & Nmn
+      - Original Doom map by John Romero
+
+      Z1M7 (MAP19):
+      - Map by Esselfortium, Nuxius, and Brinks
+      - Thingplacing by Esselfortium
+      - Music by Jimmy
+      - Based on the KDiZD map by Risen, Tormentor667, Vader, and Graf Zahl
+      - Original Doom map by John Romero
+
+      Z1M8 (MAP20):
+      - Map by Esselfortium
+      - Music by Esselfortium
+      - Based on the KDiZD map by Tormentor667 & Vader
+      - Original Doom map by Sandy Petersen and Tom Hall
+
+      Z1M9 (MAP31):
+      - Map by Esselfortium
+      - Music by Esselfortium
+      - Based on the KDiZD map by BioHazard, Nmn, Vader, and Tormentor667
+      - Original Doom map by John Romero
+
+      Additional narrative maps by Esselfortium
+    
+  Project lead: esselfortium
+    KDiKDiZD has had a long and ridiculous history, starting in 2008 as a
+    "wouldn't that be funny?" idea when I was a teenager. It quickly grew
+    into an ambitious exercise in Extreme Doom Masochism, with much-
+    -appreciated map porting assistance from Nuxius and Tun, as well as
+    several other contributors. Around 2011, KDiKDiZD was semi-officially
+    buried, both due to a sudden increase in BTSX activity and due to
+    KDiKDiZD's accumulation of unpleasant compromises and hard-to-track-
+    -down crash bugs that seemed unsolvable. In early 2020 I picked it
+    back up thinking "this is too good to throw away", and then proceeded
+    to Ship-of-Theseus the whole thing anyway, overhauling the maps with
+    experience gained from working on BTSX, and rebuilding the dehacked
+    patch from the ground up using new tools. I hope the result is worth
+    the wait!
+
+  Soundtrack by: Jimmy and esselfortium
+
+  New sounds by: BouncyTEM and esselfortium
+
+  Story by: esselfortium, dew, and Jimmy
+
+  Dehacked patch by: esselfortium
+
+  Playtesting leads: dew, rd, GarrettChan
+  Huge thanks to all three of you for all the feedback and suggestions
+  (and obscure-bug-hunting), without which this mapset wouldn't be nearly
+  as good.
+
+  Additional playtesting and feedback: sink, Marcaek, Nine Inch Heels,
+  CSG, Xaser, Kassman, deathz0r, Vader, Tarnsman, and Antares031
+
+  Assets:
+  - KDiZD art by Vader, Nmn, NiGHTMARE, Tormentor667, and Scuba
+  - Additional textures by Esselfortium, Cage, Eriance, Xaser, and Espi
+  - Wargrin and desk chair sprites by Nmn
+  - Soul Reaper sprites by Vader
+  - Suicide Bomber sprites by Mark Quinn, Anthony Cole, and Tormentor667
+  - Flare Rifle sprites by Fletcher
+  - Stage Light sprites originally by ayoung93 and elend
+  - Dark Caco sprite edit by Tormentor667
+  - Jackhammer drawn by Scuba, also adapted for vanilla res by Scuba :)
+  - Additional imagery from SchuminWeb via Wikimedia Commons
+
+  Tool development and technical support:
+  - RestlessRodent for creating Chocorenderlimits for KDiKDiZD, many
+    moons ago. Thanks for making the vanilla renaissance possible!
+  - Fraggle for DEH9000, Chocolate Doom, and general tech support
+  - Altazimuth for general tech support and Eternity help
+  - Mikolah for the "Mikoportal" concept and the ZScript compat patches
+  - Linguica and Nine Inch Heels for designing a usable vanilla-compatible
+    conveyor belt system using Mikoportals
+  - Zokum for ZokumBSP and general tech support
+  - Andrewj for Visplane Explorer
+  - Dynamo and Kinsie for additional assistance with ZDoom support patching
+  - Eevee for the Doom source code sleuthing for DEH bug troubleshooting
+
+===========================================================================
+* What is included *
+
+New levels              : 13 (9 playable)
+Sounds                  : Yes
+Music                   : Yes
+Graphics                : Yes
+Dehacked/BEX Patch      : Yes, plus DEH9000 script for reference!
+Demos                   : Yes
+Other                   : No
+Other files required    : None
+
+
+* Play Information *
+
+Game                    : Doom 2
+Map #                   : MAP01, MAP13-MAP20, MAP31, MAP21-MAP23
+Single Player           : Designed for
+Cooperative 2-4 Player  : Untested (and not vanilla compat)
+Deathmatch 2-4 Player   : No
+Other game styles       : None
+Difficulty Settings     : Yes
+
+
+* Construction *
+
+Base                    : Knee-Deep in ZDoom (kdizd.pk3)
+Build Time              : 2008-2011, 2020-2022
+Editor(s) used          : Doom Builder X, SLADE, Photoshop, etc
+Known Bugs              : Due to voodoo doll shenanigans, you may
+                          sometimes become a "zombie" instead of dying.
+
+                          It is sometimes possible to "bump" a keycard
+                          without actually picking it up.
+
+                          Saving your game in vanilla is not supported,
+                          due to the savegame buffer limit. If you're using
+                          Chocolate Doom, you can disable the savegame size
+                          limit in Chocolate-Setup, or if you're using real
+                          vanilla, you can optionally use Doom32 or Doom2+
+                          to extend that limit if you want to save.
+
+                          Noclipping to activate triggers out-of-order can
+                          cause scripts to fail if two or more are using the
+                          same voodoo doll.
+
+                          Camtextures may sometimes display time in a
+                          slightly accelerated form from what you are used
+                          to. These are premonitions and should be treated
+                          as such. Remain mindful of these possible
+                          futures.
+May Not Run With        : Older ZDoom-based ports, hardware rendering
+
+                          Older versions of PrBoom+ and DSDA-Doom have ugly
+                          rendering glitches with KDiKDiZD's palette.
+                          Please consider using Eternity Engine or an
+                          up-to-date DSDA-Doom build for the glitch-free
+                          intended experience if you're wanting to play this
+                          in an advanced port!
+
+                          As of November 18, 2022, recent builds of GZDoom
+                          are also able to run this without issues, as long
+                          as you use software rendering mode.
+
+                          Hardware rendering will break many of the effects.
+
+Tested With             : Chocorenderlimits, Eternity Engine, DSDA-Doom,
+                          Doom2.exe
+
+
+* Copyright / Permissions *
+
+This work is licensed under the Creative Commons Attribution-NonCommercial
+4.0 International License. To view a copy of this license, visit
+http://creativecommons.org/licenses/by-nc/4.0/
+
+You are free to copy and redistribute the material in any medium or format;
+and remix, transform, and build upon the material. If you do so, you must
+give appropriate credit, provide a link to the license, and indicate if
+changes were made. You may do so in any reasonable manner, but not in any way
+that suggests the licensor endorses you or your use. You may not use the
+material for commercial purposes.
+
+* Where to get the file that this text file describes *
+
+The Usual: ftp://archives.gamers.org/pub/idgames/ and mirrors
+FTP sites: FUCK THA POLICE SITES
