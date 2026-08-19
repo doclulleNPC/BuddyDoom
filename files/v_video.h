@@ -130,6 +130,15 @@ patch_t* V_PNGLumpDecode (int lump, unsigned int** rgba_out, int* w_out, int* h_
 // R_InitSpriteLumps size thousands of PNG sprites for free.  false = not a PNG.
 boolean V_PNGLumpInfo (int lump, int* w_out, int* h_out, int* loff, int* toff);
 
+// True if `lump` is a PNG file (magic check only, no decode).
+boolean V_IsPNGLump (int lump);
+
+// Decode a PNG *flat* lump into the 64x64 linear paletted buffer the span drawer wants.
+// Must be exactly 64x64 -- the span drawer masks with &63, so no other size is
+// addressable; anything else is refused (NULL) rather than stretched.  Allocated
+// PU_CACHE against `user`, like V_PNGLumpDecodeCached.  See r_data.c R_GetFlat.
+byte* V_PNGLumpToFlat (int lump, void** user);
+
 // Decode a PNG sprite into PURGEABLE zone blocks owned by the caller's cache slots
 // (PU_CACHE + user pointer, so Z_Free NULLs them and the caller re-decodes on the
 // next draw).  rgba_user == NULL skips the full-colour copy.  See v_png.c.

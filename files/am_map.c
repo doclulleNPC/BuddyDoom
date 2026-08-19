@@ -1500,7 +1500,6 @@ boolean AM_Overlay (void)
 static void AM_drawFlats (void)
 {
     extern int		numflats;
-    extern int*		flatlumps;
     extern int*		flattranslation;
     extern lighttable_t* colormaps;
     extern int		skyflatnum;
@@ -1568,7 +1567,7 @@ static void AM_drawFlats (void)
 	    {
 		lastpic = pic;
 		flat = (pic >= 0 && pic < numflats)
-		     ? (byte*) W_CacheLumpNum (flatlumps[flattranslation[pic]], PU_CACHE)
+		     ? R_GetFlat (flattranslation[pic], PU_CACHE)	// decodes PNG flats
 		     : NULL;
 	    }
 	    if (!flat)

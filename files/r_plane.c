@@ -606,9 +606,11 @@ void R_DrawPlanes (void)
 	      continue;	// skip rather than feed a garbage lump to W_CacheLumpNum
 	  }
 	}
-	// regular flat (flatlumps[] maps the dense flat index -> lump number)
-	ds_source = W_CacheLumpNum(flatlumps[flattranslation[pl->picnum]],
-				   PU_STATIC);
+	// regular flat.  R_GetFlat resolves the dense flat index and, when the lump is a
+	// PNG, hands back the decoded 64x64 buffer instead of the raw file bytes.
+	ds_source = R_GetFlat (flattranslation[pl->picnum], PU_STATIC);
+	if (!ds_source)
+	    continue;		// unusable flat (bad PNG size / decode failed) -- skip it
 	
 	planeheight = abs(pl->height-viewz);
 	ds_planexoffs = pl->xoffs;	// Boom flat scroll for this visplane

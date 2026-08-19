@@ -61,6 +61,10 @@ extern int*		flatlumps;	// flat index -> lump number (merged flat namespaces)
 
 // for global animation
 extern int*		flattranslation;
+
+// 64x64 span source for a flat index -- decodes and caches PNG flats, hands raw Doom
+// flats straight back.  NULL = unusable (bad size / decode failure); skip drawing.
+byte*			R_GetFlat (int flatnum, int tag);
 extern int*		texturetranslation;	
 
 

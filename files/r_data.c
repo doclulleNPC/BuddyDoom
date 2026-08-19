@@ -166,6 +166,8 @@ int		firstflat;
 int		lastflat;
 int		numflats;
 int*		flatlumps;	// flat index -> lump number (merged across all F_*..F_END, like spritelumps[])
+static byte*	flatpng;	// per flat: the lump is a PNG and needs decoding
+static void**	flatcache;	// per flat: decoded 64x64 buffer (PU_CACHE; NULL = not resident)
 
 int		firstpatch;
 int		lastpatch;
@@ -270,6 +272,32 @@ R_DrawColumnInCache
 
 
 //
+// R_CachePatchForComposite
+// A texture patch, ready to read columns from.
+//
+// PNAMES resolves with a plain W_CheckNumForName (no namespace restriction), so a PWAD
+// that stores its wall patches as PNG lands raw file bytes here -- and the composite code
+// would then take columnofs[] out of the PNG signature and index far outside the lump.
+// Decode those into a real patch_t first.
+//
+// *tmp is set when the result is a fresh block the caller must Z_Free; raw Doom patches
+// stay zone-cached exactly as before.  NULL = unusable patch, skip it.
+//
+static patch_t* R_CachePatchForComposite (int lump, boolean* tmp)
+{
+    *tmp = false;
+    if (V_IsPNGLump (lump))
+    {
+	patch_t* p = V_PNGLumpToPatch (lump);		// PU_STATIC, ours to free
+	if (!p) return NULL;
+	*tmp = true;
+	return p;
+    }
+    return W_CacheLumpNum (lump, PU_CACHE);
+}
+
+
+//
 // R_GenerateComposite
 // Using the texture definition,
 //  the composite texture is created from the patches,
@@ -309,7 +337,11 @@ void R_GenerateComposite (int texnum)
 	 i<texture->patchcount;
 	 i++, patch++)
     {
-	realpatch = W_CacheLumpNum (patch->patch, PU_CACHE);
+	boolean	rp_tmp;
+
+	realpatch = R_CachePatchForComposite (patch->patch, &rp_tmp);
+	if (!realpatch)
+	    continue;
 	x1 = patch->originx;
 	x2 = x1 + SHORT(realpatch->width);
 
@@ -334,7 +366,8 @@ void R_GenerateComposite (int texnum)
 				 patch->originy,
 				 texture->height);
 	}
-						
+	if (rp_tmp)
+	    Z_Free (realpatch);
     }
 
     // Now that the texture has been built in column cache,
@@ -367,6 +400,7 @@ void R_GenerateLookup (int texnum)
     // unaffected (still direct); worst case is just more compositing.
     short*		coltop;
     short*		colbot;
+    byte*		colpng;		// column is fed by a PNG patch -> must be composited
 
     texture = textures[texnum];
 
@@ -385,13 +419,20 @@ void R_GenerateLookup (int texnum)
     memset (patchcount, 0, texture->width);
     coltop = (short *)alloca (texture->width * sizeof(short));
     colbot = (short *)alloca (texture->width * sizeof(short));
+    // Columns fed by a PNG patch must go through the composite path -- see below.
+    colpng = (byte *)alloca (texture->width);
+    memset (colpng, 0, texture->width);
     patch = texture->patches;
 		
     for (i=0 , patch = texture->patches;
 	 i<texture->patchcount;
 	 i++, patch++)
     {
-	realpatch = W_CacheLumpNum (patch->patch, PU_CACHE);
+	boolean	rp_tmp;
+
+	realpatch = R_CachePatchForComposite (patch->patch, &rp_tmp);
+	if (!realpatch)
+	    continue;
 	x1 = patch->originx;
 	x2 = x1 + SHORT(realpatch->width);
 	
@@ -409,7 +450,10 @@ void R_GenerateLookup (int texnum)
 	    colofs[x] = LONG(realpatch->columnofs[x-x1])+3;
 	    coltop[x] = patch->originy;
 	    colbot[x] = patch->originy + SHORT(realpatch->height);
+	    if (rp_tmp) colpng[x] = 1;
 	}
+	if (rp_tmp)
+	    Z_Free (realpatch);
     }
 
     for (x=0 ; x<texture->width ; x++)
@@ -428,10 +472,15 @@ void R_GenerateLookup (int texnum)
 	// texture is taller than one post can hold (>254 rows): such a column
 	// is stored as multiple posts (DeePsea tall patch) and cannot be read
 	// directly as flat pixels, so it must go through the composite path.
+	// ...OR the column comes from a PNG patch.  The single-patch shortcut records the
+	// LUMP plus an offset into it and lets the renderer read the column straight out of
+	// the file -- but a PNG's columns only exist in the decoded copy, which is freed the
+	// moment this function returns.  Compositing is the only way those can be drawn.
 	if (patchcount[x] > 1
 	    || coltop[x] > 0
 	    || colbot[x] < texture->height
-	    || texture->height > 254)
+	    || texture->height > 254
+	    || colpng[x])
 	{
 	    // Use the cached block.
 	    collump[x] = -1;
@@ -778,6 +827,48 @@ void R_InitFlats (void)
     flattranslation = Z_Malloc ((numflats+1)*4, PU_STATIC, 0);
     for (i=0 ; i<numflats ; i++)
 	flattranslation[i] = i;
+
+    // PNG flats: do the magic check ONCE here, so the per-frame R_GetFlat is a table
+    // lookup and not a lump peek.  flatpng[] marks which flats need decoding, flatcache[]
+    // holds the decoded 64x64 buffer (PU_CACHE -- the zone may reclaim any of them).
+    Z_Free (flatpng);   flatpng   = NULL;
+    Z_Free (flatcache); flatcache = NULL;
+    if (numflats)
+    {
+	flatpng   = Z_Malloc (numflats, PU_STATIC, 0);
+	flatcache = Z_Malloc (numflats * sizeof(*flatcache), PU_STATIC, 0);
+	for (i = 0; i < numflats; i++)
+	{
+	    flatpng[i]   = V_IsPNGLump (flatlumps[i]) ? 1 : 0;
+	    flatcache[i] = NULL;
+	}
+    }
+}
+
+//
+// R_GetFlat
+// The 64x64 span source for a flat index.  Raw Doom flats come straight from the lump as
+// they always did; a PNG flat is decoded once and kept in flatcache[] until the zone
+// reclaims it (the slot is the Z_Malloc user, so Z_Free NULLs it and the next call simply
+// decodes again).
+//
+// `tag` is the zone tag for the RAW path only, so each caller keeps the lifetime it had:
+// the renderer pins PU_STATIC for the duration of a visplane and tags it back afterwards,
+// the automap just borrows PU_CACHE.  A decoded PNG is always PU_CACHE against its own
+// cache slot -- pinning one would defeat the point of decoding it lazily.
+//
+// Returns NULL when a PNG flat cannot be used -- wrong size, or a decode failure.  Callers
+// must handle that and skip drawing rather than pass a garbage pointer on.
+//
+byte* R_GetFlat (int flatnum, int tag)
+{
+    if (flatnum < 0 || flatnum >= numflats)
+	return NULL;
+    if (!flatpng || !flatpng[flatnum])
+	return W_CacheLumpNum (flatlumps[flatnum], tag);
+    if (!flatcache[flatnum])
+	V_PNGLumpToFlat (flatlumps[flatnum], &flatcache[flatnum]);
+    return (byte*) flatcache[flatnum];
 }
 
 

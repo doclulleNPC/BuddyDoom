@@ -527,3 +527,70 @@ patch_t* V_PNGLumpDecodeCached (int lump, void** patch_user,
     stbi_image_free (rgba);
     return patch;
 }
+
+// ---------------------------------------------------------------------------
+// V_IsPNGLump / V_PNGLumpToFlat -- PNG in the FLAT and TEXTURE-PATCH paths.
+//
+// The sprite path has read PNG since R_InitSpriteLumps; flats and wall patches had not,
+// so a PWAD that stored those as PNG handed raw file bytes to code expecting Doom
+// formats.  For a flat that renders as noise; for a texture patch it is worse -- PNAMES
+// resolves by plain W_CheckNumForName, so R_GenerateComposite would read `columnofs[]`
+// out of the PNG header and index far outside the lump.
+// ---------------------------------------------------------------------------
+
+boolean V_IsPNGLump (int lump)
+{
+    const byte*	raw;
+
+    if (lump < 0 || W_LumpLength (lump) < 8) return false;
+    raw = (const byte*) W_CacheLumpNum (lump, PU_CACHE);
+    return raw[0]==0x89 && raw[1]=='P' && raw[2]=='N' && raw[3]=='G';
+}
+
+// Decode a PNG flat into the 64x64 linear paletted buffer R_DrawSpan wants.  The span
+// drawer masks its coordinates with &63 / &(63*64), so 64x64 is not a convention here --
+// it is the only size that can be addressed.  Anything else is refused rather than
+// stretched, so a mis-sized flat is a visible "not found" instead of a scrambled floor.
+//
+// Allocated PU_CACHE against the caller's slot: a big PNG flat set would otherwise pin
+// 4 KB per flat forever, and the zone can reclaim any floor that is off screen.
+byte* V_PNGLumpToFlat (int lump, void** user)
+{
+    int			len, w, h, comp, i;
+    const byte*		raw;
+    unsigned char*	rgba;
+    byte*		flat;
+
+    if (lump < 0 || !user) return NULL;
+    len = W_LumpLength (lump);
+    raw = (const byte*) W_CacheLumpNum (lump, PU_CACHE);
+    if (len < 8 || raw[0]!=0x89 || raw[1]!='P' || raw[2]!='N' || raw[3]!='G')
+	return NULL;
+
+    rgba = stbi_load_from_memory (raw, len, &w, &h, &comp, 4);
+    if (!rgba) return NULL;
+    if (w != 64 || h != 64)
+    {
+	static int	warned;
+	if (warned < 8)
+	{
+	    fprintf (stderr, "V_PNGLumpToFlat: %.8s is %dx%d; a flat must be 64x64\n",
+		     lumpinfo[lump].name, w, h);
+	    warned++;
+	}
+	stbi_image_free (rgba);
+	return NULL;
+    }
+
+    if (!vp_pal_ready) VP_LoadPalette ();
+    flat = (byte*) Z_Malloc (64*64, PU_CACHE, user);
+    for (i = 0; i < 64*64; i++)
+    {
+	const unsigned char* p = rgba + i*4;
+	// A flat is opaque by definition -- there is no transparent index to fall back on,
+	// so a cut-out pixel just takes its nearest colour like every other one.
+	flat[i] = VP_Nearest (p[0], p[1], p[2]);
+    }
+    stbi_image_free (rgba);
+    return flat;
+}
