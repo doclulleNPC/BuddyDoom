@@ -219,6 +219,37 @@ so shots can be placed/headshot; the AI buddy keeps autoaim), plus free-look (mo
   `I_Voice_Say`; Director "voice of god" via `I_Director_Say`), so both can talk at
   once. No live TTS at runtime. Mind the 8-byte lump-name rule (below). Design:
   **`docs/BUDDY_VOICE.md`**.
+
+### `run/ID0/buddydoom.wad` is a BUILD PRODUCT -- and its sources live in `tools/`
+
+`tools/bake_buddy_voice.py` rewrites that PWAD **from scratch** out of three directories,
+so anything edited directly in the WAD is silently thrown away by the next bake:
+
+- **`tools/wad.gfx/`** -- every buddy graphic, as true-colour PNG. Packed into
+  `S_START..S_END`, lump name = filename stem, upper-cased. A file whose 4-character
+  prefix is not in the script's `GFX_PREFIXES` is a hard error, because everything here
+  lands in the SPRITE namespace of a WAD that loads *after* the IWAD -- `NUKAGE1`/`SFALL1`
+  were dropped in here once and would have shadowed the IWAD's flats and wall patches.
+  Adding art means adding its prefix.
+- **`tools/wad.snd/`** -- non-voice sound lumps (drone/stalker/dog), OGG or raw DMX.
+- **`tools/wad.voice/`** -- the 220 pre-baked ElevenLabs clips, one OGG per lump, named
+  exactly as the lump is (>8-char entries use the truncated form). The bake prefers these
+  over its content-addressed `.buddy_voice_cache/`, and **runs with no API key when the
+  folder is complete**. Without it the WAD was not reproducible at all: the clips existed
+  only inside the shipped PWAD, and a re-bake either gutted the voice or billed
+  ElevenLabs. Re-synthesising a changed phrase means deleting its OGG here.
+
+`tools/check_gfx_sync.py` verifies `wad.gfx` against the WAD's sprite namespace (read-only,
+non-zero exit on drift): a lump with no source, a source with no lump, byte differences
+with each side's `grAb` offsets, and stray prefixes. Worth running before committing the
+WAD -- it is what caught four `MTUR*` lumps sitting *outside* `S_START..S_END`, where
+`R_InitSpriteLumps` never saw them.
+
+Two map-pack bakes follow the same idempotent pattern and target a PWAD rather than
+buddydoom.wad: **`tools/bake_freedoom_flats.py`** (copies Freedoom's flats/patches in under
+distinct names -- storing them under the IWAD's own names would shadow it globally) and
+**`tools/bake_arena_textures.py`** (`TEXTURE1`/`PNAMES`/`ANIMATED`; note all three REPLACE
+the IWAD's wholesale, so each is rebuilt complete -- see the header comments).
 - **Multiplayer netcode client** (`files/d_netcl.c`/`.h`) — a clean-room
   reimplementation of the Chocolate/Crispy-Doom network protocol (connection state
   machine + reliable layer + GAMEDATA tic windows). Transport-side **only**;

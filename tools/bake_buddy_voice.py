@@ -648,11 +648,22 @@ def main():
     key = args.key or os.environ.get("ELEVENLABS_API_KEY") \
           or env_file_value("~/.hermes/.env",
                             "ELEVENLABS_API_KEY", "ELEVEN_API_KEY", "XI_API_KEY")
+    # A key is only needed for clips we would have to SYNTHESISE.  With tools/wad.voice/
+    # complete the bake is a pure repack, and demanding a key there would keep the WAD
+    # unbuildable for everyone but its original author -- which is the state this folder
+    # exists to end.
     if not key:
-        print("ERROR: no ElevenLabs API key.  Put 'ELEVENLABS_API_KEY=sk_...' in "
-              "~/.hermes/.env (preferred), export ELEVENLABS_API_KEY, or pass --key.",
-              file=sys.stderr)
-        return 2
+        voice_dir = Path(__file__).resolve().parent / "wad.voice"
+        missing = [n for n, _p in PHRASES] + [n for n, _p in DIRECTOR]
+        missing = [n for n in missing if not (voice_dir / f"{n[:8]}.ogg").exists()]
+        if missing:
+            print("ERROR: no ElevenLabs API key, and %d clip(s) are not pre-baked in %s "
+                  "(first: %s).  Put 'ELEVENLABS_API_KEY=sk_...' in ~/.hermes/.env "
+                  "(preferred), export ELEVENLABS_API_KEY, or pass --key."
+                  % (len(missing), voice_dir, ", ".join(missing[:4])), file=sys.stderr)
+            return 2
+        print("bake_buddy_voice: no API key, but every clip is pre-baked in wad.voice/ "
+              "-- repacking offline.")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -674,7 +685,22 @@ def main():
     director_voice = args.director_voice or DIRECTOR_VOICE
     ALL = [(n, p, args.voice) for n, p in PHRASES] \
         + [(n, p, director_voice) for n, p in DIRECTOR]
+    voice_dir = Path(__file__).resolve().parent / "wad.voice"
     for i, (name, phrase, voice) in enumerate(ALL, 1):
+        # PRE-BAKED first.  tools/wad.voice/ holds the shipped clips, one OGG per lump,
+        # named exactly as the lump is (so >8-char entries use the truncated form that
+        # write_wad would produce anyway).  Without this the bake was not reproducible:
+        # the clips only existed inside buddydoom.wad, and the content-addressed cache
+        # that would otherwise supply them was never committed -- so anyone re-baking
+        # got a WAD with the voice gone, or an ElevenLabs bill.
+        prebaked = voice_dir / f"{name[:8]}.ogg"
+        if prebaked.exists() and not args.force:
+            data = prebaked.read_bytes()
+            src = "prebaked"
+            lumps.append((name, data))
+            persona = "director" if name.startswith("DD") else "buddy"
+            manifest_lines.append(f"{name}\t{persona}\t{voice}\t{phrase}\t{src}\t{len(data)}\n")
+            continue
         # Cache key is content-addressed on phrase+voice+model so different
         # voices land in separate files.
         h = hashlib.sha1(f"{voice}|{args.model}|{phrase}".encode()).hexdigest()[:16]
