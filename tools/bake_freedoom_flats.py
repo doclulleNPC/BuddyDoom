@@ -38,9 +38,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DEFAULT_WAD = os.path.join(ROOT, "run", "ID0", "e1-arenas.wad")
 
-# (lump, namespace).  "F" = flat namespace, "P" = patch namespace.
-WANT = [("NUKAGE1", "F"), ("NUKAGE2", "F"), ("NUKAGE3", "F"),
-        ("SFALL1",  "P"), ("SFALL2",  "P"), ("SFALL3",  "P"), ("SFALL4",  "P")]
+# (source lump in Freedoom, name to store it under, namespace).
+# The names differ on purpose.  Stored under their Freedoom names these would SHADOW the
+# IWAD's own NUKAGE/SFALL -- flat and texture lookup both take the last match -- which
+# replaced id's nukage in every map of every game.  Under distinct names they are simply
+# additional graphics the arena maps can pick, and the stock ones stay stock.
+# "F" = flat namespace, "P" = patch namespace.
+WANT = [("NUKAGE1", "NUKAGEF1", "F"), ("NUKAGE2", "NUKAGEF2", "F"),
+        ("NUKAGE3", "NUKAGEF3", "F"),
+        ("SFALL1",  "SFALLF1",  "P"), ("SFALL2",  "SFALLF2",  "P"),
+        ("SFALL3",  "SFALLF3",  "P"), ("SFALL4",  "SFALLF4",  "P")]
 
 FREEDOOM = ["freedoom1.wad", "freedoom2.wad", "freedm.wad",
             "FREEDOOM1.WAD", "FREEDOOM2.WAD", "FREEDM.WAD"]
@@ -98,10 +105,35 @@ def namespaces(lumps):
         u = n.upper()
         if u.endswith('_START') and u[0] in 'FPS':
             ns = u[0]; out.append(ns); continue
-        if u.endswith('_END') and u[0] in 'FPS':
+        # Only the OUTER marker closes -- mirrors R_InitFlats, which tests F_END/FF_END
+        # and skips sub-markers like F1_END by name.
+        if u in ('F_END', 'FF_END', 'P_END', 'PP_END', 'S_END', 'SS_END'):
             out.append(ns); ns = ''; continue
+        if u.endswith('_END') and u[0] in 'FPS':
+            out.append(ns); continue
         out.append(ns)
     return out
+
+
+def insert_point(lumps, kind):
+    """Where a `kind` lump has to go: just inside the INNERMOST sub-range.
+
+    The classic layout nests them -- F_START / F1_START ... F1_END / F_END -- and the real
+    flats live inside the INNER pair.  BuddyDoom's own R_InitFlats is relaxed about this
+    (it closes only on F_END/FF_END and skips sub-markers by name), but map editors are
+    not: Doom Builder ends the range at the first F*_END, so anything parked between
+    F1_END and F_END is invisible to it even though the game renders it fine.
+    Returns None when there is no section at all."""
+    start = None
+    for i, (n, _) in enumerate(lumps):
+        u = n.upper()
+        if start is None:
+            if u in (kind + "_START", kind + kind + "_START"):
+                start = i
+            continue
+        if u.endswith("_END") and u[0] == kind:
+            return i                       # first closing marker after the start
+    return None
 
 
 def section_bounds(lumps, kind):
@@ -119,7 +151,7 @@ def section_bounds(lumps, kind):
 
 def strip(wad):
     magic, lumps = read_lumps(wad)
-    drop = {n.upper() for n, _ in WANT}
+    drop = {dst.upper() for _, dst, _ in WANT}
     kept = [l for l in lumps if l[0].upper() not in drop]
     removed = len(lumps) - len(kept)
 
@@ -177,13 +209,14 @@ def main():
                      (os.path.basename(com), os.path.basename(src)))
 
     grabbed = []
-    for name, kind in WANT:
-        d = lump_of(srclumps, name)
+    for srcname, name, kind in WANT:
+        d = lump_of(srclumps, srcname)
         if d is None:
-            sys.exit("bake_freedoom_flats: %s missing from %s" % (name, os.path.basename(src)))
+            sys.exit("bake_freedoom_flats: %s missing from %s"
+                     % (srcname, os.path.basename(src)))
         if kind == "F" and len(d) != 4096:
             sys.exit("bake_freedoom_flats: %s is %d bytes; a flat must be 64x64 = 4096"
-                     % (name, len(d)))
+                     % (srcname, len(d)))
         grabbed.append((name, kind, d))
 
     magic, lumps = read_lumps(WAD)
@@ -198,18 +231,20 @@ def main():
         # happens to carry these very names in the SPRITE namespace -- same name, different
         # thing entirely, and a flat dropped in among the sprites would not be found by
         # R_InitFlats anyway.
-        hit = None
         for i, (n, _) in enumerate(lumps):
-            if n.upper() == name.upper():
-                if ns[i] == kind:
-                    hit = i
-                    break
+            if n.upper() == name.upper() and ns[i] != kind:
                 strays.append((name, ns[i] or "(root)"))
-        if hit is not None:
-            lumps[hit][1] = d
+        # Always re-place rather than refresh where it happens to sit: an earlier run of
+        # this script could have left it in the outer range, which the game reads and the
+        # editor does not.  Dropping and re-inserting keeps it idempotent AND correct.
+        drop = [i for i, (n, _) in enumerate(lumps)
+                if n.upper() == name.upper() and ns[i] == kind]
+        for i in reversed(drop):
+            del lumps[i]
+            del ns[i]
+        if drop:
             updated += 1
-        else:
-            pending[kind].append([name, d])
+        pending[kind].append([name, d])
 
     if strays:
         print("bake_freedoom_flats: NOTE -- %s already carries these names in another "
@@ -223,9 +258,9 @@ def main():
     for kind in ("F", "P"):
         if not pending[kind]:
             continue
-        s, e = section_bounds(lumps, kind)
-        if s is not None and e is not None:
-            lumps[e:e] = pending[kind]          # insert just inside the existing section
+        at = insert_point(lumps, kind)
+        if at is not None:
+            lumps[at:at] = pending[kind]        # just inside the innermost sub-range
         else:
             lumps += [[kind + "_START", b""]] + pending[kind] + [[kind + "_END", b""]]
         added += len(pending[kind])
