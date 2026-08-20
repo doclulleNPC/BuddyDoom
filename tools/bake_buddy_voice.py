@@ -339,6 +339,27 @@ def cfg_value(cfg_path, key):
     return None
 
 
+# The 4-character prefixes tools/wad.gfx/ is allowed to hold.
+#
+# Everything in that directory is packed into buddydoom.wad's SPRITE namespace, and
+# buddydoom.wad is added AFTER the IWAD (files/d_main.c) -- so a stray file here does not
+# just sit around unused, its NAME wins any global by-name lookup.  NUKAGE1-3 and SFALL1-4
+# were once dropped in here, and the next bake would have shadowed the IWAD's nukage flats
+# and sludgefall texture patches with PNGs in the wrong namespace.
+#
+# Checking the name SHAPE is not enough to catch that: "SFALL1" is a perfectly well-formed
+# sprite lump name (SFAL + frame L + rotation 1).  Only a manifest catches it.  Adding new
+# art therefore means adding its prefix here -- one line, and the error message says so.
+GFX_PREFIXES = {
+    "MNDR", "SHT1", "POW1",                                 # security drone
+    "MTUR",                                                 # deployable turret
+    "LICS", "LICF", "LICE",                                 # Heretic Lichling
+    "STLK",                                                 # Strife stalker
+    "BUFD", "BUFE", "BUFG", "BUFK", "BUFO", "BUFS", "BUFT",  # buddy HUD mugshots
+    "RARR",                                                 # UI compass arrows
+}
+
+
 def load_gfx_lumps():
     """ALL buddy graphic lumps, as true-colour PNGs from tools/wad.gfx/ -- the single
     source of truth for buddy art.  Covers the world SPRITES (MNDR*/MTUR*/SHT1*/POW1*
@@ -350,6 +371,19 @@ def load_gfx_lumps():
     filename stem, upper-cased."""
     gfx_dir = Path(__file__).resolve().parent / "wad.gfx"
     pngs = sorted(gfx_dir.glob("*.png"))
+
+    stray = sorted({f.name for f in pngs if f.stem.upper()[:4] not in GFX_PREFIXES})
+    if stray:
+        sys.exit(
+            "bake_buddy_voice: %s holds art with unknown prefixes:\n"
+            "    %s\n"
+            "Everything here becomes a lump in buddydoom.wad\'s SPRITE "
+            "namespace, and that WAD loads after the IWAD -- a name belonging to a "
+            "flat or a wall patch would shadow the real one.  If this really is "
+            "buddy sprite art, add its 4-character prefix to GFX_PREFIXES; "
+            "otherwise it does not belong here."
+            % (gfx_dir, "\n    ".join(stray)))
+
     if not pngs:
         print(f"WARNING: no *.png in {gfx_dir} -- buddy sprites/faces/arrows will be MISSING!",
               file=sys.stderr)
