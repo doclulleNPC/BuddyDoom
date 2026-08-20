@@ -831,8 +831,11 @@ void R_InitFlats (void)
     // PNG flats: do the magic check ONCE here, so the per-frame R_GetFlat is a table
     // lookup and not a lump peek.  flatpng[] marks which flats need decoding, flatcache[]
     // holds the decoded 64x64 buffer (PU_CACHE -- the zone may reclaim any of them).
-    Z_Free (flatpng);   flatpng   = NULL;
-    Z_Free (flatcache); flatcache = NULL;
+    // Guarded: Z_Free is NOT free(3).  It derives the block header from the pointer and
+    // reads it straight away, so a NULL argument faults -- and both of these are NULL on
+    // the very first call, which is every startup.
+    if (flatpng)   { Z_Free (flatpng);   flatpng   = NULL; }
+    if (flatcache) { Z_Free (flatcache); flatcache = NULL; }
     if (numflats)
     {
 	flatpng   = Z_Malloc (numflats, PU_STATIC, 0);
