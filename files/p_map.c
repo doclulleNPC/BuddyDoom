@@ -42,6 +42,7 @@ rcsid[] = "$Id: p_map.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 #include "r_state.h"
 // Data.
 #include "sounds.h"
+#include "p_ai_coop.h"	// P_AICoop_IsBuddy -- the bot must not telefrag its human
 
 
 fixed_t		tmbbox[4];
@@ -104,7 +105,25 @@ boolean PIT_StompThing (mobj_t* thing)
     // don't clip against self
     if (thing == tmthing)
 	return true;
-    
+
+    // (buddy) The AI companion and its human never telefrag each other.
+    //
+    // Telefragging is a PLAYER privilege in vanilla -- the check below waves any player
+    // mobj straight through to the 10000-damage stomp -- and that is right for deathmatch,
+    // where two humans race for the same pad.  It is a disaster with a bot: the buddy now
+    // routes THROUGH teleporters (the nav graph carries them as real edges), so it lands
+    // on whoever is standing on the destination pad and kills them.  In single player that
+    // is the buddy murdering the player for walking through a door first.
+    //
+    // Who yields depends on who is arriving.  The BUDDY yields -- returning false aborts
+    // P_TeleportMove, so EV_Teleport just does not fire and it retries once the pad is
+    // clear.  The HUMAN never yields: blocking the player's own teleport would be a worse
+    // bug than the one being fixed, so the move goes ahead, nobody is damaged, and the two
+    // overlap for a moment until the buddy's yield behaviour steps it aside.
+    if (thing->player && tmthing->player
+	&& (P_AICoop_IsBuddy (thing->player) || P_AICoop_IsBuddy (tmthing->player)))
+	return !P_AICoop_IsBuddy (tmthing->player);
+
     // monsters don't stomp things except on boss level
     if ( !tmthing->player && gamemap != 30)
 	return false;	
