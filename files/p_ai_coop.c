@@ -3222,12 +3222,37 @@ static boolean AICoop_LikelySeen (fixed_t x, fixed_t y)
     return false;
 }
 
-// A spot the buddy may be dropped on.  P_CheckPosition also refuses a spot occupied by a
-// solid thing, which is what keeps the rescue off the top of anybody.
+// A spot the buddy may be dropped on.
+//
+// The player-clearance test is explicit and deliberately does NOT lean on
+// P_CheckPosition, which cannot answer this question.  With over_under on -- the default
+// -- PIT_CheckThing (p_map.c) replies "fine, rest on its top" whenever the buddy's
+// CURRENT z clears the other thing's head, and when this watchdog fires the buddy is
+// very often up a ledge or a stairway.  So the probe returned OK for a spot the human
+// was standing on.  What follows is P_TeleportMove, and that has no z test whatsoever:
+// PIT_StompThing is a flat 2D radius check that deals 10000 damage.  Probe says free,
+// stomp says dead.
+//
+// Mirrors PIT_StompThing's own test exactly, so anything it would stomp is refused here.
 static boolean AICoop_RescueSpotOK (mobj_t* mo, fixed_t x, fixed_t y)
 {
+    int	i;
+
     if (AICoop_PointOutside (x, y))	return false;
     if (AICoop_DamagingFloor (x, y))	return false;
+
+    for (i = 0; i < MAXPLAYERS; i++)
+    {
+	player_t*	p = &players[i];
+	fixed_t		blockdist;
+
+	if (!playeringame[i] || p->health <= 0 || !p->mo) continue;
+	if (p->mo == mo) continue;
+	blockdist = p->mo->radius + mo->radius;
+	if (abs (p->mo->x - x) < blockdist && abs (p->mo->y - y) < blockdist)
+	    return false;
+    }
+
     return P_CheckPosition (mo, x, y) ? true : false;
 }
 
@@ -3279,7 +3304,11 @@ static boolean AICoop_RescueSmart (mobj_t* mo, mobj_t* pl)
     // outright.  Staying stuck for another 12 s and retrying is the better failure.
     if (!found) return false;
 
-    P_TeleportMove (mo, rx, ry);
+    // Honour the result.  P_TeleportMove can refuse now -- PIT_StompThing declines to let
+    // the buddy telefrag its human -- and reporting a rescue that did not happen would
+    // reset the watchdog and buy the buddy another silent 12 s of being lost.
+    if (!P_TeleportMove (mo, rx, ry))
+	return false;
     mo->angle = rang;
     mo->momx = mo->momy = mo->momz = 0;
     players[consoleplayer].message = "[Buddy] Rescued to player vicinity.";
