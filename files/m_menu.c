@@ -202,8 +202,10 @@ void M_VideoFullscreen(int choice);
 void M_VideoAspect(int choice);
 void M_VideoFilter(int choice);
 void M_VideoVSync(int choice);
+void M_VideoGamma(int choice);
 void M_VideoScale(int choice);
 void M_VideoBackend(int choice);
+void M_VideoFullcolor(int choice);
 void M_StatusBarStyle(int choice);
 void M_LightDither(int choice);
 void M_DrawVideo(void);
@@ -432,6 +434,7 @@ enum
     vid_dither,     // Light dithering
     vid_shadow,     // Sprite shadows
     vid_fullcolor,  // Truecolor 3D view (automap moved to Options -> Automap)
+    vid_gamma,      // Gamma correction (was F11-only)
     vid_end
 } video_e;
 
@@ -446,7 +449,9 @@ menuitem_t VideoMenu[]=
     {2,"",	M_VideoBackend,'b'},	// GPU Backend
     {2,"",	M_StatusBarStyle,'h'},	// Vanilla / Small / Alt HUD
     {2,"",	M_LightDither,'d'},	// soften light banding
-    {1,"",	M_SpriteShadow,'o'}	// soft sprite shadows
+    {1,"",	M_SpriteShadow,'o'},	// soft sprite shadows
+    {1,"",	M_VideoFullcolor,'c'},	// truecolor 3D view
+    {2,"",	M_VideoGamma,'g'}	// left/right cycles gamma 0..4
 };
 
 menu_t  VideoDef =
@@ -1323,6 +1328,7 @@ void M_DrawVideo(void)
 void M_SpriteShadow (int choice);		// (defined below; used in the cycle table)
 void M_Automap (int choice);
 void M_VideoFullcolor (int choice);
+void M_VideoGamma (int choice);
 extern int truecolor;				// i_video.c -- truecolor 3D view
 extern void M_SaveDefaults (void);
 extern int  I_RenderBackendCount (void);	// i_video.c: available SDL render drivers (+ Auto)
@@ -1334,13 +1340,13 @@ static const char* const M_VideoLabels[vid_end] =
 {
     "Resolution", "Fullscreen", "Aspect", "Filter", "VSync",
     "Scaling", "Backend (restart)", "Status Bar", "Light Dither",
-    "Sprite Shadows", "Fullcolor"
+    "Sprite Shadows", "Fullcolor", "Gamma"
 };
 static void (* const M_VideoCycle[vid_end])(int) =
 {
     M_VideoRes, M_VideoFullscreen, M_VideoAspect, M_VideoFilter, M_VideoVSync,
     M_VideoScale, M_VideoBackend, M_StatusBarStyle, M_LightDither,
-    M_SpriteShadow, M_VideoFullcolor
+    M_SpriteShadow, M_VideoFullcolor, M_VideoGamma
 };
 
 void	M_Video_Open (void)    { mvid_active = 1; mvid_sel = 0; }
@@ -1369,6 +1375,9 @@ void M_Video_Value (int i, char* b, int n)
       case vid_dither:     snprintf (b, n, "%s", dither_lighting ? "On" : "Off"); break;
       case vid_shadow:     snprintf (b, n, "%s", r_shadows ? "On" : "Off"); break;
       case vid_fullcolor:  snprintf (b, n, "%s", truecolor ? "On" : "Off"); break;
+      case vid_gamma:      if (usegamma <= 0) snprintf (b, n, "Off");
+                           else               snprintf (b, n, "Level %d", usegamma);
+                           break;
       default:             b[0] = 0;
     }
 }
@@ -1674,6 +1683,17 @@ void M_Automap(int choice)
 void M_VideoFullcolor(int choice)
 {
     truecolor = !truecolor;			// i_video.c -- smooth truecolor 3D view
+    M_SaveDefaults ();
+}
+
+// Options -> Video: gamma correction, the same 5 levels the F11 toggle walks
+// (gammatable[5][256] in v_video.c).  It is a property of the PALETTE, not of the
+// renderer, so the only thing to do is rebuild it -- exactly what F11 does.
+void M_VideoGamma(int choice)
+{
+    if (choice) usegamma = (usegamma + 1) % 5;		// Right / select
+    else        usegamma = (usegamma + 4) % 5;		// Left
+    I_SetPalette (W_CacheLumpName ("PLAYPAL", PU_CACHE));
     M_SaveDefaults ();
 }
 
