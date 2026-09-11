@@ -172,6 +172,7 @@ typedef struct {
     char     path[260];		// absolute path
     int      detected;		// 1 if IdentifyVersion-style auto-detected this as a known IWAD
     int      from_steam;		// 1 if found under a Steam install path
+    int      cache;		// index into icache[] (its MD5 + map list), -1 = not cached
 } iwad_t;
 
 // --- Globals (single-instance app, no threading) ---
@@ -225,9 +226,10 @@ static int     opt_skill = 3;			// difficulty 0..4 -> -skill 1..5; default 3 = U
 // Warp target.  Slot 0 is "Start" -- wherever the loaded content actually begins, which is
 // NOT always map 1: a PWAD can declare its own start via UMAPINFO (KDiKDiZD begins on MAP13),
 // and a partial-replacement PWAD often ships a stray MAP01 stub that is not the real start.
-// Slots 1.. are the maps that genuinely EXIST, read from the PWAD when it brings maps, else
-// from the IWAD -- so Strife lists its 34 MAPxx, Heretic its ExMy, and Hexen skips the slots
-// it leaves empty (it has no MAP07) instead of offering four hardcoded Doom episode starts.
+// Slots 1.. are the maps that genuinely EXIST, read from the PWAD when it brings maps in the
+// IWAD's own name format, else from the IWAD -- so Strife lists its 34 MAPxx, Heretic its ExMy,
+// and Hexen skips the slots it leaves empty (it has no MAP07) instead of offering four
+// hardcoded Doom episode starts.
 #define MAX_MAPLIST 128
 static char    map_label[MAX_MAPLIST][12];	// what the row shows ("Start", "2", "E1M2", ...)
 static char    map_warp [MAX_MAPLIST][12];	// the matching -warp argument ("13", "1 2", ...)
@@ -447,6 +449,7 @@ static void try_add_iwad(const char* dir, const char* filename, int from_steam)
     }
 
     iwad_t* e = &iwads[iwad_count];
+    e->cache = -1;			// filled in by iwad_cache_sync()
     int known = is_known_iwad(filename);
     if (known >= 0) {
         snprintf(e->name, sizeof e->name, "%s%s",
@@ -497,6 +500,7 @@ static void try_add_iwad_content(const char* dir, const char* fname)
     }
 
     iwad_t* e = &iwads[iwad_count];
+    e->cache = -1;			// filled in by iwad_cache_sync()
     snprintf(e->name, sizeof e->name, "%s  [%s]", label, fname);
     snprintf(e->path, sizeof e->path, "%s", full);
     e->detected = 1;
@@ -1326,13 +1330,32 @@ static int pwad_umapinfo_warp(const char* name, char* warp, int wn)
     return found;
 }
 
+// Sort a map-name list by (episode, map) -- MAPxx sorts as episode 0 so a list mixing both
+// stays sane.  Insertion sort: these lists are at most a hundred-odd entries.
+static void maps_sort(char names[][12], int n)
+{
+    int j, k;
+    for (j = 1; j < n; j++) {
+        char t[12]; int kj, kk;
+        snprintf(t, sizeof t, "%s", names[j]);
+        kj = (t[0]=='E') ? (t[1]-'0')*100 + (t[3]-'0') : (t[3]-'0')*10 + (t[4]-'0');
+        for (k = j - 1; k >= 0; k--) {
+            kk = (names[k][0]=='E') ? (names[k][1]-'0')*100 + (names[k][3]-'0')
+                                    : (names[k][3]-'0')*10 + (names[k][4]-'0');
+            if (kk <= kj) break;
+            snprintf(names[k+1], 12, "%s", names[k]);
+        }
+        snprintf(names[k+1], 12, "%s", t);
+    }
+}
+
 // Collect the MAPxx / ExMy lump names of an open WAD, sorted, de-duplicated.  Returns how
 // many were written.  Map lumps are just directory entries -- no need to parse anything.
 static int wad_collect_maps(FILE* f, char out[][12], int max)
 {
     unsigned char hdr[12];
     unsigned nl, of, i;
-    int n = 0, j, k;
+    int n = 0, j;
 
     if (!f) return 0;
     if (fread(hdr, 1, 12, f) != 12) return 0;
@@ -1354,20 +1377,22 @@ static int wad_collect_maps(FILE* f, char out[][12], int max)
         snprintf(out[n++], 12, "%s", nm);
     }
 
-    // Sort by (episode, map) -- MAPxx sorts as episode 0 so a wad mixing both stays sane.
-    for (j = 1; j < n; j++) {
-        char t[12]; int kj, kk;
-        snprintf(t, sizeof t, "%s", out[j]);
-        kj = (t[0]=='E') ? (t[1]-'0')*100 + (t[3]-'0') : (t[3]-'0')*10 + (t[4]-'0');
-        for (k = j - 1; k >= 0; k--) {
-            kk = (out[k][0]=='E') ? (out[k][1]-'0')*100 + (out[k][3]-'0')
-                                  : (out[k][3]-'0')*10 + (out[k][4]-'0');
-            if (kk <= kj) break;
-            snprintf(out[k+1], 12, "%s", out[k]);
-        }
-        snprintf(out[k+1], 12, "%s", t);
-    }
+    maps_sort(out, n);
     return n;
+}
+
+// Drop every map whose name format does not match the IWAD's (want_ex: 1 = ExMy, 0 = MAPxx).
+// Returns how many survive.  Order is preserved, so names[0] stays the lowest map.
+static int maps_keep_format(char names[][12], int n, int want_ex)
+{
+    int i, k = 0;
+    for (i = 0; i < n; i++) {
+        int is_ex = (names[i][0] == 'E');
+        if (is_ex != !!want_ex) continue;
+        if (k != i) snprintf(names[k], 12, "%s", names[i]);
+        k++;
+    }
+    return k;
 }
 
 // Turn a map lump name into its row label and its -warp argument.
@@ -1383,41 +1408,174 @@ static void map_name_to_entry(const char* nm, char* label, int ln, char* warp, i
     }
 }
 
+// --- IWAD fingerprint cache ---------------------------------------------------------------
+// An IWAD's MD5 and its map list never change, but working them out means reading the whole
+// file (MD5) and its directory (maps) -- for every IWAD found, on every start.  So the result
+// is written back into launcher.ini and re-used.  The key is the file's NAME + BYTE SIZE:
+// replacing a WAD with a different build changes its size, which drops the stale entry by
+// itself, and a size collision under the same name is not something a user hits by accident.
+#define MAX_ICACHE MAX_IWADS
+typedef struct {
+    char file[128];			// basename as found, e.g. "doom2.wad"
+    long size;				// bytes -- the other half of the cache key
+    char md5[33];
+    char maps[MAX_MAPLIST][12];		// the map lumps it holds, sorted
+    int  nmaps;
+} iwad_cache_t;
+static iwad_cache_t icache[MAX_ICACHE];
+static int          icache_count;
+static int          icache_dirty;	// 1 = entries were added, launcher.ini needs rewriting
+
+static const char* base_name(const char* path)
+{
+    const char* b = path;
+    const char* q;
+    for (q = path; *q; q++) if (*q == '/' || *q == '\\') b = q + 1;
+    return b;
+}
+
+static long file_size(const char* path)
+{
+    FILE* f = fopen(path, "rb");
+    long  n;
+    if (!f) return -1;
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return -1; }
+    n = ftell(f);
+    fclose(f);
+    return n;
+}
+
+static int icache_find(const char* file, long size)
+{
+    int i;
+    for (i = 0; i < icache_count; i++)
+        if (icache[i].size == size && !strcasecmp(icache[i].file, file)) return i;
+    return -1;
+}
+
+// Drop cache entries that are provably stale: an IWAD of that name is here NOW and has a
+// different size, i.e. the file was replaced or updated.  An entry whose file is simply absent
+// this session is KEPT -- WADs live on removable drives, and losing the entry costs a rehash.
+static void icache_prune(void)
+{
+    int i, j, k = 0;
+    for (i = 0; i < icache_count; i++) {
+        int stale = 0;
+        for (j = 0; j < iwad_count && !stale; j++)
+            if (!strcasecmp(base_name(iwads[j].path), icache[i].file)
+                && file_size(iwads[j].path) != icache[i].size)
+                stale = 1;
+        if (stale) { icache_dirty = 1; continue; }
+        if (k != i) icache[k] = icache[i];
+        k++;
+    }
+    icache_count = k;
+}
+
+// Give every IWAD found this session a cache entry, computing the ones launcher.ini did not
+// already know.  Sets icache_dirty so main() knows to write the file back.
+static void iwad_cache_sync(void)
+{
+    int i;
+    icache_prune();
+    for (i = 0; i < iwad_count; i++) {
+        const char* file = base_name(iwads[i].path);
+        long        size = file_size(iwads[i].path);
+        int         ci;
+
+        iwads[i].cache = -1;
+        if (size < 0) continue;			// unreadable -- leave it uncached rather than wrong
+
+        ci = icache_find(file, size);
+        if (ci < 0) {
+            FILE* f;
+            if (icache_count >= MAX_ICACHE) continue;
+            ci = icache_count;
+            memset(&icache[ci], 0, sizeof icache[ci]);
+            snprintf(icache[ci].file, sizeof icache[ci].file, "%s", file);
+            icache[ci].size = size;
+            if (!md5_file_hex(iwads[i].path, icache[ci].md5)) icache[ci].md5[0] = 0;
+            f = fopen(iwads[i].path, "rb");
+            icache[ci].nmaps = wad_collect_maps(f, icache[ci].maps, MAX_MAPLIST);
+            if (f) fclose(f);
+            icache_count++;
+            icache_dirty = 1;
+        }
+        iwads[i].cache = ci;
+    }
+}
+
 // (re)build the Map dropdown for the current IWAD + PWAD selection.
 static void scan_maps(void)
 {
     char        names[MAX_MAPLIST][12];
+    char        inames[MAX_MAPLIST][12];
     const char* src = NULL;		// bare PWAD name supplying the list (NULL = the IWAD)
-    int         n = 0, i;
+    int         n = 0, n_iw = 0, i;
+    int         iw_ex;			// 1 = the IWAD names its maps ExMy, 0 = MAPxx
     char        start[12] = "";
+    char        pw_first[12] = "";	// the map pack's OWN lowest map (its start, absent UMAPINFO)
     char        keep[12] = "";		// the map that WAS picked, by label
 
     if (map_sel > 0 && map_sel < map_count)
         snprintf(keep, sizeof keep, "%s", map_label[map_sel]);
 
-    // A PWAD that actually brings maps defines the map list; otherwise the IWAD does.
-    // (Asset-only PWADs -- texture packs, buddy packs -- must not blank the list.)
+    // The IWAD comes FIRST -- it decides which map-name format this game uses, and it is the
+    // fallback list.  (Doom2/Hexen/Strife: MAPxx.  Doom1/Heretic: ExMy.)  Its map list comes
+    // out of the launcher.ini cache; re-reading the WAD directory is only the fallback.
+    if (iwad_sel >= 0 && iwad_sel < iwad_count) {
+        int ci = iwads[iwad_sel].cache;
+        if (ci >= 0 && ci < icache_count) {
+            n_iw = icache[ci].nmaps;
+            for (i = 0; i < n_iw; i++) snprintf(inames[i], 12, "%s", icache[ci].maps[i]);
+        } else {
+            FILE* f = fopen(iwads[iwad_sel].path, "rb");	// IWADs are stored as absolute paths
+            n_iw = wad_collect_maps(f, inames, MAX_MAPLIST);
+            if (f) fclose(f);
+        }
+    }
+    iw_ex = (n_iw && inames[0][0] == 'E');
+
+    // A PWAD that brings maps decides where "Start" goes; the list itself is the union of
+    // its maps and the IWAD's (see the merge below).
+    // (Asset-only PWADs -- texture packs, buddy packs -- must not touch any of this.)
+    // Only maps in the IWAD's OWN format count: a Doom1 map pack (E1M1..) stays selected
+    // when you switch the IWAD to Doom2, and its ExMy list is meaningless there -- "-warp 1 1"
+    // does not even address a Doom2 map.  Filtering to the IWAD's format makes the row fall
+    // back to the IWAD's MAP01.. instead of listing maps this game cannot warp to.
     if (pwad_sel > 0 && pwad_sel < pwad_count) {
         FILE* f = pwad_open(pwads[pwad_sel]);
         n = wad_collect_maps(f, names, MAX_MAPLIST);
         if (f) fclose(f);
-        if (n) src = pwads[pwad_sel];
+        if (n_iw) n = maps_keep_format(names, n, iw_ex);
+        if (n) { src = pwads[pwad_sel]; snprintf(pw_first, sizeof pw_first, "%s", names[0]); }
     }
     if (!n && wad2_sel > 0 && wad2_sel < pwad_count) {
         FILE* f = pwad_open(pwads[wad2_sel]);
         n = wad_collect_maps(f, names, MAX_MAPLIST);
         if (f) fclose(f);
-        if (n) src = pwads[wad2_sel];
+        if (n_iw) n = maps_keep_format(names, n, iw_ex);
+        if (n) { src = pwads[wad2_sel]; snprintf(pw_first, sizeof pw_first, "%s", names[0]); }
     }
-    if (!n && iwad_sel >= 0 && iwad_sel < iwad_count) {
-        FILE* f = fopen(iwads[iwad_sel].path, "rb");	// IWADs are stored as absolute paths
-        n = wad_collect_maps(f, names, MAX_MAPLIST);
-        if (f) fclose(f);
+    // Merge the IWAD's own maps in.  A map pack usually replaces only a SLICE of the game
+    // (e1-arenas is Episode 1 only, KDiKDiZD is MAP13..MAP23) -- the slots it does not touch
+    // are still the IWAD's and still playable, so listing only the pack's maps hid Doom's
+    // episodes 2-4.  Duplicates are the pack's, which is what actually loads.
+    for (i = 0; i < n_iw && n < MAX_MAPLIST; i++) {
+        int j;
+        for (j = 0; j < n; j++) if (!strcmp(names[j], inames[i])) break;
+        if (j == n) snprintf(names[n++], 12, "%s", inames[i]);
     }
+    maps_sort(names, n);
 
-    // Slot 0 -- "Start".  A PWAD's own UMAPINFO episode wins; else the first map it has;
-    // else the IWAD's first map (E1M1 for Doom/Heretic, MAP01 for Doom2/Hexen/Strife).
+    // Slot 0 -- "Start".  A PWAD's own UMAPINFO episode wins; else the first map the PACK has
+    // (not the merged list's first, which is usually the IWAD's MAP01/E1M1 and would send a
+    // MAP13..MAP23 pack to the wrong end of the game); else the IWAD's first map.
     if (src) pwad_umapinfo_warp(src, start, sizeof start);
+    if (!start[0] && pw_first[0]) {
+        char dummy[12];
+        map_name_to_entry(pw_first, dummy, sizeof dummy, start, sizeof start);
+    }
     if (!start[0] && n) {
         char dummy[12];
         map_name_to_entry(names[0], dummy, sizeof dummy, start, sizeof start);
@@ -1498,6 +1656,7 @@ static const char* prefs_path(void)
 static void save_launcher_prefs(void)
 {
     FILE* f = fopen(prefs_path(), "w");
+    int   i;
     if (!f) return;
     fprintf(f, "iwad %s\n",     (iwad_sel >= 0 && iwad_sel < iwad_count) ? iwads[iwad_sel].name : "");
     fprintf(f, "pwad %s\n",     (pwad_sel > 0 && pwad_sel < pwad_count) ? pwads[pwad_sel] : "");
@@ -1516,6 +1675,20 @@ static void save_launcher_prefs(void)
     fprintf(f, "freedoom %d\n", opt_freedoom);
     fprintf(f, "heretic %d\n",  opt_heretic);
     fprintf(f, "hexen %d\n",    opt_hexen);
+
+    // The IWAD fingerprint cache (see iwad_cache_sync).  One line per IWAD:
+    //     iwadcache <md5> <size> <nmaps> <map,map,...> <file name>
+    // The file name goes LAST because it is the only field that may contain spaces; "-"
+    // stands in for an unreadable checksum or a WAD with no maps, so the field count is fixed.
+    for (i = 0; i < icache_count; i++) {
+        int j;
+        fprintf(f, "iwadcache %s %ld %d ",
+                icache[i].md5[0] ? icache[i].md5 : "-", icache[i].size, icache[i].nmaps);
+        if (!icache[i].nmaps) fputc('-', f);
+        for (j = 0; j < icache[i].nmaps; j++)
+            fprintf(f, "%s%s", j ? "," : "", icache[i].maps[j]);
+        fprintf(f, " %s\n", icache[i].file);
+    }
     fclose(f);
 }
 
@@ -1523,14 +1696,15 @@ static void load_launcher_prefs(void)
 {
     FILE* f = fopen(prefs_path(), "r");
     if (!f) return;
-    char line[320], key[32], val[280];
+    // Long enough for an iwadcache line: up to 128 map names plus separators.
+    char line[2048], key[32], val[2000];
     int i;
     while (fgets(line, sizeof line, f))
     {
         val[0] = 0;    // empty value (e.g. a cleared "wad2 ") must NOT inherit the
                        // previous line's val -- sscanf leaves it untouched on no match,
                        // which used to make a blank WAD2 pick up WAD1's name.
-        if (sscanf(line, "%31s %279[^\n\r]", key, val) < 1) continue;
+        if (sscanf(line, "%31s %1999[^\n\r]", key, val) < 1) continue;
         if      (!strcmp(key, "iwad"))    { for (i=0;i<iwad_count;i++) if (!strcmp(iwads[i].name,val)) { iwad_sel=i; break; } }
         else if (!strcmp(key, "pwad"))    { pwad_sel=0; for (i=1;i<pwad_count;i++) if (!strcmp(pwads[i],val)) { pwad_sel=i; break; } }
         else if (!strcmp(key, "wad2"))    { wad2_sel=0; for (i=1;i<pwad_count;i++) if (!strcmp(pwads[i],val)) { wad2_sel=i; break; } }
@@ -1546,6 +1720,29 @@ static void load_launcher_prefs(void)
         else if (!strcmp(key, "freedoom"))  opt_freedoom = atoi(val);
         else if (!strcmp(key, "heretic"))   opt_heretic  = atoi(val);
         else if (!strcmp(key, "hexen"))     opt_hexen    = atoi(val);
+        else if (!strcmp(key, "iwadcache")) {
+            char md5[64], csv[1600], file[200];
+            long size; int nmaps;
+            iwad_cache_t* e;
+            if (icache_count >= MAX_ICACHE) continue;
+            if (sscanf(val, "%63s %ld %d %1599s %199[^\n\r]", md5, &size, &nmaps, csv, file) != 5)
+                continue;
+            if (strlen(md5) != 32 && strcmp(md5, "-")) continue;	// not a checksum -- skip the line
+            (void)nmaps;					// the names are the truth; the count is for humans
+            e = &icache[icache_count];
+            memset(e, 0, sizeof *e);
+            snprintf(e->file, sizeof e->file, "%s", file);
+            e->size = size;
+            if (strcmp(md5, "-")) snprintf(e->md5, sizeof e->md5, "%s", md5);
+            if (strcmp(csv, "-")) {
+                char* tok = strtok(csv, ",");
+                while (tok && e->nmaps < MAX_MAPLIST) {
+                    snprintf(e->maps[e->nmaps++], 12, "%s", tok);
+                    tok = strtok(NULL, ",");
+                }
+            }
+            icache_count++;
+        }
     }
     fclose(f);
 }
@@ -1890,7 +2087,9 @@ int main(int argc, char** argv)
     scan_iwads();
     scan_pwads();
     scan_dehs();
-    load_launcher_prefs();   // restore the last session's selection
+    load_launcher_prefs();   // restore the last session's selection (and the IWAD cache)
+    iwad_cache_sync();       // hash + map-scan any IWAD launcher.ini does not know yet
+    if (icache_dirty) save_launcher_prefs();
     scan_maps();             // map list depends on the restored IWAD/PWAD picks
     restore_map_pref();      // ...and the saved pick is a LABEL, matched against that list
 
