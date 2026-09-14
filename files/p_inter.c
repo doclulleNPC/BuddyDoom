@@ -40,6 +40,7 @@ rcsid[] = "$Id: p_inter.c,v 1.4 1997/02/03 22:45:11 b1 Exp $";
 #include "am_map.h"
 
 #include "p_local.h"
+#include "p_buddydef.h"	// P_Buddy_BodyPainchance / P_Buddy_DamageScale
 #include "p_ai_coop.h"		// P_AICoop_IsBuddy -- buddy must not pocket keys
 #include "p_morph.h"		// (M) P_MorphMonster -- Morph Ovum egg morphs on impact
 
@@ -1070,6 +1071,18 @@ P_DamageMobj
 	    damage = damage * weapon_power / 100;
     }
 
+    // (buddy) BUDDYDEF `damagescale`: the selected buddy's own multiplier, on top of the
+    // above.  It lives here for the same reason weapon_power does -- every damage path
+    // passes source = the attacker -- and because a buddy that borrows a MONSTER attack
+    // has its damage baked into the codepointer (A_BruisAttack: (P_Random()%8+1)*10),
+    // where no data key can reach it.  This is the one place that covers melee, hitscan
+    // and projectiles alike.  Self-damage stays unscaled, as above.
+    {
+	int bscale = P_Buddy_DamageScale (source);
+	if (bscale != 100 && source != target)
+	    damage = damage * bscale / 100;
+    }
+
     // (M) Morph Ovum: the egg projectile (MT_HEGGFX) morphs the struck monster
     // into a chicken instead of damaging it.  Mirrors crispy's special-damage
     // switch in P_DamageMobj.  If the morph is refused (boss / player / already
@@ -1080,24 +1093,20 @@ P_DamageMobj
 	return;
     }
 
-    // (X) Hexen poison cloud: the gas does DELAYED poison damage, not an instant hit
-    // (crispy P_DamageMobj MT_POISONCLOUD case).  A player accrues poisoncount (and
-    // takes one up-front bite) while the counter is low; only monsters/players are
-    // affected -- inert things ignore the cloud.  No thrust, no retaliation: return.
+    // (X) Hexen poison cloud: area denial that bites MONSTERS ONLY.  No thrust, no
+    // retaliation, no poison counter: return.
+    //
+    // Hexen proper poisons the player who stands in one (crispy's MT_POISONCLOUD case
+    // fed player->poisoncount and P_PlayerThink drained it).  We deliberately part
+    // company: here the gas is usually thrown BY your companion, who drops it on the
+    // fight you are standing in, so a cloud that punishes the humans makes the ability
+    // unusable.  Allies are exempt for the same reason.
     if (inflictor && inflictor->type == MT_XPOISONCLOUD)
     {
-	if (target->player)
-	{
-	    if (target->player->poisoncount < 4)
-	    {
-		P_PoisonDamage (target->player, source, 15 + (P_Random () & 15), false);
-		P_PoisonPlayer (target->player, source, 50);
-		S_StartSound (target, sfx_plpain);	// poison cough
-	    }
-	    return;
-	}
-	else if (!(target->flags & MF_COUNTKILL))
-	    return;	// only monsters + players breathe the poison
+	if (target->player || (target->flags & MF_FRIEND))
+	    return;				// humans and allies do not breathe it
+	if (!(target->flags & MF_COUNTKILL))
+	    return;				// nor do inert things
 	// monsters fall through and take the small direct `damage`
     }
 

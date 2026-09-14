@@ -41,6 +41,7 @@ const char*	P_Buddy_Name (int slot);	// display name
 const char*	P_Buddy_Desc (int slot);	// one/two-line description
 int		P_Buddy_Sprite (int slot);	// spritenum for the preview (SPR_PLAY for Marine)
 int		P_Buddy_Color  (int slot);	// declared default colour index (BUDDYDEF `color`), -1 = none
+int		P_Buddy_ColorLocked (int slot);	// BUDDYDEF `color 0`: colour is fixed, menu row inert
 
 // Stats shown on the Buddy select screen (all definable in BUDDYDEF).
 typedef struct {
@@ -64,5 +65,20 @@ const char* P_Buddy_Sound (int slot, int which);
 // so the ticker stays out of the way while slot 0 is selected.
 const char*	P_Buddy_Ability (int slot);
 void		P_Buddy_AbilityTicker (void);
+
+// BUDDYDEF `frames <monster>`: player frame number -> this buddy's sheet frame, for a
+// body drawn with monster art.  NULL = draw player frames unchanged.  Presentation only.
+#define BUDDY_NFRAMES	29		// Doom frames run A..] (0..28) -- map size
+#define BUDDY_NPLAYFRAMES 23		// ...but the PLAYER sheet only reaches W (0..22)
+const byte*	P_Buddy_FrameMap (int slot);
+
+// Turn every buddy's `basemonster` into its frame map.  MUST be called after R_Init:
+// the per-game name resolvers read sprites[], which R_InitSprites builds there.
+void		P_Buddy_ResolveFrames (void);
+
+// BUDDYDEF `damagescale` (percent) for the mobj that dealt damage, else 100.  A buddy
+// borrowing a MONSTER attack has its damage baked into the codepointer, so this central
+// multiplier is the only place that reaches melee, hitscan and projectiles alike.
+int		P_Buddy_DamageScale (struct mobj_s* source);
 
 #endif

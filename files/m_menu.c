@@ -1445,7 +1445,13 @@ static int	mbuddy_active, mbuddy_sel, mbuddy_row, mbuddy_color;
 // the colour selector to it (the player can still change it afterwards).
 static void M_Buddy_SeedColor (void)
 {
-    int c = P_Buddy_Color (mbuddy_sel);
+    int c;
+    if (P_Buddy_ColorLocked (mbuddy_sel))	// fixed art: force the identity colour
+    {
+	mbuddy_color = 0;
+	return;
+    }
+    c = P_Buddy_Color (mbuddy_sel);
     if (c >= 0 && c < V_BuddyColorCount ()) mbuddy_color = c;
 }
 
@@ -1457,6 +1463,7 @@ void	M_Buddy_Open (void)
     if (mbuddy_sel < 0 || mbuddy_sel >= P_Buddy_Count()) mbuddy_sel = 0;
     mbuddy_color = buddy_color;
     if (mbuddy_color < 0 || mbuddy_color >= V_BuddyColorCount()) mbuddy_color = 0;
+    if (P_Buddy_ColorLocked (mbuddy_sel)) mbuddy_color = 0;
 }
 boolean	M_Buddy_Active (void) { return mbuddy_active; }
 
@@ -1492,12 +1499,12 @@ boolean M_Buddy_Responder (event_t* ev)
 	S_StartSound (NULL, sfx_pstop);
 	break;
       case KEY_LEFTARROW:
-	if (mbuddy_row == MBROW_COLOR)	mbuddy_color = (mbuddy_color - 1 + nc) % nc;
+	if (mbuddy_row == MBROW_COLOR)	{ if (!P_Buddy_ColorLocked (mbuddy_sel)) mbuddy_color = (mbuddy_color - 1 + nc) % nc; }
 	else				{ mbuddy_sel = (mbuddy_sel - 1 + n) % n; M_Buddy_SeedColor (); }
 	S_StartSound (NULL, sfx_pstop);
 	break;
       case KEY_RIGHTARROW:
-	if (mbuddy_row == MBROW_COLOR)	mbuddy_color = (mbuddy_color + 1) % nc;
+	if (mbuddy_row == MBROW_COLOR)	{ if (!P_Buddy_ColorLocked (mbuddy_sel)) mbuddy_color = (mbuddy_color + 1) % nc; }
 	else				{ mbuddy_sel = (mbuddy_sel + 1) % n; M_Buddy_SeedColor (); }
 	S_StartSound (NULL, sfx_pstop);
 	break;

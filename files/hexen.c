@@ -316,6 +316,21 @@ void A_PoisonBagInit (mobj_t* actor)
 				     MT_XPOISONCLOUD);
     if (!cloud)
 	return;
+
+    // Settle the gas over the floor.  Hexen's bag is dropped at your feet, so +28 always
+    // put the cloud at shin height -- but a THROWN bag (p_buddydef.c, the buddy's
+    // poisonbag ability) bursts wherever it hits: a monster's chest, or a wall while it
+    // is still climbing.  The cloud is MF_NOGRAVITY, so it then just hangs there, which
+    // showed up as gas floating under the ceiling.  Clamp it to the same height above
+    // the floor it would have had if the bag had landed, and keep it under the ceiling
+    // in case that floor sits in a low room.
+    if (cloud->z > cloud->floorz + 28*FRACUNIT)
+	cloud->z = cloud->floorz + 28*FRACUNIT;
+    if (cloud->z + cloud->height > cloud->ceilingz)
+	cloud->z = cloud->ceilingz - cloud->height;
+    if (cloud->z < cloud->floorz)
+	cloud->z = cloud->floorz;
+
     cloud->target = actor->target;
     cloud->reactiontime = 24 + (P_Random () & 7);	// lifetime (crispy special1)
 }
@@ -929,7 +944,13 @@ void Hexen_Init (void)
     m->deathstate = S_NULL;      m->xdeathstate = S_NULL;  m->deathsound = sfx_x_psdth;	// A_Scream burst
     m->speed = 0; m->radius = 20*FRACUNIT; m->height = 30*FRACUNIT; m->mass = 0x7fffffff;
     m->damage = 0; m->activesound = sfx_None;
-    m->flags = MF_NOGRAVITY|MF_NOBLOCKMAP|MF_SHADOW|MF_NOCLIP|MF_DROPOFF; m->raisestate = S_NULL;
+    // NOT MF_SHADOW: in DOOM that flag is the Spectre FUZZ column, which redraws the
+    // sprite as grey static -- the cloud lost its green entirely and read as a rendering
+    // fault.  Hexen's cloud is plain translucency, so use MF2_ALTSHADOW: r_things.c
+    // blends that through Boom's tranmap, keeping both colour and lighting.  It is the
+    // same thing GZDoom writes as RenderStyle "Translucent" + Alpha 0.6.
+    m->flags = MF_NOGRAVITY|MF_NOBLOCKMAP|MF_NOCLIP|MF_DROPOFF; m->raisestate = S_NULL;
+    m->flags2 = MF2_ALTSHADOW;
 
     // ---- Flechette poison bag (crispy S_POISONBAG*/MT_POISONBAG): sits where it's
     //      thrown for a short fuse (frames PSBG A/B fullbright, then C), then
@@ -944,7 +965,11 @@ void Hexen_Init (void)
     m->seestate  = S_NULL;       m->seesound  = sfx_None;  m->reactiontime = 8;
     m->attacksound = sfx_None;   m->painstate = S_NULL;    m->painchance = 0;
     m->painsound = sfx_None;     m->meleestate = S_NULL;   m->missilestate = S_NULL;
-    m->deathstate = S_NULL;      m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
+    // deathstate: the last two fuse frames, i.e. burst NOW instead of counting down.
+    // Unreachable for the Cleric's dropped bag (that one is never a missile and has
+    // nothing to die to); it is what a THROWN bag hits the floor or an enemy with --
+    // P_ExplodeMissile sends it here and S_XPBAG4's A_PoisonBagInit pops the cloud.
+    m->deathstate = S_XPBAG3;    m->xdeathstate = S_NULL;  m->deathsound = sfx_None;
     m->speed = 0; m->radius = 5*FRACUNIT; m->height = 5*FRACUNIT; m->mass = 100;
     m->damage = 0; m->activesound = sfx_None;
     m->flags = MF_NOGRAVITY|MF_NOBLOCKMAP; m->raisestate = S_NULL;

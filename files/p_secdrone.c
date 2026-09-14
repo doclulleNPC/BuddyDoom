@@ -25,6 +25,10 @@
 #include "p_secdrone.h"
 #include "p_companion.h"	// shared companion AI + deploy helper
 
+// m_menu.c -- selected buddy (0 = Marine, 1..N = BUDDYDEF roster).  Declared per-file here,
+// the way p_ai_coop.c / p_buddydef.c do it; it is config state, not part of any interface.
+extern int	buddy_select;
+
 void A_FaceTarget (mobj_t* actor);
 void A_Chase (mobj_t* actor);
 
@@ -201,6 +205,14 @@ void P_AICoop_MaybeSpawnDrone (player_t* bot)
     int		threats;
 
     if (!bot || !bot->mo || bot->playerstate != PST_LIVE)
+	return;
+
+    // The drone is the MARINE's signature power, not a companion-wide freebie.  A BUDDYDEF
+    // buddy runs whatever its `ability` says through P_Buddy_AbilityTicker (p_buddydef.c),
+    // which skips slot 0 precisely because the Marine's drone lives here -- the two paths
+    // are meant to be complementary.  Without this gate they both ran, so Frank (ability
+    // poisoncloud) deployed security drones like the Marine on top of his own gas.
+    if (buddy_select > 0)
 	return;
 
     // The companion is an EMERGENCY asset -- never conjure one at level start, before any

@@ -1915,6 +1915,11 @@ printf("added\n");
 
     printf ("\nP_Init: Init Playloop state.\n");
     P_Init ();
+    { extern void P_Buddy_ResolveFrames (void);
+      P_Buddy_ResolveFrames (); }	// BUDDYDEF basemonster -> frame map.  AFTER P_Init:
+					// that is where R_InitSprites builds sprites[],
+					// which the per-game name resolvers read.
+
 
     printf ("I_Init: Setting up machine state.\n");
     I_Init ();

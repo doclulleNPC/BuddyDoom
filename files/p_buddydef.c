@@ -61,11 +61,15 @@
 #include "s_sound.h"			// S_StartSound -- turret deploy blip
 #include "m_fixed.h"
 #include "m_random.h"			// P_Random -- poisoncloud puff scatter (playsim RNG)
+#include "r_main.h"		// R_PointToAngle2 -- aiming the thrown flechette
 #include "tables.h"			// finesine/finecosine, ANGLETOFINESHIFT (drone placement)
 #include "w_wad.h"
 #include "z_zone.h"
 #include "p_local.h"			// MF_*, P_SpawnMobj, P_TryMove, P_AproxDistance
 #include "p_ai_coop.h"			// P_AICoop_Slot
+#include "strife.h"		// Strife_Mon_TypeByName  -- basemonster donors
+#include "hexen.h"		// Hexen_Mon_TypeByName
+#include "heretic.h"		// Heretic_TypeByName
 #include "p_buddydef.h"
 
 // engine tables (grown by the DSDHacked API) -- only the sprite table now: a roster
@@ -114,22 +118,197 @@ typedef struct
     char	seesnd[16], painsnd[16], deathsnd[16], activesnd[16];	// BUDDYDEF sound lumps
     int		spritenum;	// preview sprite
     int		color;		// declared default player-colour index, -1 = none (BUDDYDEF `color`)
+    int		colorlock;	// BUDDYDEF `color` given as false -> never recolour, lock the menu row
     int		health, speed, radius, height, mass, painchance, reactiontime;
+    char	framesrc[24];	// BUDDYDEF `basemonster`: donor whose frame LAYOUT is mirrored
+    char	spritebase[8];	// BUDDYDEF `sprite`, kept for the frame-mirror check
+    int		damagescale;	// BUDDYDEF `damagescale`, percent (100 = unchanged)
+    byte	framemap[BUDDY_NFRAMES];	// player frame -> this buddy's sheet frame
+    int		has_framemap;	// 0 = draw player frames unchanged
 } buddyrec_t;
 
 static buddyrec_t	roster[MAXBUDDIES];
 static int		nroster = 0;
 
 // ---------------------------------------------------------------------------
+// Frame remap (BUDDYDEF `frames <monster>`)
+//
+// The buddy's body is player 2, so it runs the PLAYER state machine -- but its art is a
+// MONSTER sheet, and those put their frames somewhere else entirely.  Compare the layouts:
+//
+//     player  A-D run   E,F atk   G pain    H-N death   O-W gibs
+//     knight  A-D run   E-G atk   H pain    I-O death   (none)
+//     stalker A-C run   J,K atk   L pain    O-] death   (none)
+//
+// so a buddy drawn with player frame numbers shows its attack pose when it flinches and
+// its walk cycle when it dies.  Rather than guess a "monster convention" (there isn't one
+// -- see the three rows above), inherit the layout from a donor monster the modder names:
+// its own state chains say exactly which frames mean run/attack/pain/death.  Only the
+// FRAME NUMBERS are taken; the player states keep their own tics and action pointers, so
+// death still screams and falls.  This is presentation only -- no new states, no mobjinfo
+// change, nothing in the savegame.
+static int Buddy_TypeByName (const char* n)
+{
+    static const struct { const char* name; int type; } tab[] =
+    {
+	{ "zombieman",   MT_POSSESSED }, { "shotgunguy",    MT_SHOTGUY },
+	{ "chaingunner", MT_CHAINGUY  }, { "imp",           MT_TROOP   },
+	{ "demon",       MT_SERGEANT  }, { "pinky",         MT_SERGEANT},
+	{ "spectre",     MT_SHADOWS   }, { "cacodemon",     MT_HEAD    },
+	{ "hellknight",  MT_KNIGHT    }, { "baron",         MT_BRUISER },
+	{ "revenant",    MT_UNDEAD    }, { "mancubus",      MT_FATSO   },
+	{ "arachnotron", MT_BABY      }, { "painelemental", MT_PAIN    },
+	{ "lostsoul",    MT_SKULL     }, { "archvile",      MT_VILE    },
+	{ "cyberdemon",  MT_CYBORG    }, { "spidermastermind", MT_SPIDER },
+	{ "wolfss",      MT_WOLFSS    },
+    };
+    char norm[32];
+    int i, k = 0;
+
+    if (!n || !*n || !strcasecmp (n, "none")) return -1;
+    // Fold to a bare token so the display spellings modders already write work as keys:
+    // "Strife Stalker", "hell_knight" and "hellknight" all name the same donor.
+    for (i = 0; n[i] && k < (int)sizeof norm - 1; i++)
+	if (n[i] != ' ' && n[i] != '_' && n[i] != '-')
+	    norm[k++] = (char)tolower ((unsigned char)n[i]);
+    norm[k] = 0;
+
+    for (i = 0; i < (int)(sizeof tab / sizeof tab[0]); i++)
+	if (!strcmp (norm, tab[i].name)) return tab[i].type;
+
+    // Not a Doom monster -- hand the folded name to the per-game resolvers, which already
+    // own these tables (and their spelling variants).  A Heretic/Hexen/Strife buddy can
+    // therefore mirror its own game's monsters without a second name list here.
+    {
+	int t;
+	if ((t = Strife_Mon_TypeByName (norm)) >= 0) return t;
+	if ((t = Hexen_Mon_TypeByName  (norm)) >= 0) return t;
+	if ((t = Heretic_TypeByName    (norm)) >= 0) return t;
+    }
+    return -1;
+}
+
+// Distinct frame numbers along one state chain, in order.  Stops at the terminal frame
+// (tics < 0, the corpse), when the chain loops back to its start (a run cycle), or on a
+// guard -- a donor chain is data and may be anything after a DEHACKED patch.
+static int Buddy_ChainFrames (int start, byte* out, int max)
+{
+    int st = start, n = 0, guard = 0;
+    while (st > 0 && st < num_states && n < max && guard++ < 128)
+    {
+	int f = states[st].frame & FF_FRAMEMASK;
+	if (f < BUDDY_NFRAMES && (!n || out[n-1] != (byte)f))
+	    out[n++] = (byte)f;
+	if (states[st].tics < 0) break;			// terminal (corpse) frame
+	st = states[st].nextstate;
+	if (st == start) break;				// cycle closed
+    }
+    return n;
+}
+
+static void Buddy_BuildFrameMap (buddyrec_t* r, int donor)
+{
+    byte run[8], atk[8], pain[4], die[20], xdie[20];
+    int  nrun, natk, npain, ndie, nxdie, i;
+
+    for (i = 0; i < BUDDY_NFRAMES; i++) r->framemap[i] = (byte)i;   // identity
+    r->has_framemap = 0;
+    if (donor < 0 || donor >= num_mobjtypes) return;
+
+    nrun  = Buddy_ChainFrames (mobjinfo[donor].seestate,   run,  8);
+    natk  = Buddy_ChainFrames (mobjinfo[donor].missilestate > 0
+			       ? mobjinfo[donor].missilestate
+			       : mobjinfo[donor].meleestate,   atk,  8);
+    npain = Buddy_ChainFrames (mobjinfo[donor].painstate,   pain, 4);
+    ndie  = Buddy_ChainFrames (mobjinfo[donor].deathstate,  die,  20);
+    nxdie = Buddy_ChainFrames (mobjinfo[donor].xdeathstate, xdie, 20);
+
+    // Player A-D (0..3): idle + the 4 run frames.
+    for (i = 0; i < 4 && nrun; i++)  r->framemap[i]    = run [i < nrun  ? i : nrun -1];
+    // Player E,F (4,5): the two attack frames.
+    for (i = 0; i < 2 && natk; i++)  r->framemap[4+i]  = atk [i < natk  ? i : natk -1];
+    // Player G (6): pain.
+    if (npain)			     r->framemap[6]    = pain[0];
+    // Player H..N (7..13): the 7 death frames.
+    for (i = 0; i < 7 && ndie; i++)  r->framemap[7+i]  = die [i < ndie  ? i : ndie -1];
+    // Player O..W (14..22): gibs.  Monster sheets almost never have an xdeath -- holding
+    // the last death frame leaves the corpse lying there, which beats the alternative of
+    // falling back to the sprite the buddy is NOT (a gibbing marine).
+    for (i = 0; i < 9; i++)
+	r->framemap[14+i] = nxdie ? xdie[i < nxdie ? i : nxdie-1]
+			  : ndie  ? die [ndie-1]
+			  :         r->framemap[14+i];
+    r->has_framemap = 1;
+}
+
+// Strict mirror check: every frame the donor's layout asks for must exist in the buddy's
+// own sheet.  A buddy that inherits Hell Knight frames but whose art stops at N dies on a
+// frame it does not have -- the renderer then falls back to the marine mid-animation,
+// which is exactly the class of bug this rule exists to prevent.  Reports, does not
+// refuse: partial art still plays, it just tells you where it will break.
+static void Buddy_CheckFrames (const buddyrec_t* r, const char* sprite, const char* who)
+{
+    char miss[64];
+    int  i, n = 0, seen[BUDDY_NFRAMES];
+
+    for (i = 0; i < BUDDY_NFRAMES; i++) seen[i] = 0;
+    // Only the frames the PLAYER sheet actually reaches (A..W).  The map is sized for the
+    // full Doom frame range so a donor may point anywhere in it, but entries above W are
+    // never looked up -- checking them reported the untouched identity tail as "missing".
+    for (i = 0; i < BUDDY_NPLAYFRAMES; i++)
+    {
+	int f = r->framemap[i];
+	if (f >= BUDDY_NFRAMES || seen[f]) continue;
+	seen[f] = 1;
+	if (Buddy_FramePresent (sprite, f)) continue;
+	if (n < (int)sizeof miss - 2) miss[n++] = (char)('A' + f);
+    }
+    miss[n] = 0;
+    if (n)
+	printf ("BUDDYDEF: '%s' mirrors %s but its sprite %.4s is missing frame(s) %s "
+		"-- those poses fall back to the marine.\n", who, r->framesrc, sprite, miss);
+}
+
+// Resolve every buddy's `basemonster` into its frame map.  Deliberately NOT done while
+// parsing: the per-game name resolvers gate on their game's art being present, and
+// Strife_Available() reads sprites[SPR_S_PLAY] -- a table built by R_InitSprites, which
+// is called from P_Init (p_setup.c), NOT from R_Init as the name suggests, and in either
+// case long after P_Buddy_LoadDefs.  Resolving during the parse dereferenced sprites[]
+// before it existed and crashed on startup.  D_DoomMain calls this right after P_Init.
+void P_Buddy_ResolveFrames (void)
+{
+    int s;
+    for (s = 1; s < nroster; s++)
+    {
+	buddyrec_t* r = &roster[s];
+	if (!r->framesrc[0])
+	    continue;
+	Buddy_BuildFrameMap (r, Buddy_TypeByName (r->framesrc));
+	if (!r->has_framemap)
+	    printf ("BUDDYDEF: '%s' has unknown basemonster \"%s\" -- drawing player frames.\n",
+		    r->name, r->framesrc);
+	else
+	    Buddy_CheckFrames (r, r->spritebase, r->name);
+    }
+}
+
+// The remap for a roster slot, or NULL when that buddy draws player frames unchanged.
+const byte* P_Buddy_FrameMap (int s)
+{
+    return (s > 0 && s < nroster && roster[s].has_framemap) ? roster[s].framemap : NULL;
+}
+
+// ---------------------------------------------------------------------------
 // Named special abilities (BUDDYDEF `ability`).  The blurb in `special` is just
 // text for the select screen; THIS is the mechanic the buddy actually uses, run
 // once per tic by P_Buddy_AbilityTicker.
 // ---------------------------------------------------------------------------
-enum { BA_NONE = 0, BA_DRONE, BA_POISONCLOUD, BA_TURRET, BA_LICHLING, BA_STALKER, BA_NUM };
+enum { BA_NONE = 0, BA_DRONE, BA_POISONCLOUD, BA_TURRET, BA_LICHLING, BA_STALKER,
+       BA_POISONBAG, BA_NUM };
 
 static const char* const buddy_ability_name[BA_NUM] =
 {
-    "none", "drone", "poisoncloud", "turret", "lichling", "stalker"
+    "none", "drone", "poisoncloud", "turret", "lichling", "stalker", "poisonbag"
 };
 
 // Ability name -> id, or -1 when the name isn't one we know.  "" counts as none, so a
@@ -149,6 +328,8 @@ const char* P_Buddy_Name   (int s)         { return (s >= 0 && s < nroster) ? ro
 const char* P_Buddy_Desc   (int s)         { return (s >= 0 && s < nroster) ? roster[s].desc : ""; }
 int         P_Buddy_Sprite (int s)         { return (s >= 0 && s < nroster) ? roster[s].spritenum : SPR_PLAY; }
 int         P_Buddy_Color  (int s)         { return (s >= 0 && s < nroster) ? roster[s].color : -1; }
+// 1 = BUDDYDEF locked the colour (`color 0`): do not recolour, do not offer the choice.
+int         P_Buddy_ColorLocked (int s)    { return (s > 0 && s < nroster) ? roster[s].colorlock : 0; }
 
 // Fill `out` with the buddy's stats (for the Buddy select screen).
 void P_Buddy_GetStats (int s, buddystats_t* out)
@@ -198,14 +379,24 @@ const char* P_Buddy_Ability (int s)
 // Return true if <name>A1 or <name>A0 exists as a lump (a rotation-0 or 8-rot
 // front frame).  Guards against registering a sprite with no art (R_InitSpriteDefs
 // I_Errors on a named sprite with zero frames).
-static boolean Buddy_SpritePresent (const char base[4])
+// Is <base><frame> in the WAD?  Sprite lumps are BASE + frame letter + rotation, so a
+// frame exists if either its 8-rotation form (...A1) or its single-rotation form (...A0)
+// is there.  Runs at BUDDYDEF load time, which is BEFORE R_InitSprites (d_main.c), so it
+// has to ask the lump directory -- sprites[] does not exist yet.
+static boolean Buddy_FramePresent (const char base[4], int frame)
 {
     char n[9];
+    if (frame < 0 || frame > 28) return false;
     memcpy (n, base, 4);
-    n[4] = 'A'; n[5] = '1'; n[6] = 0;
+    n[4] = (char)('A' + frame); n[5] = '1'; n[6] = 0;
     if (W_CheckNumForName (n) >= 0) return true;
     n[5] = '0';
     return W_CheckNumForName (n) >= 0;
+}
+
+static boolean Buddy_SpritePresent (const char base[4])
+{
+    return Buddy_FramePresent (base, 0);
 }
 
 // Cross-game sprite-name collisions (docs/BUDDY_SPRITE_COLLISIONS.md).  A buddy pack
@@ -275,6 +466,8 @@ typedef struct
     char	seesnd[16], painsnd[16], deathsnd[16], activesnd[16];
     char	special[96];
     char	ability[24];
+    int		colorlock;	// `color` given as a boolean false -> colour is fixed
+    int		damagescale;	// BUDDYDEF `damagescale` -- percent, 100 = unchanged
     int		health, speed, radius, height, mass, painchance, reactiontime, ednum;
     int		color;		// player-colour index, -1 = none declared
     boolean	have_any;
@@ -291,6 +484,7 @@ static void Buddy_Defaults (buddyparse_t* b)
     /* monster/attack default to "" (memset above) */
     b->health = 200; b->speed = 8; b->radius = 20; b->height = 56;
     b->mass = 100;   b->painchance = 120; b->reactiontime = 8; b->ednum = -1;
+    b->damagescale = 100;
     b->color = -1;
 }
 
@@ -340,12 +534,13 @@ static void Buddy_Register (buddyparse_t* b)
 	if (Buddy_AbilityId (r->ability) < 0)
 	{
 	    printf ("BUDDYDEF: '%s' has unknown ability \"%s\" -- ignored "
-		    "(known: none, drone, poisoncloud, turret, lichling, stalker).\n",
+		    "(known: none, drone, poisoncloud, poisonbag, turret, lichling, stalker).\n",
 		    b->name, r->ability);
 	    strcpy (r->ability, "none");
 	}
 	r->spritenum    = spr;
 	r->color        = b->color;
+	r->colorlock    = b->colorlock;
 	r->health       = b->health;
 	r->speed        = b->speed;
 	r->radius       = b->radius;
@@ -353,6 +548,17 @@ static void Buddy_Register (buddyparse_t* b)
 	r->mass         = b->mass;
 	r->painchance   = b->painchance;
 	r->reactiontime = b->reactiontime;
+	r->damagescale  = b->damagescale;
+	// Frame layout comes from `basemonster` and nowhere else: naming a base monster means
+	// the buddy's sheet MIRRORS it 1:1 (same frame letters for run/attack/pain/death).
+	// Only RECORD the name here -- resolving it is P_Buddy_ResolveFrames's job, which runs
+	// after R_Init (see the note there).
+	strncpy (r->framesrc, b->monster, sizeof r->framesrc - 1);
+	r->framesrc[sizeof r->framesrc - 1] = 0;
+	// The RESOLVED base, not the declared one: buddy_sprite_alias may have redirected it
+	// (SPID -> STLK), and checking the name the modder typed then asks the wrong sheet.
+	snprintf (r->spritebase, sizeof r->spritebase, "%.4s",
+		  (spr >= 0 && spr < num_sprites && sprnames[spr]) ? sprnames[spr] : b->sprite);
     }
     printf ("Buddy: registered '%s' (roster slot %d, sprite %.4s).\n",
 	    b->name, nroster - 1, (spr >= 0 && spr < num_sprites && sprnames[spr])
@@ -449,9 +655,24 @@ static void Buddy_ParseText (const char* text, int len)
 	    {
 		char cbuf[24]; int ci;
 		Buddy_Value (p, cbuf, sizeof cbuf);
-		ci = Buddy_ColorIndex (cbuf);			// name -> index
-		if (ci < 0 && (cbuf[0] >= '0' && cbuf[0] <= '9')) ci = atoi (cbuf);	// numeric fallback
-		if (ci >= 0 && ci < V_BuddyColorCount ()) cur.color = ci;
+		// `color` doubles as a BOOLEAN.  False locks the colour: the buddy is never
+		// recoloured and the menu's Colour row stops responding -- what a buddy with
+		// hand-drawn art wants, since the marine green->X remap only smears it.
+		// Spending "0" on the lock costs nothing: index 0 is Green, whose remap table is
+		// the identity, so `color 0` was never distinguishable from saying nothing.
+		if (!strcasecmp (cbuf, "0")      || !strcasecmp (cbuf, "false")
+		 || !strcasecmp (cbuf, "off")    || !strcasecmp (cbuf, "no")
+		 || !strcasecmp (cbuf, "locked") || !strcasecmp (cbuf, "fixed"))
+		    cur.colorlock = 1;
+		else if (!strcasecmp (cbuf, "1")  || !strcasecmp (cbuf, "true")
+		      || !strcasecmp (cbuf, "on") || !strcasecmp (cbuf, "yes"))
+		    cur.colorlock = 0;			// explicitly selectable (the default anyway)
+		else
+		{
+		    ci = Buddy_ColorIndex (cbuf);			// name -> index
+		    if (ci < 0 && (cbuf[0] >= '0' && cbuf[0] <= '9')) ci = atoi (cbuf);
+		    if (ci >= 0 && ci < V_BuddyColorCount ()) cur.color = ci;
+		}
 	    }
 	    else
 	    {
@@ -466,6 +687,8 @@ static void Buddy_ParseText (const char* text, int len)
 		else if (!strcmp(key,"reactiontime")
 		      || !strcmp(key,"reaction"))			cur.reactiontime = iv;
 		else if (!strcmp(key,"ednum") || !strcmp(key,"doomednum"))cur.ednum = iv;
+		else if (!strcmp(key,"damagescale")
+		      || !strcmp(key,"damage"))			cur.damagescale = iv;
 	    }
 	}
     }
@@ -518,13 +741,6 @@ void P_Buddy_LoadDefs (void)
 
     if (nroster > 1)
 	printf ("P_Buddy_LoadDefs: %d modder buddy(ies) available.\n", nroster - 1);
-
-    // Be honest about the half-built state: a modder buddy is listed and previewed, but
-    // the body you actually get is still the Marine until the player-2 path lands.
-    if (buddy_select > 0 && buddy_select < nroster)
-	printf ("P_Buddy: '%s' selected -- BUDDYDEF buddies are being ported to the "
-		"player-2 path; the Marine is your companion for now.\n",
-		roster[buddy_select].name);
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +761,14 @@ extern void		P_MobjThinker (mobj_t*);
 #define BA_POISON_RADIUS	(160*FRACUNIT)
 #define BA_POISON_DAMAGE	4
 #define BA_POISON_PUFFS		3
+#define BA_POISON_SPREAD	(24*FRACUNIT)		// how wide the vented gas scatters
+#define BA_POISON_VENTZ		(16*FRACUNIT)		// vent height above the buddy's feet
+#define BA_POISON_DRIFT		(FRACUNIT)		// how fast it drifts away behind him
+
+#define BA_BAG_PERIOD		(4*TICRATE)		// one flechette every 4 s
+#define BA_BAG_RANGE		(768*FRACUNIT)		// ...at an enemy no further than this
+#define BA_BAG_SPEED		(12*FRACUNIT)		// ground speed of the lob (Hexen's ThrowingBomb)
+#define BA_BAG_MAXFLIGHT	60			// tics: cap the arc so a far shot is not a mortar
 #define BA_DRONE_PERIOD		(20*TICRATE)		// at most one drone per 20 s
 #define BA_DRONE_RANGE		(1024*FRACUNIT)		// ...and only with an enemy this close
 #define BA_TURRET_PERIOD	(30*TICRATE)		// at most one turret per 30 s
@@ -595,14 +819,100 @@ static void Buddy_PoisonCloud (mobj_t* mo)
 	P_DamageMobj (e, mo, mo, BA_POISON_DAMAGE);
     }
 
-    // visible gas: a few smoke puffs drifting up around the buddy
-    for (i = 0; i < BA_POISON_PUFFS; i++)
+    // Visible gas.  It vents from BEHIND him, low down, and drifts up and away -- a fart,
+    // not a halo.  (Scattering the puffs over the full BA_POISON_RADIUS around the buddy
+    // read as an aura and hid where the gas was coming from.)  The DAMAGE above is still
+    // the radius around him: the cloud is what you see, the aura is what bites.
     {
-	fixed_t	rx = ((P_Random () - 128) * (BA_POISON_RADIUS >> 8));
-	fixed_t	ry = ((P_Random () - 128) * (BA_POISON_RADIUS >> 8));
-	mobj_t*	s  = P_SpawnMobj (mo->x + rx, mo->y + ry,
-				  mo->z + (P_Random () % 24)*FRACUNIT, MT_SMOKE);
-	if (s) s->momz = FRACUNIT/2;
+	unsigned fine = mo->angle >> ANGLETOFINESHIFT;
+	fixed_t  bx   = mo->x - FixedMul (mo->radius + 8*FRACUNIT, finecosine[fine]);
+	fixed_t  by   = mo->y - FixedMul (mo->radius + 8*FRACUNIT, finesine[fine]);
+
+	for (i = 0; i < BA_POISON_PUFFS; i++)
+	{
+	    fixed_t rx = ((P_Random () - 128) * (BA_POISON_SPREAD >> 8));
+	    fixed_t ry = ((P_Random () - 128) * (BA_POISON_SPREAD >> 8));
+	    mobj_t* s  = P_SpawnMobj (bx + rx, by + ry,
+				      mo->z + BA_POISON_VENTZ + (P_Random () % 8)*FRACUNIT,
+				      MT_SMOKE);
+	    if (!s)
+		continue;
+	    // MT_SMOKE is NOGRAVITY, so these carry it: up, and backwards out of his wake.
+	    s->momz = FRACUNIT/3;
+	    s->momx = -FixedMul (BA_POISON_DRIFT, finecosine[fine]);
+	    s->momy = -FixedMul (BA_POISON_DRIFT, finesine[fine]);
+	}
+    }
+}
+
+// poisonbag: lob Hexen's Flechette (the ArtiPoisonBag) at the nearest visible enemy.
+// The thrown bag is the REAL artifact actor from files/hexen.c -- MT_XPOISONBAG keeps its
+// own fuse and then runs A_PoisonBagInit, which pops the lingering MT_XPOISONCLOUD gas
+// (A_PoisonBagDamage ticks POISON damage in it).  So there is no new damage code here:
+// all this does is aim the bag and credit the kills.  Hexen_Init() runs unconditionally
+// in D_DoomMain, so the actor exists in Doom too; its PSBG* art must be in a loaded WAD.
+static void Buddy_ThrowPoisonBag (mobj_t* mo)
+{
+    thinker_t*	th;
+    mobj_t*	best = NULL;
+    mobj_t*	bag;
+    fixed_t	bestd = 0;
+    angle_t	ang;
+    unsigned	fine;
+
+    // Nearest VISIBLE enemy: the bag flies in a straight line and ignores the blockmap,
+    // so without the sight check the buddy would happily lob it through a wall.
+    for (th = thinkercap.next; th != &thinkercap; th = th->next)
+    {
+	mobj_t*	e;
+	fixed_t	d;
+	if (th->function.acp1 != (actionf_p1)P_MobjThinker) continue;
+	e = (mobj_t*)th;
+	if (e == mo || e->health <= 0)		continue;
+	if (!(e->flags & MF_COUNTKILL))		continue;
+	if (e->flags & (MF_FRIEND|MF_CORPSE))	continue;
+	if (!(e->flags & MF_SHOOTABLE))		continue;
+	d = P_AproxDistance (e->x - mo->x, e->y - mo->y);
+	if (d > BA_BAG_RANGE)			continue;
+	if (best && d >= bestd)			continue;
+	if (!P_CheckSight (mo, e))		continue;
+	best = e; bestd = d;
+    }
+    if (!best)
+	return;
+
+    ang  = R_PointToAngle2 (mo->x, mo->y, best->x, best->y);
+    fine = ang >> ANGLETOFINESHIFT;
+    bag  = P_SpawnMobj (mo->x + FixedMul (mo->radius + 8*FRACUNIT, finecosine[fine]),
+			mo->y + FixedMul (mo->radius + 8*FRACUNIT, finesine[fine]),
+			mo->z + 32*FRACUNIT, MT_XPOISONBAG);
+    if (!bag)
+	return;
+    bag->target = mo;		// the poison kills belong to the buddy, not to nobody
+    bag->angle  = ang;
+
+    // Turn THIS bag into a thrown missile.  Per-instance flags only: the mobjinfo keeps
+    // MF_NOGRAVITY and no MF_MISSILE, so the Cleric's artifact (p_inv_heretic.c) still
+    // drops a bag at your feet that fuses on a timer, exactly as in Hexen.  The thrown
+    // one instead falls, and bursts on contact -- P_XYMovement explodes it against a wall
+    // or a monster, P_ZMovement against the floor (p_mobj.c:353), and both routes land in
+    // the deathstate wired up in files/hexen.c, whose A_PoisonBagInit pops the cloud.
+    bag->flags &= ~MF_NOGRAVITY;
+    bag->flags |=  MF_MISSILE | MF_DROPOFF;
+
+    {   // Ballistic lob: fly at a fixed ground speed and climb just enough that gravity
+	// (GRAVITY per tic) drops it onto the target after t tics --  vz = dz/t + g*t/2.
+	fixed_t	dz;
+	int	t;
+
+	t = FixedDiv (bestd, BA_BAG_SPEED) >> FRACBITS;		// tics of flight
+	if (t < 1)			t = 1;
+	if (t > BA_BAG_MAXFLIGHT)	t = BA_BAG_MAXFLIGHT;
+
+	dz = (best->z + (best->height >> 1)) - bag->z;		// aim at centre mass
+	bag->momx = FixedMul (BA_BAG_SPEED, finecosine[fine]);
+	bag->momy = FixedMul (BA_BAG_SPEED, finesine[fine]);
+	bag->momz = dz / t + (t * GRAVITY) / 2;
     }
 }
 
@@ -760,6 +1070,17 @@ static mobj_t* Buddy_Body (void)
     return players[slot].mo;
 }
 
+// BUDDYDEF `damagescale`, in percent, for the mobj that dealt the damage -- 100 for
+// anything that is not the selected buddy's body.  P_DamageMobj calls this.
+int P_Buddy_DamageScale (mobj_t* source)
+{
+    mobj_t* body;
+    if (!source || buddy_select <= 0 || buddy_select >= nroster) return 100;
+    body = Buddy_Body ();
+    if (!body || source != body) return 100;
+    return roster[buddy_select].damagescale > 0 ? roster[buddy_select].damagescale : 100;
+}
+
 void P_Buddy_AbilityTicker (void)
 {
     mobj_t*	mo;
@@ -783,6 +1104,11 @@ void P_Buddy_AbilityTicker (void)
       case BA_POISONCLOUD:
 	if (!(gametic % BA_POISON_PERIOD))
 	    Buddy_PoisonCloud (mo);
+	break;
+
+      case BA_POISONBAG:
+	if (!(gametic % BA_BAG_PERIOD))
+	    Buddy_ThrowPoisonBag (mo);
 	break;
 
       case BA_DRONE:

@@ -41,6 +41,7 @@ rcsid[] = "$Id: r_things.c,v 1.5 1997/02/03 16:47:56 b1 Exp $";
 #include "r_local.h"
 
 #include "doomstat.h"
+#include "p_buddydef.h"	// BUDDY_NFRAMES -- the buddy frame remap applied in R_ProjectSprite
 extern byte*	main_tranmap;	// r_data.c -- Boom 260 translucency map
 #ifndef ST_HEXEN_HEIGHT
 #define ST_HEXEN_HEIGHT 66	// Hexen bar: BASE_HEIGHT - H2BAR y (200-134)
@@ -389,11 +390,13 @@ void R_SetBuddyColor (mobj_t* mo, const byte* xlat)
 // spr < 0 means "no override".  Like the colour, this never touches mobj_t (savegame-safe).
 static mobj_t*		r_buddyskin_mo;
 static int		r_buddyskin_spr = -1;
+static const byte*	r_buddyskin_map;	// player frame -> buddy sheet frame, NULL = 1:1
 
-void R_SetBuddySkin (mobj_t* mo, int spritenum)
+void R_SetBuddySkin (mobj_t* mo, int spritenum, const byte* framemap)
 {
     r_buddyskin_mo  = mo;
     r_buddyskin_spr = spritenum;
+    r_buddyskin_map = framemap;
 }
 
 
@@ -742,6 +745,7 @@ void R_ProjectSprite (mobj_t* thing)
 {
     fixed_t		tr_x;
     fixed_t		tr_y;
+    int			frame;		// sprite frame to draw (buddy skins remap it)
 
     // Fully invisible (ZDoom RF_INVISIBLE) -- e.g. the submerged Hexen Serpent.
     if (thing->flags2 & MF2_DONTDRAW)
@@ -813,18 +817,29 @@ void R_ProjectSprite (mobj_t* thing)
 #endif
     // (buddy) render the co-op companion with its selected skin sprite, but only if that
     // sprite actually carries the current player frame -- otherwise keep the PLAY body.
+    // The buddy body runs PLAYER states but wears monster art, so its frame number has to
+    // be translated into that sheet's own layout first (BUDDYDEF `frames`, p_buddydef.c).
+    // Only then can we ask whether the skin actually HAS the frame -- asking with the
+    // untranslated number is what let a buddy fall back to the marine mid-animation.
+    frame = thing->frame & FF_FRAMEMASK;
+    if (thing == r_buddyskin_mo && r_buddyskin_map && frame < BUDDY_NFRAMES)
+	frame = r_buddyskin_map[frame];
+
     if (thing == r_buddyskin_mo && r_buddyskin_spr >= 0
 	&& (unsigned)r_buddyskin_spr < numsprites
-	&& (thing->frame&FF_FRAMEMASK) < sprites[r_buddyskin_spr].numframes)
+	&& frame < sprites[r_buddyskin_spr].numframes)
 	sprdef = &sprites[r_buddyskin_spr];
     else
+    {
 	sprdef = &sprites[thing->sprite];
+	frame  = thing->frame & FF_FRAMEMASK;	// no skin -> the remap does not apply
+    }
 #ifdef RANGECHECK
-    if ( (thing->frame&FF_FRAMEMASK) >= sprdef->numframes )
+    if ( frame >= sprdef->numframes )
 	I_Error ("R_ProjectSprite: invalid sprite frame %i : %i ",
 		 thing->sprite, thing->frame);
 #endif
-    sprframe = &sprdef->spriteframes[ thing->frame & FF_FRAMEMASK];
+    sprframe = &sprdef->spriteframes[frame];
 
     if (sprframe->rotate)
     {

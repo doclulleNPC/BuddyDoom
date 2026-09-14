@@ -53,7 +53,7 @@ extern int		buddy_color;			// selected colour index (Buddy menu, config)
 extern int		buddy_select;			// selected roster slot (0 = Marine, 1..N = BUDDYDEF)
 extern const byte*	V_BuddyColorTable (int);	// 256-entry remap, NULL = Green(0)/identity
 extern void		R_SetBuddyColor (mobj_t*, const byte*);
-extern void		R_SetBuddySkin (mobj_t*, int);	// render player 2 with the buddy's body sprite
+extern void		R_SetBuddySkin (mobj_t*, int, const byte*);  // render player 2 with the buddy's body sprite + frame layout
 extern int		P_Buddy_Sprite (int slot);	// BUDDYDEF preview/skin spritenum
 
 static int	companion_active;	// buddy enabled (-coop OR -aicoop)
@@ -420,6 +420,15 @@ int P_Buddy_DoAttack (mobj_t* buddy, mobj_t* target)
     else if (ranged)			    { fn = ranged; cd = 18; }
     else return 0;					// melee-only + out of range: keep closing
     fn (buddy);
+
+    // ...and play the swing.  A player firing a WEAPON gets this from P_FireWeapon
+    // (p_pspr.c:281); a buddy borrowing a MONSTER attack never goes through there, so it
+    // punched with its walk frames still showing.  The body is player 2, so the animation
+    // is the player attack state -- S_PLAY_ATK1 is frame 'E' for 12 tics, which the buddy
+    // skin resolves to the BUDDYDEF sprite's own E frame (FRANE1..FRANE8 for Frank).
+    // P_MovePlayer only re-enters S_PLAY_RUN1 from the IDLE state (p_user.c:226), so a
+    // walking buddy does not stomp the swing mid-animation.
+    P_SetMobjState (buddy, S_PLAY_ATK1);
     return 1;
 }
 
@@ -3721,10 +3730,14 @@ void P_AICoop_BuildCmd (void)
     // applies in every state (incl. downed), so do it before the down-state handling.
     if (bot->mo)
     {
-	R_SetBuddyColor (bot->mo, V_BuddyColorTable (buddy_color));
+	// A buddy whose BUDDYDEF locked its colour keeps its art untouched: the marine remap
+	// is built for the green suit and only muddies hand-drawn sprites.
+	R_SetBuddyColor (bot->mo, P_Buddy_ColorLocked (buddy_select)
+			  ? NULL : V_BuddyColorTable (buddy_color));
 	// (buddy) skin: render player 2's body as the selected BUDDYDEF buddy (slot 0 =
 	// Marine keeps the stock PLAY body).  -1 clears the override.
-	R_SetBuddySkin (bot->mo, buddy_select > 0 ? P_Buddy_Sprite (buddy_select) : -1);
+	R_SetBuddySkin (bot->mo, buddy_select > 0 ? P_Buddy_Sprite (buddy_select) : -1,
+			buddy_select > 0 ? P_Buddy_FrameMap (buddy_select) : NULL);
     }
 
     // Down (L4D-style incapacitation): NOT game over -- the buddy lies on the ground

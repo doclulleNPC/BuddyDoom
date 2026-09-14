@@ -1552,8 +1552,19 @@ boolean PIT_PoisonAttack (mobj_t* thing)
     if (dist >= POISONCLOUD_RADIUS)
 	return true;			// out of the gas
 
-    if (P_CheckSight (thing, poisonspot))
-	P_DamageMobj (thing, poisonspot, poisonsource, POISONCLOUD_DAMAGE - dist);
+    // Fall off across the radius -- and never below zero.  This used to be DOOM's
+    // `bombdamage - dist` (P_RadiusAttack), which only works there because both numbers
+    // are 128.  With POISONCLOUD_DAMAGE 4 against POISONCLOUD_RADIUS 40 it goes NEGATIVE
+    // for anything more than 4 units out, and P_DamageMobj's `target->health -= damage`
+    // turns negative damage into HEALING: every monster standing in a cloud was being
+    // topped up by as much as 35 HP every other tic, which reads in game as "my gun does
+    // nothing".  Hexen's own call is A_Explode(4, 40) -- damage 4, radius 40 -- so scale.
+    {
+	int dmg = POISONCLOUD_DAMAGE * (POISONCLOUD_RADIUS - dist) / POISONCLOUD_RADIUS;
+
+	if (dmg > 0 && P_CheckSight (thing, poisonspot))
+	    P_DamageMobj (thing, poisonspot, poisonsource, dmg);
+    }
 
     return true;
 }
