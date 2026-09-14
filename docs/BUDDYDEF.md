@@ -85,7 +85,7 @@ buddy "Frank N. Stein" : HellKnight
   painsound   fpain
   deathsound  fjaul
   activesound frankn
-  special     poisoncloud
+  special     poisonbag
   color       green
 }
 ```
@@ -269,7 +269,7 @@ All of these are unconditionally on for the Marine and must become switchable:
 | `autoheal` | on | auto-uses health items |
 | `item_grab` | on | detours to pick things up |
 | `weapons` | player set | `G_PlayerReborn` grants fist + pistol + 50 bullets; a buddy fighting only with its actor attack should carry nothing |
-| `special` | *(none)* | the buddy's individual power: `poisoncloud`, `turret`, … |
+| `special` | *(none)* | the buddy's individual power: `poisonbag`, `turret`, … |
 
 Note the naming collision to resolve: `special` is currently the *blurb text* in
 `BUDDYDEF`, while the ability is `ability`. Under the new model the ability is what a

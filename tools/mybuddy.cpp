@@ -224,7 +224,7 @@ static const std::vector<std::string> RANGED_CHOICES = {
 // The named power, shown as "Special" in the editor (BUDDYDEF key `ability`).  Keep in
 // step with buddy_ability_name[] in files/p_buddydef.c.
 static const std::vector<std::string> ABILITY_CHOICES = {
-    "none", "turret", "drone", "lichling", "stalker", "poisoncloud", "poisonbag"
+    "none", "turret", "drone", "lichling", "stalker", "poisonbag"
 };
 // "" = declare nothing (menu picks Green).  "locked" = BUDDYDEF's boolean form of `color`:
 // the buddy is NOT colourable -- the engine skips the palette remap and the Buddy screen's

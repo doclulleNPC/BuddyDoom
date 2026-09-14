@@ -91,7 +91,7 @@ buddy {
   activesound FRANKN
   meleeattack demon                 # close range, borrowed from an actor
   rangedattack imp                  # at distance
-  ability     poisoncloud           # the "Special" power (table below)
+  ability     poisonbag             # the "Special" power (table below)
 }
 ```
 
@@ -148,7 +148,7 @@ for whichever buddy you have selected:
 | `ability` value | Behaviour |
 |-----------------|-----------|
 | `none` (default) | No special power |
-| `poisoncloud` | Every 2 s, a cloud of gas around the buddy damages every enemy monster within 160 map units (4 damage, same-ish floor height) and puffs visible smoke. Players, other friendlies and corpses are never touched. |
+| `poisonbag` | Every 4 s, lobs Hexen's **Flechette** (`MT_XPOISONBAG`, `files/hexen.c`) at the nearest enemy it can actually see within 768 units. The bag flies a ballistic arc and bursts on whatever it hits first -- floor, wall or monster -- leaving the lingering poison cloud, which eats at monsters standing in it and never touches a player or an ally. (The engine makes that one bag a missile per-instance; the Cleric's own dropped artifact is unaffected.) |
 | `drone` | Deploys a friendly **Security Drone** (`MT_SECDRONE`, `p_secdrone.c`) when an enemy is within 1024 units and none of ours is already out; at most one per 20 s. |
 | `lichling` | Summons a **Lichling** (`MT_LICHLING`, `files/heretic_lichling.c`) — the Heretic counterpart of the drone: a little floating Lich that claws up close and throws ice at one target or fire at a cluster. Same gate and cap as the drone. |
 | `stalker` | Releases a **Stalker** (`MT_STALKERBUDDY`, `files/strife_stalker.c`) — the Strife counterpart: the four-legged Stalker, walking the floor rather than crawling the ceiling. It claws in melee range and otherwise fires **chaingunner-strength** bullets (3–15 a shot, `((rnd%5)+1)*3`) in two-round bursts, holding fire until the line of fire is actually clear. Same gate and cap as the drone. Strife itself never used the Stalker's firing frames — Rogue drew them (sprite frames M/N) and left `missilestate` at `S_NULL`; this is what they were for. (Which is also why its gunshot is Freedoom's pistol: there is no original Stalker gunshot to borrow.) |

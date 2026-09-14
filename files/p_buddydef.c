@@ -24,7 +24,7 @@
 //	      deathsound  FRANKN
 //	      activesound FRANKN
 //	      special     "Tanky bruiser" # free-text blurb for the Buddy select screen
-//	      ability     poisoncloud     # NAMED power: none | drone | poisoncloud | turret
+//	      ability     poisonbag       # NAMED power: none | drone | poisonbag | turret
 //	    }
 //
 //	A BUDDYDEF record is a ROSTER entry: the Buddy select menu reads its name,
@@ -60,7 +60,6 @@
 #include "sounds.h"
 #include "s_sound.h"			// S_StartSound -- turret deploy blip
 #include "m_fixed.h"
-#include "m_random.h"			// P_Random -- poisoncloud puff scatter (playsim RNG)
 #include "r_main.h"		// R_PointToAngle2 -- aiming the thrown flechette
 #include "tables.h"			// finesine/finecosine, ANGLETOFINESHIFT (drone placement)
 #include "w_wad.h"
@@ -114,7 +113,7 @@ typedef struct
     char	monster[24];	// base monster the buddy was derived from (BUDDYDEF `monster`)
     char	special[96];	// modder-supplied "special abilities" text
     char	ability[24];	// BUDDYDEF `ability`: the named special ABILITY the buddy
-				// actually uses in play (none|drone|poisoncloud)
+				// actually uses in play (none|drone|poisonbag|...)
     char	seesnd[16], painsnd[16], deathsnd[16], activesnd[16];	// BUDDYDEF sound lumps
     int		spritenum;	// preview sprite
     int		color;		// declared default player-colour index, -1 = none (BUDDYDEF `color`)
@@ -303,12 +302,12 @@ const byte* P_Buddy_FrameMap (int s)
 // text for the select screen; THIS is the mechanic the buddy actually uses, run
 // once per tic by P_Buddy_AbilityTicker.
 // ---------------------------------------------------------------------------
-enum { BA_NONE = 0, BA_DRONE, BA_POISONCLOUD, BA_TURRET, BA_LICHLING, BA_STALKER,
+enum { BA_NONE = 0, BA_DRONE, BA_TURRET, BA_LICHLING, BA_STALKER,
        BA_POISONBAG, BA_NUM };
 
 static const char* const buddy_ability_name[BA_NUM] =
 {
-    "none", "drone", "poisoncloud", "turret", "lichling", "stalker", "poisonbag"
+    "none", "drone", "turret", "lichling", "stalker", "poisonbag"
 };
 
 // Ability name -> id, or -1 when the name isn't one we know.  "" counts as none, so a
@@ -534,7 +533,7 @@ static void Buddy_Register (buddyparse_t* b)
 	if (Buddy_AbilityId (r->ability) < 0)
 	{
 	    printf ("BUDDYDEF: '%s' has unknown ability \"%s\" -- ignored "
-		    "(known: none, drone, poisoncloud, poisonbag, turret, lichling, stalker).\n",
+		    "(known: none, drone, poisonbag, turret, lichling, stalker).\n",
 		    b->name, r->ability);
 	    strcpy (r->ability, "none");
 	}
@@ -757,14 +756,6 @@ extern void		P_MobjThinker (mobj_t*);
 // Both abilities are playsim state, so they only ever use the game RNG and gametic --
 // nothing here reads wall-clock time.
 // ---------------------------------------------------------------------------
-#define BA_POISON_PERIOD	(2*TICRATE)		// one cloud every 2 s
-#define BA_POISON_RADIUS	(160*FRACUNIT)
-#define BA_POISON_DAMAGE	4
-#define BA_POISON_PUFFS		3
-#define BA_POISON_SPREAD	(24*FRACUNIT)		// how wide the vented gas scatters
-#define BA_POISON_VENTZ		(16*FRACUNIT)		// vent height above the buddy's feet
-#define BA_POISON_DRIFT		(FRACUNIT)		// how fast it drifts away behind him
-
 #define BA_BAG_PERIOD		(4*TICRATE)		// one flechette every 4 s
 #define BA_BAG_RANGE		(768*FRACUNIT)		// ...at an enemy no further than this
 #define BA_BAG_SPEED		(12*FRACUNIT)		// ground speed of the lob (Hexen's ThrowingBomb)
@@ -795,54 +786,6 @@ static mobj_t* Buddy_EnemyWithin (mobj_t* mo, fixed_t range)
 	    return e;
     }
     return NULL;
-}
-
-// poisoncloud: a puff of gas around the buddy that eats at every enemy standing in it.
-// Friends, the player and corpses are untouched -- it is purely an anti-monster aura.
-static void Buddy_PoisonCloud (mobj_t* mo)
-{
-    thinker_t*	th;
-    int		i;
-
-    for (th = thinkercap.next; th != &thinkercap; th = th->next)
-    {
-	mobj_t*	e;
-	if (th->function.acp1 != (actionf_p1)P_MobjThinker) continue;
-	e = (mobj_t*)th;
-	if (e == mo || e->health <= 0)			continue;
-	if (!(e->flags & MF_SHOOTABLE))			continue;
-	if (e->flags & (MF_FRIEND|MF_CORPSE))		continue;
-	if (!(e->flags & MF_COUNTKILL))			continue;	// monsters only
-	if (e->player)					continue;	// never the humans
-	if (P_AproxDistance (e->x - mo->x, e->y - mo->y) > BA_POISON_RADIUS) continue;
-	if (abs (e->z - mo->z) > 64*FRACUNIT)		continue;	// same-ish floor
-	P_DamageMobj (e, mo, mo, BA_POISON_DAMAGE);
-    }
-
-    // Visible gas.  It vents from BEHIND him, low down, and drifts up and away -- a fart,
-    // not a halo.  (Scattering the puffs over the full BA_POISON_RADIUS around the buddy
-    // read as an aura and hid where the gas was coming from.)  The DAMAGE above is still
-    // the radius around him: the cloud is what you see, the aura is what bites.
-    {
-	unsigned fine = mo->angle >> ANGLETOFINESHIFT;
-	fixed_t  bx   = mo->x - FixedMul (mo->radius + 8*FRACUNIT, finecosine[fine]);
-	fixed_t  by   = mo->y - FixedMul (mo->radius + 8*FRACUNIT, finesine[fine]);
-
-	for (i = 0; i < BA_POISON_PUFFS; i++)
-	{
-	    fixed_t rx = ((P_Random () - 128) * (BA_POISON_SPREAD >> 8));
-	    fixed_t ry = ((P_Random () - 128) * (BA_POISON_SPREAD >> 8));
-	    mobj_t* s  = P_SpawnMobj (bx + rx, by + ry,
-				      mo->z + BA_POISON_VENTZ + (P_Random () % 8)*FRACUNIT,
-				      MT_SMOKE);
-	    if (!s)
-		continue;
-	    // MT_SMOKE is NOGRAVITY, so these carry it: up, and backwards out of his wake.
-	    s->momz = FRACUNIT/3;
-	    s->momx = -FixedMul (BA_POISON_DRIFT, finecosine[fine]);
-	    s->momy = -FixedMul (BA_POISON_DRIFT, finesine[fine]);
-	}
-    }
 }
 
 // poisonbag: lob Hexen's Flechette (the ArtiPoisonBag) at the nearest visible enemy.
@@ -915,7 +858,6 @@ static void Buddy_ThrowPoisonBag (mobj_t* mo)
 	bag->momz = dz / t + (t * GRAVITY) / 2;
     }
 }
-
 // drone: deploy a friendly Security Drone (the marine's signature power) when enemies
 // are about and none of ours is already out.  Free for an mobj buddy -- it has no ammo
 // pool to spend, unlike the marine's version.
@@ -1101,11 +1043,6 @@ void P_Buddy_AbilityTicker (void)
     ab = Buddy_AbilityId (P_Buddy_Ability (buddy_select));
     switch (ab)
     {
-      case BA_POISONCLOUD:
-	if (!(gametic % BA_POISON_PERIOD))
-	    Buddy_PoisonCloud (mo);
-	break;
-
       case BA_POISONBAG:
 	if (!(gametic % BA_BAG_PERIOD))
 	    Buddy_ThrowPoisonBag (mo);
