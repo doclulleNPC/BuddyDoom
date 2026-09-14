@@ -3541,6 +3541,53 @@ static boolean AICoop_GrabStuck (mobj_t* item)
     return false;
 }
 
+// --- getting up: the death animation, backwards -------------------------------------
+// Every Doom monster has a `raisestate` -- its death frames again in reverse -- and that
+// is what you watch when an Archvile brings one back.  The PLAYER has no such chain,
+// because nothing in 1993 ever resurrected one, so build one for the buddy's revive.
+//
+// Built ONCE at startup (D_DoomMain calls this straight after P_Init) and never later:
+// growing states[] is a realloc, and every live mobj holds a state_t* into that array,
+// so doing it mid-game would leave every actor in the level pointing at freed memory.
+#define BUDDY_RAISE_TICS	5		// per frame; x7 frames = one second to stand up
+
+static int	buddy_raise_state = -1;		// first state of the chain, -1 = none built
+
+void P_AICoop_InitRaiseState (void)
+{
+    extern void dsdh_EnsureStatesCapacity (int);
+    int	frames[16];
+    int	n = 0, base, i, st;
+
+    if (buddy_raise_state >= 0)
+	return;
+
+    // Read the death chain as it actually is rather than assuming H..N: a DEHACKED patch
+    // may have rewritten the player's death, and the reverse has to match whatever it is.
+    for (st = S_PLAY_DIE1; st > 0 && st < num_states && n < 16; )
+    {
+	frames[n++] = (int)(states[st].frame & FF_FRAMEMASK);
+	if (states[st].tics < 0)
+	    break;				// terminal frame -- the corpse
+	st = states[st].nextstate;
+    }
+    if (n < 2)
+	return;					// nothing to play backwards
+
+    base = num_states;
+    dsdh_EnsureStatesCapacity (base + n - 1);
+    for (i = 0; i < n; i++)
+    {
+	state_t* s = &states[base + i];		// re-index AFTER the realloc above
+	memset (s, 0, sizeof *s);
+	s->sprite    = SPR_PLAY;		// the buddy skin remaps this when it is drawn
+	s->frame     = frames[n - 1 - i];	// ...the death frames, last to first
+	s->tics      = BUDDY_RAISE_TICS;
+	s->nextstate = (statenum_t)(i == n - 1 ? S_PLAY : base + i + 1);
+    }
+    buddy_raise_state = base;
+}
+
 // Stand the downed buddy back up in place (L4D revive) with `hp` health -- undoes
 // P_KillMobj on its own mobj instead of reborning at a player start, so it gets up
 // where it fell.
@@ -3560,7 +3607,11 @@ static void P_AICoop_Revive (int hp)
     bot->attacker = NULL;
     bot->viewheight = VIEWHEIGHT;
     bot->deltaviewheight = 0;
-    P_SetMobjState (mo, mo->info->spawnstate);	// stand up (S_PLAY)
+    // Stand up the way an Archvile raises a monster: the death animation in reverse.
+    // P_MovePlayer only re-enters S_PLAY_RUN1 from the IDLE state (p_user.c), so walking
+    // does not cut the animation short -- only firing does, which is fair enough.
+    P_SetMobjState (mo, buddy_raise_state >= 0 ? (statenum_t)buddy_raise_state
+					      : mo->info->spawnstate);
     bot->pendingweapon = bot->readyweapon;	// raise the weapon again
 
     // The reviver had to stand within 96u of the DOWNED corpse, which isn't solid -- so

@@ -1915,6 +1915,9 @@ printf("added\n");
 
     printf ("\nP_Init: Init Playloop state.\n");
     P_Init ();
+    { extern void P_AICoop_InitRaiseState (void);
+      P_AICoop_InitRaiseState (); }	// buddy revive animation: grows states[], so it has
+					// to happen before any mobj holds a state_t*
     { extern void P_Buddy_ResolveFrames (void);
       P_Buddy_ResolveFrames (); }	// BUDDYDEF basemonster -> frame map.  AFTER P_Init:
 					// that is where R_InitSprites builds sprites[],
