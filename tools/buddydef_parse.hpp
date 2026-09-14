@@ -25,7 +25,7 @@ namespace buddy {
 // strings, which silently broke whenever a label was reworded.
 enum class Key {
     Name, Desc, Ability, Color, Sprite,
-    Health, Speed, Radius, Height, Mass, PainChance, ReactionTime,
+    Health, Speed, Radius, Height, Mass, PainChance, ReactionTime, DamageScale,
     MeleeAttack, RangedAttack, Monster,
     SeeSound, PainSound, DeathSound, ActiveSound, Ednum,
     COUNT
@@ -49,6 +49,7 @@ struct Buddy {
     int mass         = 100;
     int painchance   = 120;
     int reactiontime = 8;
+    int damagescale  = 100;              // percent; scales every attack this buddy lands
 
     // Combat: the buddy borrows an existing actor's attack.  Two slots, because a
     // monster's close and far attacks are separate things -- see docs/BUDDYDEF.md.
@@ -56,7 +57,8 @@ struct Buddy {
     // any other unknown key, and saving drops it.)
     std::string melee  = "none";         // close range
     std::string ranged = "none";         // at distance
-    std::string monster;                 // "base monster" the editor set sprite/melee/ranged from
+    std::string monster;                 // base monster: sets sprite/melee/ranged AND the frame
+                                         // layout the sheet must mirror 1:1 (p_buddydef.c)
 
     int         ednum  = -1;             // retired: a player is not map-placeable
 

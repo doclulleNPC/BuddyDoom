@@ -224,9 +224,14 @@ static const std::vector<std::string> RANGED_CHOICES = {
 // The named power, shown as "Special" in the editor (BUDDYDEF key `ability`).  Keep in
 // step with buddy_ability_name[] in files/p_buddydef.c.
 static const std::vector<std::string> ABILITY_CHOICES = {
-    "none", "turret", "drone", "lichling", "poisoncloud"
+    "none", "turret", "drone", "lichling", "stalker", "poisoncloud", "poisonbag"
 };
-static const std::vector<std::string> COLOR_CHOICES   = { "", "Green", "Gray", "Brown", "Red",
+// "" = declare nothing (menu picks Green).  "locked" = BUDDYDEF's boolean form of `color`:
+// the buddy is NOT colourable -- the engine skips the palette remap and the Buddy screen's
+// Colour row goes inert.  Keep the spelling in step with the lock tokens p_buddydef.c takes
+// ("0"/"false"/"off"/"no"/"locked"/"fixed").
+static const std::vector<std::string> COLOR_CHOICES   = { "", "locked",
+                                                          "Green", "Gray", "Brown", "Red",
                                                           "Blue", "Orange", "Purple", "White" };
 
 // "Base monster": pick a monster and the editor (re)sets Sprite base, every body stat
@@ -317,39 +322,45 @@ static const std::vector<Field> FIELDS = {
     { "Sprite base",   Kind::Sprite,   Key::Sprite,  &Buddy::sprite,  nullptr, 0, 0, nullptr, 4, Status::Live,
       "4-char sprite base, e.g. FRAN -> needs FRANA1.. in the WAD. Frame A is the preview." },
     { "Base monster",  Kind::Choice,   Key::Monster, &Buddy::monster, nullptr, 0, 0, &MONSTER_CHOICES, 24, Status::Live,
-      "Base on a Doom/Heretic/Hexen/Strife monster -- (re)sets Sprite base, stats, Melee + Ranged. Click to pick." },
+      "Sets sprite/stats/attacks AND the frame layout: your sheet must MIRROR this monster 1:1 "
+      "(same letters for run/attack/pain/death). The engine reports any frame you are missing." },
     { "Color",         Kind::Choice,   Key::Color,   &Buddy::color,   nullptr, 0, 0, &COLOR_CHOICES, 24, Status::Live,
-      "Default player-colour on the Buddy screen. Empty = no default (menu picks Green)." },
+      "Colourable? \"locked\" = no, the buddy keeps its own art (right for hand-drawn sprites). "
+      "A colour name = that default, still changeable. Empty = no default (menu picks Green)." },
     { "Description",   Kind::TextLong, Key::Desc,    &Buddy::desc,    nullptr, 0, 0, nullptr, 240, Status::Live,
       "All the prose the select screen shows, word-wrapped into the ABOUT panel." },
 
-    { "Health",        Kind::Int, Key::Health,       nullptr, &Buddy::health,       1, 99999, nullptr, 0, Status::Pending,
+    { "Health",        Kind::Int, Key::Health,       nullptr, &Buddy::health,       1, 99999, nullptr, 0, Status::Live,
       "Spawn health. Marine: 100. Needs the G_PlayerReborn hook, or a revive resets it." },
-    { "Speed",         Kind::Int, Key::Speed,        nullptr, &Buddy::speed,        0, 100, nullptr, 0, Status::Pending,
+    { "Speed",         Kind::Int, Key::Speed,        nullptr, &Buddy::speed,        0, 100, nullptr, 0, Status::Live,
       "Marine: 25. Players move by ticcmd, so this becomes a forwardmove, not info->speed." },
-    { "Radius",        Kind::Int, Key::Radius,       nullptr, &Buddy::radius,       1, 256, nullptr, 0, Status::Pending,
+    { "Radius",        Kind::Int, Key::Radius,       nullptr, &Buddy::radius,       1, 256, nullptr, 0, Status::Live,
       "Collision radius in map units. Marine: 16." },
-    { "Height",        Kind::Int, Key::Height,       nullptr, &Buddy::height,       1, 512, nullptr, 0, Status::Pending,
+    { "Height",        Kind::Int, Key::Height,       nullptr, &Buddy::height,       1, 512, nullptr, 0, Status::Live,
       "Collision height in map units. Marine: 56." },
     { "Mass",          Kind::Int, Key::Mass,         nullptr, &Buddy::mass,         1, 100000, nullptr, 0, Status::Pending,
       "Knockback resistance. Marine: 100. Higher = harder to shove." },
-    { "Pain chance",   Kind::Int, Key::PainChance,   nullptr, &Buddy::painchance,   0, 255, nullptr, 0, Status::Pending,
+    { "Pain chance",   Kind::Int, Key::PainChance,   nullptr, &Buddy::painchance,   0, 255, nullptr, 0, Status::Live,
       "0-255 chance to flinch when hit. Marine: 255." },
-    { "Reactiontime",  Kind::Int, Key::ReactionTime, nullptr, &Buddy::reactiontime, 0, 32, nullptr, 0, Status::Pending,
+    { "Reactiontime",  Kind::Int, Key::ReactionTime, nullptr, &Buddy::reactiontime, 0, 32, nullptr, 0, Status::Live,
       "Tics before reacting to a target. Marine: 0." },
 
-    { "See sound",     Kind::Text, Key::SeeSound,    &Buddy::seesnd,    nullptr, 0, 0, nullptr, 16, Status::Pending,
+    { "See sound",     Kind::Text, Key::SeeSound,    &Buddy::seesnd,    nullptr, 0, 0, nullptr, 16, Status::Live,
       "Lump name, e.g. FRANKN (a DSFRANKN lump works too). Empty = silent." },
-    { "Pain sound",    Kind::Text, Key::PainSound,   &Buddy::painsnd,   nullptr, 0, 0, nullptr, 16, Status::Pending,
+    { "Pain sound",    Kind::Text, Key::PainSound,   &Buddy::painsnd,   nullptr, 0, 0, nullptr, 16, Status::Live,
       "Lump name. The player's pain sound is hardcoded, so this needs a call-site hook." },
-    { "Death sound",   Kind::Text, Key::DeathSound,  &Buddy::deathsnd,  nullptr, 0, 0, nullptr, 16, Status::Pending,
+    { "Death sound",   Kind::Text, Key::DeathSound,  &Buddy::deathsnd,  nullptr, 0, 0, nullptr, 16, Status::Live,
       "Lump name. Same hook as the pain sound." },
-    { "Active sound",  Kind::Text, Key::ActiveSound, &Buddy::activesnd, nullptr, 0, 0, nullptr, 16, Status::Pending,
+    { "Active sound",  Kind::Text, Key::ActiveSound, &Buddy::activesnd, nullptr, 0, 0, nullptr, 16, Status::Live,
       "Idle grunt, lump name." },
 
-    { "Melee attack",  Kind::Choice, Key::MeleeAttack,  &Buddy::melee,  nullptr, 0, 0, &MELEE_CHOICES, 24, Status::Pending,
+    { "Damage %",      Kind::Int, Key::DamageScale,  nullptr, &Buddy::damagescale, 10, 1000, nullptr, 0, Status::Live,
+      "Scales EVERY hit this buddy lands -- melee, hitscan and projectiles alike. 100 = unchanged. "
+      "Borrowed monster attacks bake their damage into the codepointer, so this is the only way to tune it." },
+
+    { "Melee attack",  Kind::Choice, Key::MeleeAttack,  &Buddy::melee,  nullptr, 0, 0, &MELEE_CHOICES, 24, Status::Live,
       "Close-range attack, borrowed from a Doom/Heretic/Hexen/Strife actor. Melee only." },
-    { "Ranged attack", Kind::Choice, Key::RangedAttack, &Buddy::ranged, nullptr, 0, 0, &RANGED_CHOICES, 24, Status::Pending,
+    { "Ranged attack", Kind::Choice, Key::RangedAttack, &Buddy::ranged, nullptr, 0, 0, &RANGED_CHOICES, 24, Status::Live,
       "Attack used at distance. Projectiles and hitscans only, never a melee swing." },
     { "Special",       Kind::Choice, Key::Ability, &Buddy::ability, nullptr, 0, 0, &ABILITY_CHOICES, 24, Status::Live,
       "The power the buddy really uses in play. Runs on the buddy's body each tic." },

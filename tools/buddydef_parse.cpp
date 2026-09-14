@@ -150,7 +150,18 @@ std::vector<Buddy> parse(const std::string& text)
             }
         }
         else if (key == "ability")                           str(cur.ability, Key::Ability);
-        else if (key == "color" || key == "colour")          str(cur.color, Key::Color);
+        else if (key == "color" || key == "colour") {
+            // BUDDYDEF's `color` doubles as a boolean: false means "not colourable".
+            // Fold every spelling the engine accepts (p_buddydef.c) to the one the picker
+            // offers, so a hand-written `color 0` round-trips instead of reading as an
+            // unknown colour name.
+            const std::string lv = lower(v);
+            if (lv=="0"||lv=="false"||lv=="off"||lv=="no"||lv=="locked"||lv=="fixed")
+                { cur.color = "locked"; cur.set(Key::Color); }
+            else if (lv=="1"||lv=="true"||lv=="on"||lv=="yes")
+                { cur.color = ""; cur.set(Key::Color); }   // explicitly colourable
+            else str(cur.color, Key::Color);
+        }
         else if (key == "health" || key == "hp")             num(cur.health, Key::Health);
         else if (key == "speed")                             num(cur.speed, Key::Speed);
         else if (key == "radius")                            num(cur.radius, Key::Radius);
@@ -159,6 +170,7 @@ std::vector<Buddy> parse(const std::string& text)
         else if (key == "painchance")                        num(cur.painchance, Key::PainChance);
         else if (key == "reactiontime" || key == "reaction") num(cur.reactiontime, Key::ReactionTime);
         else if (key == "ednum" || key == "doomednum")       num(cur.ednum, Key::Ednum);
+        else if (key == "damagescale" || key == "damage")    num(cur.damagescale, Key::DamageScale);
         // anything else: silently ignored, exactly like the engine
     }
     if (inrec) out.push_back(cur);                  // unclosed record still counts
@@ -179,6 +191,7 @@ std::string serialize(const Buddy& b)
     emit_int(out, "mass",        b.mass,      b.has(Key::Mass),          100);
     emit_int(out, "painchance",  b.painchance, b.has(Key::PainChance),   120);
     emit_int(out, "reactiontime", b.reactiontime, b.has(Key::ReactionTime), 8);
+    emit_int(out, "damagescale", b.damagescale, b.has(Key::DamageScale),    100);
     emit    (out, "meleeattack",  b.melee,    b.has(Key::MeleeAttack),  "none");
     emit    (out, "rangedattack", b.ranged,   b.has(Key::RangedAttack), "none");
     emit    (out, "monster",      b.monster,  b.has(Key::Monster),      "");
