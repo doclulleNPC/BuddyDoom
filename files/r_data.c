@@ -1051,6 +1051,42 @@ void R_InitData (void)
 // WAD provides one, else generated once from PLAYPAL at startup.
 byte* main_tranmap = NULL;
 
+// Hexen's SECOND translucency level (MF2_ALTSHADOW, p_mobj.h), which that flag's own
+// comment describes as "a plain ~40% blend".  It used to borrow main_tranmap, i.e. Boom's
+// 66% LINE map, so everything wearing the flag -- the Hexen ghosts, and the Flechette's
+// poison cloud -- came out far more solid than intended.  Gas wants to be seen through.
+byte* alt_tranmap = NULL;
+
+// Build one blend table: fg over bg at w1/256 foreground.  Cost is 64K nearest-colour
+// searches, done once at startup.
+static byte* R_MakeTranMap (const byte* pal, int w1)
+{
+    const int w2 = 256 - w1;
+    byte* map = Z_Malloc (256*256, PU_STATIC, 0);
+    int bg, fg, c;
+
+    for (bg = 0; bg < 256; bg++)
+    {
+	int br = pal[bg*3+0], bgg = pal[bg*3+1], bb = pal[bg*3+2];
+	for (fg = 0; fg < 256; fg++)
+	{
+	    int tr = (pal[fg*3+0]*w1 + br *w2) >> 8;
+	    int tg = (pal[fg*3+1]*w1 + bgg*w2) >> 8;
+	    int tb = (pal[fg*3+2]*w1 + bb *w2) >> 8;
+	    int best = 0;
+	    long bestd = 1L<<30;
+	    for (c = 0; c < 256; c++)
+	    {
+		int dr = tr - pal[c*3+0], dg = tg - pal[c*3+1], db = tb - pal[c*3+2];
+		long d = (long)dr*dr + (long)dg*dg + (long)db*db;
+		if (d < bestd) { bestd = d; best = c; }
+	    }
+	    map[bg*256 + fg] = (byte)best;
+	}
+    }
+    return map;
+}
+
 void R_InitTranMap (void)
 {
     int lump = W_CheckNumForName ("TRANMAP");
@@ -1061,6 +1097,9 @@ void R_InitTranMap (void)
     if (lump != -1)					// WAD-supplied filter map
     {
 	main_tranmap = W_CacheLumpNum (lump, PU_STATIC);
+	pal = W_CacheLumpName ("PLAYPAL", PU_STATIC);
+	alt_tranmap = R_MakeTranMap (pal, 102);		// ~40%: the WAD only supplies the 66% one
+	Z_ChangeTag (pal, PU_CACHE);
 	return;
     }
 
@@ -1086,6 +1125,7 @@ void R_InitTranMap (void)
 	    main_tranmap[bg*256 + fg] = (byte)best;
 	}
     }
+    alt_tranmap = R_MakeTranMap (pal, 102);		// ~40% foreground: MF2_ALTSHADOW
     Z_ChangeTag (pal, PU_CACHE);
 }
 

@@ -42,7 +42,8 @@ rcsid[] = "$Id: r_things.c,v 1.5 1997/02/03 16:47:56 b1 Exp $";
 
 #include "doomstat.h"
 #include "p_buddydef.h"	// BUDDY_NFRAMES -- the buddy frame remap applied in R_ProjectSprite
-extern byte*	main_tranmap;	// r_data.c -- Boom 260 translucency map
+extern byte*	main_tranmap;	// r_data.c -- Boom 260 translucency map (~66%)
+extern byte*	alt_tranmap;	// r_data.c -- Hexen MF2_ALTSHADOW blend (~40%)
 #ifndef ST_HEXEN_HEIGHT
 #define ST_HEXEN_HEIGHT 66	// Hexen bar: BASE_HEIGHT - H2BAR y (200-134)
 #endif
@@ -677,10 +678,11 @@ R_DrawVisSprite
     // Blend through Boom's tranmap rather than using the spectre fuzz: fuzz is a
     // much harsher effect and reads as a rendering fault on an ordinary monster.
     // Falls back to a solid draw if the WAD gave us no tranmap.
-    else if ((vis->mobjflags2 & MF2_ALTSHADOW) && main_tranmap)
+    else if ((vis->mobjflags2 & MF2_ALTSHADOW) && (alt_tranmap || main_tranmap))
     {
 	colfunc = R_DrawTLColumn;
-	dc_tranmap = main_tranmap;
+	// The lighter table -- Hexen's second level is ~40% foreground, not Boom's 66%.
+	dc_tranmap = alt_tranmap ? alt_tranmap : main_tranmap;
     }
     else if (vis->translation)
     {
