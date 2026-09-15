@@ -290,6 +290,11 @@ typedef struct mobj_s
 // far more aggressive and reads as a rendering fault.  Blended through Boom's
 // tranmap in R_DrawVisSprite.
 #define MF2_ALTSHADOW     0x00100000
+// A separate blend level for things that are GAS rather than ghosts: the Flechette's
+// poison cloud.  Currently the same ~40% as MF2_ALTSHADOW -- 20% was tried and read as
+// barely there -- but kept on its own flag so the cloud can be tuned without dragging
+// the Hexen ghosts along.  Same tranmap path.
+#define MF2_GASSHADOW     0x00200000
     int			health;
 
     // Movement direction, movement generation (zig-zagging).

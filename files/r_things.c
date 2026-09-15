@@ -44,6 +44,7 @@ rcsid[] = "$Id: r_things.c,v 1.5 1997/02/03 16:47:56 b1 Exp $";
 #include "p_buddydef.h"	// BUDDY_NFRAMES -- the buddy frame remap applied in R_ProjectSprite
 extern byte*	main_tranmap;	// r_data.c -- Boom 260 translucency map (~66%)
 extern byte*	alt_tranmap;	// r_data.c -- Hexen MF2_ALTSHADOW blend (~40%)
+extern byte*	gas_tranmap;	// r_data.c -- MF2_GASSHADOW blend (~40%, poison cloud)
 #ifndef ST_HEXEN_HEIGHT
 #define ST_HEXEN_HEIGHT 66	// Hexen bar: BASE_HEIGHT - H2BAR y (200-134)
 #endif
@@ -540,9 +541,11 @@ extern double		fc_lightdim[];
 extern int		truecolor;
 int			hd_sprites = 1;		// config: full-colour HD sprites in truecolor
 
-static void R_BlitHDSprite (vissprite_t* vis, hdimage_t* hd)
+// pw/ph: the 1x PATCH's size -- the rectangle the sprite occupies on screen.  hd->w/h
+// may be larger (a hi-res twin from HI_START..HI_END); the image is stretched onto the
+// patch rectangle, so a 2x source lands at 1x size with twice the pixel density.
+static void R_BlitHDSprite (vissprite_t* vis, hdimage_t* hd, int pw, int ph, unsigned opacity)
 {
-    int		pw = hd->w, ph = hd->h;
     fixed_t	scale = vis->scale;
     int64_t	sprtop = (int64_t)centeryfrac - (int64_t)FixedMul(vis->texturemid, scale);
     int		ytop = (int)((sprtop + FRACUNIT-1) >> FRACBITS);
@@ -552,7 +555,7 @@ static void R_BlitHDSprite (vissprite_t* vis, hdimage_t* hd)
     double	dim = 1.0;
     int		x;
 
-    if (pw < 1 || !hd->rgba) return;
+    if (pw < 1 || ph < 1 || hd->w < 1 || !hd->rgba) return;
     if (span < 1) span = 1;
 
     // Distance/sector light: dim the true-colour source like the 8-bit colormap would.
@@ -564,11 +567,12 @@ static void R_BlitHDSprite (vissprite_t* vis, hdimage_t* hd)
 
     for (x = vis->x1; x <= vis->x2; x++, frac += vis->xiscale)
     {
-	int	texcol = frac >> FRACBITS;
+	// frac walks the 1x patch's columns; map that onto the image's own width.
+	int	texcol = (int)(((int64_t)frac * hd->w / pw) >> FRACBITS);
 	int	yl = ytop, yh = ybot, y, sx = viewwindowx + x;
 
 	if ((unsigned)sx >= (unsigned)SCREENWIDTH) continue;
-	if (texcol < 0) texcol = 0; else if (texcol >= pw) texcol = pw-1;
+	if (texcol < 0) texcol = 0; else if (texcol >= hd->w) texcol = hd->w-1;
 
 	if (yh >= mfloorclip[x])   yh = mfloorclip[x]-1;
 	if (yl <= mceilingclip[x]) yl = mceilingclip[x]+1;
@@ -584,6 +588,11 @@ static void R_BlitHDSprite (vissprite_t* vis, hdimage_t* hd)
 	    px = hd->rgba[hv*hd->w + texcol];
 	    a  = px >> 24;
 	    if (!a) continue;					// transparent texel
+	    // Actor translucency (MF2_ALTSHADOW / MF2_GASSHADOW) on top of the texel's own
+	    // alpha.  The 8-bit path blends these through a tranmap, but this overlay is
+	    // painted AFTER those columns and used to paint them over at full strength --
+	    // so a translucent actor with HD art came out solid.
+	    if (opacity < 255) { a = a * opacity / 255; if (!a) continue; }
 
 	    r = (px>>16)&0xff; g = (px>>8)&0xff; b = px&0xff;
 	    if (dim < 0.999) { r=(unsigned)(r*dim); g=(unsigned)(g*dim); b=(unsigned)(b*dim); }
@@ -678,6 +687,11 @@ R_DrawVisSprite
     // Blend through Boom's tranmap rather than using the spectre fuzz: fuzz is a
     // much harsher effect and reads as a rendering fault on an ordinary monster.
     // Falls back to a solid draw if the WAD gave us no tranmap.
+    else if ((vis->mobjflags2 & MF2_GASSHADOW) && (gas_tranmap || alt_tranmap || main_tranmap))
+    {
+	colfunc = R_DrawTLColumn;
+	dc_tranmap = gas_tranmap ? gas_tranmap : alt_tranmap ? alt_tranmap : main_tranmap;
+    }
     else if ((vis->mobjflags2 & MF2_ALTSHADOW) && (alt_tranmap || main_tranmap))
     {
 	colfunc = R_DrawTLColumn;
@@ -733,7 +747,16 @@ R_DrawVisSprite
     // was just drawn to screens[0]/screen32.  The composite then shows this instead
     // of the quantised version wherever the sprite is visible.
     if (hd)
-	R_BlitHDSprite (vis, &hdsprite[vis->patch]);
+    {
+	// Same levels the tranmap path draws with: 66% (Boom line), 40% (Hexen ghost
+	// and gas).  Keep the two renderers in step or a translucent actor looks
+	// different depending on whether its art happens to be a PNG.
+	unsigned opacity = (vis->mobjflags2 & MF2_GASSHADOW) ? 102
+			 : (vis->mobjflags2 & MF2_ALTSHADOW) ? 102 : 255;
+	R_BlitHDSprite (vis, &hdsprite[vis->patch],
+			spritewidth[vis->patch] >> FRACBITS,	// the 1x patch's rectangle
+			SHORT(patch->height), opacity);
+    }
 }
 
 

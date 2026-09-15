@@ -78,7 +78,14 @@ extern void**		spritepatch;	// sprite index -> converted PNG patch_t, or NULL
 // Full-colour HD sprite (truecolor): the ARGB8888 image kept from a PNG sprite lump,
 // blitted straight into screen32 instead of the palette-quantised patch.  rgba==NULL
 // (or w==0) means "no HD image".  Parallel to spritepatch[]/spritelumps[].
-typedef struct { int w, h; unsigned int* rgba; } hdimage_t;
+//
+// hilump: a HIGHER-RESOLUTION twin of this sprite from the HI_START..HI_END namespace
+// (same lump name), or -1.  When set, the full-colour copy is decoded from THAT lump
+// instead of the sprite's own: the blit already scales the image to the 1x patch's
+// screen rectangle, so a 2x source simply lands with twice the pixel density.  Size,
+// offsets, hitbox and the palette fallback all stay with the 1x sprite -- the twin is
+// purely more detail.  (GZDoom's convention; FRANK.wad already shipped 2x frames there.)
+typedef struct { int w, h; unsigned int* rgba; int hilump; } hdimage_t;
 extern hdimage_t*	hdsprite;
 
 

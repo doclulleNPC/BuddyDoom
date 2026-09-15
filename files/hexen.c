@@ -950,7 +950,7 @@ void Hexen_Init (void)
     // blends that through Boom's tranmap, keeping both colour and lighting.  It is the
     // same thing GZDoom writes as RenderStyle "Translucent" + Alpha 0.6.
     m->flags = MF_NOGRAVITY|MF_NOBLOCKMAP|MF_NOCLIP|MF_DROPOFF; m->raisestate = S_NULL;
-    m->flags2 = MF2_ALTSHADOW;
+    m->flags2 = MF2_GASSHADOW;		// ~40% foreground (own flag, so it tunes separately)
 
     // ---- Flechette poison bag (crispy S_POISONBAG*/MT_POISONBAG): sits where it's
     //      thrown for a short fuse (frames PSBG A/B fullbright, then C), then

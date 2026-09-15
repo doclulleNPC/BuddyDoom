@@ -960,6 +960,22 @@ void R_InitSpriteLumps (void)
     }
     firstspritelump = numspritelumps ? spritelumps[0] : 0;	// legacy; indexing uses spritelumps[]
     lastspritelump  = numspritelumps ? spritelumps[numspritelumps-1] : 0;
+
+    // Hi-res twins: every lump between HI_START and HI_END is a higher-resolution
+    // replacement for the sprite of the same name.  Record the pairing; the image is
+    // decoded lazily like everything else.  A later twin overrides an earlier one, so
+    // a pack loaded after the base WAD wins, same as sprites themselves.
+    for (i = 0; i < numspritelumps; i++) hdsprite[i].hilump = -1;
+    in_ns = 0;
+    for (l = 0; l < numlumps; l++)
+    {
+	if (!strncasecmp (lumpinfo[l].name, "HI_START", 8)) { in_ns = 1; continue; }
+	if (!strncasecmp (lumpinfo[l].name, "HI_END",   8)) { in_ns = 0; continue; }
+	if (!in_ns) continue;
+	for (i = 0; i < numspritelumps; i++)
+	    if (!strncasecmp (lumpinfo[spritelumps[i]].name, lumpinfo[l].name, 8))
+		{ hdsprite[i].hilump = l; break; }
+    }
     #undef IS_S_START
     #undef IS_S_END
     #undef IS_PNG_LUMP
@@ -993,11 +1009,35 @@ patch_t* R_SpritePatch (int idx)
 	    // Only keep the full-colour copy when the truecolor HD path can use it --
 	    // otherwise it is ~50x the size of the patch, pinned for nothing.
 	    int	 hw = 0, hh = 0;
-	    void** ru = (truecolor && hd_sprites) ? (void**) &hdsprite[idx].rgba : NULL;
+	    boolean wanthd = (truecolor && hd_sprites);
+	    int	 twin   = hdsprite[idx].hilump;
+	    // With a hi-res twin the full-colour copy comes from THAT lump (below), so the
+	    // 1x decode only builds the patch -- no point keeping a 1x image we replace.
+	    void** ru = (wanthd && twin < 0) ? (void**) &hdsprite[idx].rgba : NULL;
 	    patch_t* p = V_PNGLumpDecodeCached (spritelumps[idx], &spritepatch[idx],
 						ru, &hw, &hh);
 	    if (p && ru)
 		{ hdsprite[idx].w = hw; hdsprite[idx].h = hh; }
+	    if (p && wanthd && twin >= 0)
+	    {
+		// The twin's own patch is a throwaway (PU_CACHE, owned by `scratch`): the 1x
+		// patch above is what the renderer sizes and clips by, the twin adds pixels.
+		// Z_Malloc(PU_CACHE, user) sets hdsprite[idx].rgba itself.
+		void* scratch = NULL;
+		int   tw = 0, th = 0;
+		if (V_PNGLumpDecodeCached (twin, &scratch, (void**) &hdsprite[idx].rgba, &tw, &th)
+		    && tw > 0)
+		    { hdsprite[idx].w = tw; hdsprite[idx].h = th; }
+		else
+		{
+		    // Twin failed to decode: fall back to the 1x copy after all.
+		    hdsprite[idx].rgba = NULL;
+		    if (V_PNGLumpDecodeCached (spritelumps[idx], &spritepatch[idx],
+					       (void**) &hdsprite[idx].rgba, &hw, &hh))
+			{ hdsprite[idx].w = hw; hdsprite[idx].h = hh; }
+		}
+		if (scratch) Z_ChangeTag (scratch, PU_CACHE);
+	    }
 	    if (p)
 		return p;
 	}
@@ -1056,6 +1096,7 @@ byte* main_tranmap = NULL;
 // 66% LINE map, so everything wearing the flag -- the Hexen ghosts, and the Flechette's
 // poison cloud -- came out far more solid than intended.  Gas wants to be seen through.
 byte* alt_tranmap = NULL;
+byte* gas_tranmap = NULL;		// ~40% foreground: MF2_GASSHADOW (poison cloud)
 
 // Build one blend table: fg over bg at w1/256 foreground.  Cost is 64K nearest-colour
 // searches, done once at startup.
@@ -1099,6 +1140,7 @@ void R_InitTranMap (void)
 	main_tranmap = W_CacheLumpNum (lump, PU_STATIC);
 	pal = W_CacheLumpName ("PLAYPAL", PU_STATIC);
 	alt_tranmap = R_MakeTranMap (pal, 102);		// ~40%: the WAD only supplies the 66% one
+	gas_tranmap = R_MakeTranMap (pal, 102);		// ~40%
 	Z_ChangeTag (pal, PU_CACHE);
 	return;
     }
@@ -1126,6 +1168,7 @@ void R_InitTranMap (void)
 	}
     }
     alt_tranmap = R_MakeTranMap (pal, 102);		// ~40% foreground: MF2_ALTSHADOW
+    gas_tranmap = R_MakeTranMap (pal, 102);		// ~40% foreground: MF2_GASSHADOW
     Z_ChangeTag (pal, PU_CACHE);
 }
 
