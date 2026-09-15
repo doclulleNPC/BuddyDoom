@@ -400,6 +400,20 @@ static buddyatk_t Buddy_RangedFn (const char* n)
 // Perform the buddy's borrowed attack on `target`.  Returns:  1 = attacked this tic,
 // 0 = has a monster attack but not firing now (cooling down / closing to melee),
 // -1 = no monster attack -> the caller should fire the player weapon as usual.
+// Does this player body fight with a borrowed MONSTER attack rather than its weapon?
+// True only for the buddy, and only when its BUDDYDEF names a melee or ranged attack.
+// A_WeaponReady asks this: it resets S_PLAY_ATK* to S_PLAY every idle tic, which is
+// right for a weapon (the weapon's own fire states keep it from running mid-shot) but
+// wiped the buddy's swing one tic after P_Buddy_DoAttack set it, because the weapon
+// never leaves its ready state for a monster attack.
+boolean P_Buddy_UsesMonsterAttack (player_t* p)
+{
+    buddystats_t st;
+    if (!p || buddy_select <= 0 || !P_AICoop_IsBuddy (p)) return false;
+    P_Buddy_GetStats (buddy_select, &st);
+    return Buddy_MeleeFn (st.melee) != NULL || Buddy_RangedFn (st.ranged) != NULL;
+}
+
 int P_Buddy_DoAttack (mobj_t* buddy, mobj_t* target)
 {
     static int	cd;
@@ -427,7 +441,9 @@ int P_Buddy_DoAttack (mobj_t* buddy, mobj_t* target)
     // is the player attack state -- S_PLAY_ATK1 is frame 'E' for 12 tics, which the buddy
     // skin resolves to the BUDDYDEF sprite's own E frame (FRANE1..FRANE8 for Frank).
     // P_MovePlayer only re-enters S_PLAY_RUN1 from the IDLE state (p_user.c:226), so a
-    // walking buddy does not stomp the swing mid-animation.
+    // walking buddy does not stomp the swing mid-animation.  A_WeaponReady WOULD --
+    // it clears S_PLAY_ATK* every idle tic -- and is told not to for this body via
+    // P_Buddy_UsesMonsterAttack (p_pspr.c).
     P_SetMobjState (buddy, S_PLAY_ATK1);
     return 1;
 }

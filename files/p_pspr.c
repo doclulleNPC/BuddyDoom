@@ -31,6 +31,7 @@ rcsid[] = "$Id: p_pspr.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 #include "m_random.h"
 #include "p_local.h"
+#include "p_ai_coop.h"	// P_Buddy_UsesMonsterAttack -- A_WeaponReady keeps the buddy's swing
 #include "s_sound.h"
 
 // State.
@@ -316,8 +317,14 @@ A_WeaponReady
     int		angle;
     
     // get out of attack state
-    if (player->mo->state == &states[S_PLAY_ATK1]
-	|| player->mo->state == &states[S_PLAY_ATK2] )
+    //
+    // ...unless this body attacks with a borrowed MONSTER attack (a BUDDYDEF buddy):
+    // its weapon never leaves the ready state, so this ran every tic and erased the
+    // swing P_Buddy_DoAttack had just set -- the buddy hit things with no animation.
+    // S_PLAY_ATK1 falls back to S_PLAY on its own after 12 tics, so it needs no help.
+    if ((player->mo->state == &states[S_PLAY_ATK1]
+	 || player->mo->state == &states[S_PLAY_ATK2])
+	&& !P_Buddy_UsesMonsterAttack (player))
     {
 	P_SetMobjState (player->mo, S_PLAY);
     }

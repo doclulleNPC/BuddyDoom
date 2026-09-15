@@ -42,6 +42,7 @@ int  P_AICoop_Slot (void);
 // True if player p is the AI co-op buddy.  Used by p_inter.c so the buddy never
 // pockets keycards/skulls (the human needs them for locked doors).
 boolean P_AICoop_IsBuddy (player_t* p);
+boolean P_Buddy_UsesMonsterAttack (player_t* p);	// buddy fights with a BUDDYDEF monster attack, not its weapon
 
 // Current buddy state as a small enum (0=follow, 1=fight, 2=heal, 3=hold,
 // 4=come, 5=grab).  Exposed for the console / voice system.
