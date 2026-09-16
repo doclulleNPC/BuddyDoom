@@ -282,7 +282,7 @@ default_t	defaults[] =
     // Features turns it off.
     {"colored_numbers",&colored_numbers, 1},
     {"show_inventory_hud",&show_inventory_hud, 1},	// (J) artifact inventory readout
-    {"buddy_select",&buddy_select, 0},			// Buddy menu: 0=Marine, 1..N=BUDDYDEF roster index
+    {"buddy_select",&buddy_select, 0},			// Buddy menu: 0=built-in, 1..N=BUDDYDEF roster index
     {"buddy_color",&buddy_color, 0},			// Buddy menu: player-colour index (0=Green)
     
 

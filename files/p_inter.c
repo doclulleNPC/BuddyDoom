@@ -1150,7 +1150,11 @@ P_DamageMobj
 				target->x,
 				target->y);
 		
-	thrust = damage*(FRACUNIT>>3)*100/target->info->mass;
+	{   // (buddy) the alt buddy's own mass, else the shared mobjinfo one
+	    int ms = P_Buddy_BodyMass (target);
+	    if (ms <= 0) ms = target->info->mass;
+	    thrust = damage*(FRACUNIT>>3)*100/ms;
+	}
 
 	// make fall forwards sometimes
 	if ( damage < 40

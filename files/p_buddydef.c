@@ -42,10 +42,14 @@
 //	path needed (the state builder, the attack codepointer, the thinker-list
 //	lookup, the duplicate console/HUD/automap routing) is gone.
 //
-//	Applying a record to player 2 -- skin, stats, sounds, behaviour -- is the work
-//	in progress; until it lands, picking a modder buddy still gives you the Marine.
-//	Keys are parsed and shown on the select screen either way, so a BUDDYDEF lump
-//	written today stays valid.  Design: docs/BUDDYDEF.md.
+//	A record IS applied to player 2 -- skin, body stats, sounds, behaviour and the
+//	named ability all reach the game.  Design: docs/BUDDYDEF.md.
+//
+//	--- the shipped roster ------------------------------------------------------
+//	Slot 0 is Lorelei Chen, built in below; John Pietrovich, Dimitri Paramo and Thi
+//	Barrett are BUDDYDEF records in run/ID0/buddydoom.wad.  All four are the DOOM
+//	Bible's marine detail as the Doom Delta mod rebuilt them; the art, the voice
+//	clips and the stat conversion are documented in tools/wad.buddydef.
 //
 //-----------------------------------------------------------------------------
 
@@ -86,7 +90,7 @@ extern mobj_t*	P_SpawnMobj (fixed_t, fixed_t, fixed_t, mobjtype_t);
 extern int		V_BuddyColorCount (void);
 extern const char*	V_BuddyColorName  (int);
 
-// The active selection (Buddy menu / config): 0 = Marine, 1..N = a BUDDYDEF roster slot.
+// The active selection (Buddy menu / config): 0 = the built-in buddy, 1..N = BUDDYDEF.
 extern int		buddy_select;
 
 // Map a BUDDYDEF `color <name>` string to a colour index (-1 if unknown).
@@ -100,7 +104,7 @@ static int Buddy_ColorIndex (const char* s)
 }
 
 // ---------------------------------------------------------------------------
-// Roster (slot 0 = built-in Marine, always present).
+// Roster (slot 0 = the built-in buddy, always present).
 // ---------------------------------------------------------------------------
 #define MAXBUDDIES	24
 
@@ -245,6 +249,11 @@ static void Buddy_BuildFrameMap (buddyrec_t* r, int donor)
 // frame it does not have -- the renderer then falls back to the marine mid-animation,
 // which is exactly the class of bug this rule exists to prevent.  Reports, does not
 // refuse: partial art still plays, it just tells you where it will break.
+// Defined below, next to the other sprite-namespace probes; declared here because
+// Buddy_CheckFrames calls it first and a static definition after an implicit
+// declaration is a hard error on gcc 14.
+static boolean Buddy_FramePresent (const char base[4], int frame);
+
 static void Buddy_CheckFrames (const buddyrec_t* r, const char* sprite, const char* who)
 {
     char miss[64];
@@ -281,6 +290,12 @@ void P_Buddy_ResolveFrames (void)
     {
 	buddyrec_t* r = &roster[s];
 	if (!r->framesrc[0])
+	    continue;
+	// "marine"/"player" is not a donor -- it is the buddy saying it already uses the
+	// player's own A..W sheet, which is the no-remap case.  The shipped Doom Delta
+	// buddies are re-lettered into that layout when the WAD is baked, so warning here
+	// reported the correct configuration as a mistake.
+	if (!strcasecmp (r->framesrc, "marine") || !strcasecmp (r->framesrc, "player"))
 	    continue;
 	Buddy_BuildFrameMap (r, Buddy_TypeByName (r->framesrc));
 	if (!r->has_framemap)
@@ -701,25 +716,36 @@ static void Buddy_ParseText (const char* text, int len)
 void P_Buddy_LoadDefs (void)
 {
     int i;
+    int spr0;
 
     nroster = 0;
-    // slot 0 -- the built-in player-2 marine buddy (files/p_ai_coop.c)
+    // Slot 0 -- the built-in player-2 buddy (files/p_ai_coop.c).  This is LORELEI CHEN,
+    // squad lead of the DOOM Bible's five-marine detail, as Doom Delta rebuilt her.  She
+    // lives here rather than in BUDDYDEF because slot 0 must exist even when no WAD
+    // supplies a roster; her three squadmates ARE BUDDYDEF records, shipped in
+    // run/ID0/buddydoom.wad (source: tools/wad.buddydef, which documents the stat port).
     memset (&roster[0], 0, sizeof roster[0]);
-    strcpy (roster[0].name, "Marine");
-    strcpy (roster[0].desc, "Standard-issue AI marine. Hunts monsters, guards "
-			    "you and revives the fallen. The default buddy.");
+    strcpy (roster[0].name, "Lorelei Chen");
+    strcpy (roster[0].desc, "Squad lead. A step quicker than the rest of the detail, "
+			    "and a good deal thinner-skinned for it.");
     strcpy (roster[0].ranged, "hitscan");	// fires the player weapons
     strcpy (roster[0].melee, "punch");
     strcpy (roster[0].monster, "marine");
     strcpy (roster[0].special, "Revives downed marines, seeks health when hurt, "
 			       "orderable (come/wait/attack), has its own HUD.");
-    // The marine's named ability -- it already deploys Security Drones when it is under
-    // heavy fire / surrounded / ammo-capped (P_AICoop_MaybeSpawnDrone, p_secdrone.c).
+    // Named ability -- the bot already deploys Security Drones when it is under heavy
+    // fire / surrounded / ammo-capped (P_AICoop_MaybeSpawnDrone, p_secdrone.c).
     strcpy (roster[0].ability, "drone");
-    roster[0].spritenum    = SPR_PLAY;
+    strcpy (roster[0].painsnd,   "LORPAI");	// DSLORPAI, from buddydoom.wad
+    strcpy (roster[0].deathsnd,  "LORDIE");	// DSLORDIE
+    strcpy (roster[0].activesnd, "LOROOF");	// DSLOROOF
+    // PLA1 rides in buddydoom.wad.  If that WAD is absent the art is too, so fall back
+    // to the stock player sheet -- slot 0 has to render no matter what is loaded.
+    spr0 = Buddy_RegSprite ("PLA1");
+    roster[0].spritenum    = spr0 >= 0 ? spr0 : SPR_PLAY;
     roster[0].color        = -1;	// no declared default -> menu uses Green
-    roster[0].health       = 100;	// a real player marine
-    roster[0].speed        = 25;
+    roster[0].health       = 83;	// Doom Delta DamageFactor 1.2 -> 100/1.2
+    roster[0].speed        = 9;		// Doom Delta ForwardMove 1.15 -> ticcmd scale 9/8
     roster[0].radius       = 16;
     roster[0].height       = 56;
     roster[0].mass         = 100;
@@ -740,6 +766,9 @@ void P_Buddy_LoadDefs (void)
 
     if (nroster > 1)
 	printf ("P_Buddy_LoadDefs: %d modder buddy(ies) available.\n", nroster - 1);
+
+    if (buddy_select >= 0 && buddy_select < nroster)
+	printf ("P_Buddy: companion is '%s'.\n", roster[buddy_select].name);
 }
 
 // ---------------------------------------------------------------------------
@@ -1030,8 +1059,6 @@ void P_Buddy_AbilityTicker (void)
 
     if (vanilla_mode || netgame || demoplayback)
 	return;
-    if (buddy_select <= 0)		// the Marine's own drone runs in the bot (p_secdrone.c)
-	return;
     if (!(mo = Buddy_Body ()) || mo->health <= 0)
 	return;
     // Short warm-up: the cadences below are gametic-phased, so without this a level that
@@ -1049,8 +1076,10 @@ void P_Buddy_AbilityTicker (void)
 	break;
 
       case BA_DRONE:
-	if (!(gametic % BA_DRONE_PERIOD))
-	    Buddy_DeployDrone (mo);
+	// NOT deployed from here: P_AICoop_MaybeSpawnDrone (p_ai_coop.c) already runs for
+	// the buddy bot on every tic regardless of roster slot, so doing it here too would
+	// put two drones out per deploy window.  The bot's version is the better one -- it
+	// reads the buddy's actual situation (under fire / surrounded / ammo-capped).
 	break;
 
       case BA_TURRET:

@@ -357,6 +357,7 @@ GFX_PREFIXES = {
     "STLK",                                                 # Strife stalker
     "BUFD", "BUFE", "BUFG", "BUFK", "BUFO", "BUFS", "BUFT",  # buddy HUD mugshots
     "RARR",                                                 # UI compass arrows
+    "PLA1", "PLA2", "PLA3", "PLA4",                         # Doom Delta buddy classes
 }
 
 
@@ -417,6 +418,31 @@ def load_snd_lumps():
         lumps.append((name, f.read_bytes()))
     print(f"  + {len(files)} sound lumps from wad.snd")
     return lumps
+
+
+def load_buddydef_lump():
+    """The companion roster, as a BUDDYDEF text lump read from tools/wad.buddydef.
+
+    P_Buddy_LoadDefs (files/p_buddydef.c) scans every loaded WAD for a lump of this
+    name, so shipping it inside buddydoom.wad is what puts the Doom Delta marines on
+    the Buddy select screen with no -file argument.  Slot 0 (Lorelei Chen) is built
+    into the engine and is deliberately NOT in this lump.
+
+    The parser is line-based: one key per line, `#` starts a comment, and `desc` is
+    capped at 160 characters -- a wrapped description silently loses everything after
+    its first line, so this checks rather than trusting the author.
+    """
+    src = Path(__file__).resolve().parent / "wad.buddydef"
+    if not src.is_file():
+        print(f"  ! {src} missing -- no BUDDYDEF lump, only the built-in buddy will be listed")
+        return []
+    text = src.read_text()
+    for n, line in enumerate(text.splitlines(), 1):
+        body = line.split("#", 1)[0].strip()
+        if body.lower().startswith("desc") and len(body) > 160 + 8:
+            print(f"  ! wad.buddydef:{n}: desc is longer than the engine's 160-char field")
+    print(f"  + BUDDYDEF roster lump ({text.count('buddy {')} record(s)) from wad.buddydef")
+    return [("BUDDYDEF", text.encode("utf-8"))]
 
 
 def env_file_value(path, *names):
@@ -633,6 +659,7 @@ def main():
             print(f"  [{i:2d}/{len(PHRASES)}] {name}  '{phrase}' -> {freq} Hz")
         lumps += load_gfx_lumps()	# all buddy graphics (sprites + HUD faces + arrows)
         lumps += load_snd_lumps()  # all buddy sounds from wad.snd
+        lumps += load_buddydef_lump()  # the companion roster (Doom Delta marines)
         manifest_txt = (f"OFFLINE-TEST MODE (sine tones)\n"
                         f"generated={time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                         + "".join(manifest_lines))
@@ -728,6 +755,7 @@ def main():
 
     lumps += load_gfx_lumps()		# all buddy graphics (sprites + HUD faces + arrows)
     lumps += load_snd_lumps()  # all buddy sounds from wad.snd
+    lumps += load_buddydef_lump()  # the companion roster (Doom Delta marines)
 
     # Pack the lump<->phrase mapping INTO the WAD as a text lump ("VOICEMAP") so the
     # WAD is self-documenting -- no external file needed to know what each lump says.

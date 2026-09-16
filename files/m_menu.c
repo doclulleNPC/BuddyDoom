@@ -1411,7 +1411,7 @@ boolean M_Video_Responder (event_t* ev)
 // (P_Buddy_* in p_buddydef.c, slot 0 = the built-in Marine), Enter picks it
 // (persisted as `buddy_select`) and takes effect from the next level.
 // ===========================================================================
-int	buddy_select = 0;			// config (m_misc.c): 0 = Marine, 1..N = roster
+int	buddy_select = 0;			// config (m_misc.c): 0 = built-in, 1..N = roster
 int	buddy_color  = 0;			// config (m_misc.c): player-colour index (0 = Green)
 
 extern int		P_Buddy_Count (void);

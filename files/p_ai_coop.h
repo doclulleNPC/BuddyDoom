@@ -141,5 +141,6 @@ int P_Buddy_BodySfx (struct mobj_s* mo, int which);
 // (buddy) the selected buddy's painchance for its body, or -1 to use the mobjinfo default
 // (P_DamageMobj uses this so an alt buddy flinches by its own BUDDYDEF painchance).
 int P_Buddy_BodyPainchance (struct mobj_s* mo);
+int P_Buddy_BodyMass (struct mobj_s* mo);
 
 #endif

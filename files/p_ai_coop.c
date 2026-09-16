@@ -50,7 +50,7 @@
 
 // Buddy player-colour (v_png.c / r_things.c / m_menu.c)
 extern int		buddy_color;			// selected colour index (Buddy menu, config)
-extern int		buddy_select;			// selected roster slot (0 = Marine, 1..N = BUDDYDEF)
+extern int		buddy_select;			// selected roster slot (0 = built-in, 1..N = BUDDYDEF)
 extern const byte*	V_BuddyColorTable (int);	// 256-entry remap, NULL = Green(0)/identity
 extern void		R_SetBuddyColor (mobj_t*, const byte*);
 extern void		R_SetBuddySkin (mobj_t*, int, const byte*);  // render player 2 with the buddy's body sprite + frame layout
@@ -331,7 +331,7 @@ int P_Buddy_BodySfx (mobj_t* mo, int which)
     static const int slot[4] = { sfx_bd_see, sfx_bd_pain, sfx_bd_death, sfx_bd_active };
     const char*	nm;
 
-    if (!companion_active || buddy_select <= 0 || which < 0 || which > 3)
+    if (!companion_active || buddy_select < 0 || which < 0 || which > 3)
 	return -1;
     if (!mo || mo != players[coop_slot].mo)
 	return -1;
@@ -347,7 +347,7 @@ int P_Buddy_BodySfx (mobj_t* mo, int which)
 int P_Buddy_BodyPainchance (mobj_t* mo)
 {
     buddystats_t	st;
-    if (!companion_active || buddy_select <= 0 || !mo || mo != players[coop_slot].mo)
+    if (!companion_active || buddy_select < 0 || !mo || mo != players[coop_slot].mo)
 	return -1;
     P_Buddy_GetStats (buddy_select, &st);
     return st.painchance;
@@ -373,6 +373,9 @@ extern boolean P_CheckMeleeRange (mobj_t* actor);
 static buddyatk_t Buddy_MeleeFn (const char* n)
 {
     if (!n || !*n || !strcasecmp (n, "none")) return NULL;
+    // The marine labels -- descriptive only; NULL here means "fight with weapons".
+    if (!strcasecmp(n,"punch") || !strcasecmp(n,"weapon")
+	|| !strcasecmp(n,"weapons") || !strcasecmp(n,"fist")) return NULL;
     if (!strcasecmp(n,"revenant"))			return A_SkelFist;
     if (!strcasecmp(n,"imp")||!strcasecmp(n,"gargoyle"))return A_TroopAttack;
     if (!strcasecmp(n,"cacodemon"))			return A_HeadAttack;
@@ -383,6 +386,9 @@ static buddyatk_t Buddy_MeleeFn (const char* n)
 static buddyatk_t Buddy_RangedFn (const char* n)
 {
     if (!n || !*n || !strcasecmp (n, "none")) return NULL;
+    // As above: a buddy that "shoots" fires its player weapons, not a monster attack.
+    if (!strcasecmp(n,"hitscan") || !strcasecmp(n,"weapon")
+	|| !strcasecmp(n,"weapons") || !strcasecmp(n,"gun")) return NULL;
     if (!strcasecmp(n,"zombieman"))			return A_PosAttack;
     if (!strcasecmp(n,"shotgunguy"))			return A_SPosAttack;
     if (!strcasecmp(n,"chaingunner"))			return A_CPosAttack;
@@ -409,9 +415,36 @@ static buddyatk_t Buddy_RangedFn (const char* n)
 boolean P_Buddy_UsesMonsterAttack (player_t* p)
 {
     buddystats_t st;
-    if (!p || buddy_select <= 0 || !P_AICoop_IsBuddy (p)) return false;
+    if (!p || buddy_select < 0 || !P_AICoop_IsBuddy (p)) return false;
     P_Buddy_GetStats (buddy_select, &st);
     return Buddy_MeleeFn (st.melee) != NULL || Buddy_RangedFn (st.ranged) != NULL;
+}
+
+// (buddy) The selected buddy's mass for its body (player 2), or -1 to use the mobjinfo
+// default.  Mass is the knockback divisor in P_DamageMobj, and it lives in the SHARED
+// mobjinfo -- so it cannot just be assigned to the instance the way health and radius
+// are.  Routing it through a hook is how a buddy gets its own weight without every
+// marine in the game inheriting it.  This is what makes Dimitri Paramo (mass 1000) the
+// wall he is meant to be: ten times the player's mass, a tenth of the knockback.
+int P_Buddy_BodyMass (mobj_t* mo)
+{
+    buddystats_t	st;
+    if (!companion_active || buddy_select < 0 || !mo || mo != players[coop_slot].mo)
+	return -1;
+    P_Buddy_GetStats (buddy_select, &st);
+    return st.mass > 0 ? st.mass : -1;
+}
+
+// (buddy) The selected buddy's OWN full health -- BUDDYDEF `health`, or the stock 100
+// when it declares none.  Every "patch it back up to full" path goes through this, so a
+// buddy who is not a 100 HP marine is healed to ITS maximum: Thi Barrett tops out at 67,
+// Dimitri Paramo at 143.  Healing them all to a flat 100 would have quietly handed Thi a
+// 50% bonus and docked Dimitri a third of his health every time he was revived.
+static int AICoop_FullHealth (void)
+{
+    buddystats_t st;
+    P_Buddy_GetStats (buddy_select, &st);
+    return st.health > 0 ? st.health : 100;
 }
 
 int P_Buddy_DoAttack (mobj_t* buddy, mobj_t* target)
@@ -420,7 +453,7 @@ int P_Buddy_DoAttack (mobj_t* buddy, mobj_t* target)
     buddystats_t st;
     buddyatk_t	melee, ranged, fn;
 
-    if (buddy_select <= 0) return -1;
+    if (buddy_select < 0) return -1;
     P_Buddy_GetStats (buddy_select, &st);
     melee  = Buddy_MeleeFn  (st.melee);
     ranged = Buddy_RangedFn (st.ranged);
@@ -477,12 +510,13 @@ void P_AICoop_VerifySpawn (void)
 	coop_home_x = buddy_mo->x; coop_home_y = buddy_mo->y;
 	coop_home_angle = buddy_mo->angle; coop_home_set = true;
 
-	// (buddy) Apply the selected BUDDYDEF buddy's body stats to player 2 once, at spawn
-	// (slot 0 = Marine keeps the stock player body).  Per-instance fields only, so this
-	// never touches mobjinfo/savegames.  health seeds the spawn HP; radius/height resize
-	// the collision box (BUDDYDEF stores plain map units -> <<FRACBITS).
-	buddy_movescale = FRACUNIT;		// Marine default (overridden below for alt buddies)
-	if (buddy_select > 0)
+	// (buddy) Apply the selected buddy's body stats to player 2 once, at spawn.  This
+	// runs for EVERY roster slot including 0 -- slot 0 is Lorelei Chen, a character with
+	// her own numbers, not the stock player body it used to be.  Per-instance fields
+	// only, so this never touches mobjinfo/savegames.  health seeds the spawn HP;
+	// radius/height resize the collision box (BUDDYDEF map units -> <<FRACBITS).
+	buddy_movescale = FRACUNIT;		// overridden from `speed` just below
+	if (buddy_select >= 0)
 	{
 	    buddystats_t st;
 	    P_Buddy_GetStats (buddy_select, &st);
@@ -1296,8 +1330,8 @@ const char* P_AICoop_God (void)
     bot->cheats ^= CF_GODMODE;
     if (bot->cheats & CF_GODMODE)
     {
-	bot->health = 100;
-	if (bot->mo) bot->mo->health = 100;
+	bot->health = AICoop_FullHealth ();
+	if (bot->mo) bot->mo->health = bot->health;
 	AICoop_Callout ("god:", 2);
 	return "[Buddy] God mode ON.";
     }
@@ -3615,7 +3649,12 @@ static void P_AICoop_Revive (int hp)
     mo->flags |= (MF_SOLID | MF_SHOOTABLE);
     mo->flags &= ~MF_CORPSE;			// un-corpse; KEEP MF_DROPOFF (the buddy is a
 						// player -- it must still drop off ledges to follow you)
-    mo->height = mo->info->height;		// un-squash the corpse
+    {   // un-squash the corpse.  NOT from mobjinfo: that is the stock 56-unit player and
+	// would silently erase the buddy's BUDDYDEF height every time it got back up.
+	buddystats_t st;
+	P_Buddy_GetStats (buddy_select, &st);
+	mo->height = st.height > 0 ? (st.height << FRACBITS) : mo->info->height;
+    }
     mo->health = hp;
     bot->health = hp;
     bot->playerstate = PST_LIVE;
@@ -3706,14 +3745,20 @@ const char* P_AICoop_Heal (void)
 {
     player_t* bot = &players[coop_slot];
     if (!AICoop_Mo ()) return "[Buddy] (no companion -- launch with -coop)";
-    if (bot->playerstate == PST_DEAD)
     {
-	P_AICoop_Revive (100);			// downed -> stand it back up at full health
-	return "[Buddy] Revived and patched up to 100 HP.";
+	static char msg[64];
+	int hp = AICoop_FullHealth ();
+	if (bot->playerstate == PST_DEAD)
+	{
+	    P_AICoop_Revive (hp);		// downed -> stand it back up at full health
+	    snprintf (msg, sizeof msg, "[Buddy] Revived and patched up to %d HP.", hp);
+	    return msg;
+	}
+	bot->health = hp;
+	if (bot->mo) bot->mo->health = hp;
+	snprintf (msg, sizeof msg, "[Buddy] Patched up to %d HP.", hp);
+	return msg;
     }
-    bot->health = 100;
-    if (bot->mo) bot->mo->health = 100;
-    return "[Buddy] Patched up to 100 HP.";
 }
 
 // (auto-heal) When the buddy is hurt, spend a held HEALTH artifact -- instant, and it beats
@@ -3801,10 +3846,13 @@ void P_AICoop_BuildCmd (void)
 	// is built for the green suit and only muddies hand-drawn sprites.
 	R_SetBuddyColor (bot->mo, P_Buddy_ColorLocked (buddy_select)
 			  ? NULL : V_BuddyColorTable (buddy_color));
-	// (buddy) skin: render player 2's body as the selected BUDDYDEF buddy (slot 0 =
-	// Marine keeps the stock PLAY body).  -1 clears the override.
-	R_SetBuddySkin (bot->mo, buddy_select > 0 ? P_Buddy_Sprite (buddy_select) : -1,
-			buddy_select > 0 ? P_Buddy_FrameMap (buddy_select) : NULL);
+	// (buddy) skin: render player 2's body as the selected buddy's own sheet.  Slot 0
+	// has art too now (Lorelei's PLA1), so there is no stock-PLAY special case left;
+	// P_Buddy_Sprite falls back to SPR_PLAY by itself if the art is missing.  The Doom
+	// Delta sheets are re-lettered to the player layout when the WAD is baked, so their
+	// frame map is NULL -- nothing to remap at runtime.
+	R_SetBuddySkin (bot->mo, P_Buddy_Sprite (buddy_select),
+			P_Buddy_FrameMap (buddy_select));
     }
 
     // Down (L4D-style incapacitation): NOT game over -- the buddy lies on the ground
@@ -3816,12 +3864,12 @@ void P_AICoop_BuildCmd (void)
 	// If the downed body fell on (or slid into) a damaging floor -- nukage/lava/etc. --
 	// the human can't safely reach it to revive and it would just keep cooking until it
 	// dies for good.  So recall it to the recorded spawn point AND stand it straight back
-	// up at full health -- P_AICoop_Revive un-downs it (100 HP) and nudges it clear.
+	// up at full health -- P_AICoop_Revive un-downs it and nudges it clear.
 	if (bot->mo && coop_home_set && AICoop_DamagingFloor (bot->mo->x, bot->mo->y))
 	{
 	    P_TeleportMove (bot->mo, coop_home_x, coop_home_y);
 	    bot->mo->momx = bot->mo->momy = bot->mo->momz = 0;
-	    P_AICoop_Revive (100);		// patched up to 100 HP, back on its feet at home
+	    P_AICoop_Revive (AICoop_FullHealth ());	// back on its feet at home, at full HP
 	    return;
 	}
 	memset (cmd, 0, sizeof(*cmd));		// never tap USE -> stays down (no reborn)

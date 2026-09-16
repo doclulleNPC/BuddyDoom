@@ -1,0 +1,83 @@
+# BUDDYDEF -- the Doom Delta companion roster.
+#
+# Baked into run/ID0/buddydoom.wad by tools/bake_buddy_voice.py; the art and voice
+# clips are staged by tools/extract_doomdelta_buddies.py out of DoomDelta-v3.1.0.pk3.
+#
+# The cast is the DOOM Bible's (Tom Hall, 28 Nov 1992) five-marine squad as Doom Delta
+# rebuilt it.  LORELEI CHEN is NOT here: she is the engine's built-in roster slot 0
+# (files/p_buddydef.c), which is always present even with no WAD loaded.  Only the
+# other three are WAD records.
+#
+# HOW THE STATS WERE PORTED (zscript/delta/players.zsc -> BUDDYDEF)
+#
+#   health  <- DamageFactor "Normal".  Doom Delta gives every class 100 HP and
+#              differentiates them purely by damage taken; BUDDYDEF has no damage
+#              factor, so the toughness is folded into health as 100/DamageFactor.
+#              John 0.8 -> 125, Dimitri 0.7 -> 143, Thi 1.5 -> 67.
+#   speed   <- Player.ForwardMove.  p_ai_coop.c turns `speed` into a ticcmd scale of
+#              speed/8, so ForwardMove 1.0 is speed 8, 0.9 is 7, 1.3 is 10.
+#   height  <- Player.ViewHeight, scaled against the stock 41/56 pair: Dimitri's 43
+#              -> 59, Thi's 37 -> 50.  Doom Delta declares no radius, so all keep 16.
+#   mass    <- Mass, where declared (Dimitri 1000; the rest are the player's 100).
+#
+# painchance/reactiontime are the stock player's -- Doom Delta overrides neither.
+
+buddy {
+  name         "John Pietrovich"
+  desc         "Squad heavy. The most armoured marine on the detail -- slow to bleed, steady under fire, and entirely unremarkable otherwise."
+  sprite       PLA2
+  health       125
+  speed        8
+  radius       16
+  height       56
+  mass         100
+  painchance   255
+  reactiontime 0
+  painsound    JONPAI
+  deathsound   JONDIE
+  activesound  JONOOF
+  meleeattack  punch
+  rangedattack hitscan
+  monster      marine
+  ability      drone
+}
+
+buddy {
+  name         "Dimitri Paramo"
+  desc         "The wall. Heaviest of the squad: blast waves barely shift him, small arms hardly register. Pays for it as the slowest on the roster."
+  sprite       PLA3
+  health       143
+  speed        7
+  radius       16
+  height       59
+  mass         1000
+  painchance   255
+  reactiontime 0
+  painsound    DIMPAI
+  deathsound   DIMDIE
+  activesound  DIMOOF
+  meleeattack  punch
+  rangedattack hitscan
+  monster      marine
+  ability      drone
+}
+
+buddy {
+  name         "Thi Barrett"
+  desc         "Scout. Fastest of the squad and the easiest to kill -- half again the damage taken, but slight enough that fire tends to pass by."
+  sprite       PLA4
+  health       67
+  speed        10
+  radius       16
+  height       50
+  mass         100
+  painchance   255
+  reactiontime 0
+  painsound    THIPAI
+  deathsound   THIDIE
+  activesound  THIOOF
+  meleeattack  punch
+  rangedattack hitscan
+  monster      marine
+  ability      drone
+}
