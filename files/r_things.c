@@ -672,7 +672,15 @@ R_DrawVisSprite
     // then overlay the full-colour RGBA on screen32 AFTER the columns (below).  Skip
     // for spectres (no colormap) and invulnerability (fixedcolormap) -- those want the
     // paletted fuzz / inverse look.
+    //
+    // ALSO skip whenever the sprite carries a palette translation.  The overlay paints
+    // the image's OWN colours over the columns, so it silently undid the remap the
+    // translated draw had just performed -- and because the RGBA twin is decoded lazily,
+    // the actor rendered correctly for its first moments and then reverted to the raw
+    // art once the cache filled.  That is the buddy turning green a few seconds into a
+    // map, and it would equally strip players 2-4 of their colours in a netgame.
     boolean hd = (truecolor && hd_sprites && vis->colormap && !fixedcolormap
+		  && !vis->translation && !(vis->mobjflags & MF_TRANSLATION)
 		  && hdsprite[vis->patch].rgba);
 
     dc_colormap = vis->colormap;
@@ -903,6 +911,13 @@ void R_ProjectSprite (mobj_t* thing)
     vis->mobjflags = thing->flags;
     vis->mobjflags2 = thing->flags2;
     vis->translation = (thing == r_buddycolor_mo) ? r_buddycolor_xlat : NULL;
+    if (thing == r_buddycolor_mo)
+	// The companion's colour is the Buddy menu's business alone, so drop the vanilla
+	// player-NUMBER remap that P_SpawnPlayer set from the Player_2_Start.  Without
+	// this, a buddy colour of Green or None -- both of which mean "no recolour", i.e.
+	// a NULL table -- fell through to player 2's indigo instead of showing the art's
+	// own colours, and the buddy changed shade the moment the driver's first tic ran.
+	vis->mobjflags &= ~MF_TRANSLATION;
     vis->floorz = thing->floorz;
     vis->scale = xscale;
     vis->gx = thing->x;
